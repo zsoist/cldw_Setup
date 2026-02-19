@@ -1,0 +1,16 @@
+[Unit]
+Description=Sentinel Sysadmin Bot
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sentinel
+ExecStart=/opt/sentinel/venv/bin/python sentinel.py
+Restart=always
+RestartSec=10
+Environment=PATH=/opt/sentinel/venv/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
