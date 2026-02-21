@@ -4,7 +4,7 @@
 >
 > Last updated: 2026-02-21  
 > Branch: `main`  
-> Current commit: `c8e7648`  
+> Current commit: run `git rev-parse --short HEAD` on your checkout  
 > Source branch merged into main: `claude/openclaw-optimization-readme-f9ha4`
 
 ---
