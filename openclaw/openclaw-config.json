@@ -22,6 +22,36 @@
       "subagents": {
         "maxConcurrent": 4
       }
+    },
+    "profiles": {
+      "main": {
+        "description": "Personal assistant — general tasks, research, scheduling",
+        "workspace": "/home/node/.openclaw/workspace/main",
+        "configDir": "config",
+        "sandbox": {
+          "enabled": false
+        },
+        "elevatedExec": false,
+        "channels": ["telegram"]
+      },
+      "work": {
+        "description": "Professional assistant — Dialectica, job search, work drafts",
+        "workspace": "/home/node/.openclaw/workspace/work",
+        "configDir": "agents/work",
+        "model": {
+          "primary": "anthropic/claude-haiku-4-5",
+          "fallbacks": [
+            "anthropic/claude-sonnet-4-5"
+          ]
+        },
+        "sandbox": {
+          "enabled": true,
+          "scope": "agent",
+          "workspaceAccess": "readwrite"
+        },
+        "elevatedExec": false,
+        "channels": ["telegram"]
+      }
     }
   },
   "heartbeat": {
@@ -31,12 +61,19 @@
     "telegram": {
       "enabled": true,
       "token": "REPLACE_WITH_TELEGRAM_BOT_TOKEN",
-      "dmPolicy": "pairing"
+      "dmPolicy": "pairing",
+      "groupChats": false
     }
   },
   "providers": {
     "anthropic": {
       "apiKey": "REPLACE_WITH_ANTHROPIC_API_KEY"
     }
+  },
+  "security": {
+    "maxToolCallsPerTask": 10,
+    "maxRetriesOnFailure": 2,
+    "elevatedExecDefault": false,
+    "sandboxDefault": true
   }
 }

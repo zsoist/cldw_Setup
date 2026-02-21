@@ -15,16 +15,22 @@ A production-ready, budget-conscious deployment of a two-layer AI assistant syst
                         │  │   OpenClaw Gateway     │  │   Sentinel Bot      │  │
                         │  │   Port 18789 (lo)      │  │   Python + SDK      │  │
                         │  │                        │  │                     │  │
-                        │  │   Haiku 4.5 (default)  │  │   Haiku 4.5 only   │  │
-                        │  │   Sonnet 4.5 (escal.)  │  │   8 tool functions  │  │
-  Telegram ────────────>│  │   Opus 4.6 (manual)    │  │   Strict whitelist  │  │
-  (Sentinel Bot)        │  └───────────────────────┘  └─────────────────────┘  │
+                        │  │  ┌─────┐  ┌────────┐  │  │   Haiku 4.5 only   │  │
+                        │  │  │main │  │  work  │  │  │   8 tool functions  │  │
+  Telegram ────────────>│  │  │agent│  │ agent  │  │  │   Strict whitelist  │  │
+  (Sentinel Bot)        │  │  │     │  │sandbox │  │  └─────────────────────┘  │
+                        │  │  └─────┘  └────────┘  │                           │
+                        │  └───────────────────────┘                           │
                         │                                                       │
   SSH Tunnel ──────────>│  UFW (SSH only) + fail2ban + key-only auth           │
   (Mac Client)          └───────────────────────────────────────────────────────┘
 ```
 
 ### Design Philosophy
+
+**Gateway Runtime Model:** OpenClaw is a persistent gateway process — not just a chatbot. It maintains long-running channel connections, dispatches messages to agent runtimes, and manages tool execution. This framing drives decisions about security, availability, and remote access.
+
+**Multi-Agent Architecture:** Two agent profiles run within the gateway — `main` (personal) and `work` (professional). Each has separate workspace files, memory, tool policies, and risk profiles. The work agent runs in an agent-scope sandbox for data isolation.
 
 **Tenant-Landlord Model:** OpenClaw is the "tenant" — it handles user-facing tasks (research, scheduling, task management) inside a resource-constrained Docker container. Sentinel is the "landlord" — it monitors the system, manages Docker, runs security audits, and creates backups. Neither can interfere with the other, and Sentinel has a strict command whitelist preventing destructive operations.
 
@@ -153,17 +159,32 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 ├── README.md                              # This file
 ├── CLAUDE-CODE-HANDOFF.md                 # Original project specification
 ├── openclaw/                              # OpenClaw Gateway configuration
-│   ├── config/
-│   │   ├── SOUL.md                        # Bot personality (< 500 words, token-optimized)
-│   │   ├── USER.md                        # Daniel's profile
-│   │   ├── AGENTS.md                      # Model routing: Haiku -> Sonnet -> Opus
-│   │   ├── HEARTBEAT.md                   # Proactive schedule (55-min cache-aligned)
-│   │   └── MEMORY.md                      # Persistent memory seeds
+│   ├── config/                            # Main agent ("Claw") workspace files
+│   │   ├── SOUL.md                        # Orchestrator identity + delegation protocol
+│   │   ├── USER.md                        # Daniel's profile + preferences
+│   │   ├── AGENTS.md                      # Sub-agent registry + model routing
+│   │   ├── TOOLS.md                       # Tool policy + permissions
+│   │   ├── HEARTBEAT.md                   # Proactive schedule + EOD/weekly logs
+│   │   ├── MEMORY.md                      # Persistent memory + daily log system
+│   │   ├── IDENTITY.md                    # Persona tone + style
+│   │   ├── BOOTSTRAP.md                   # First-run behavior (retires after setup)
+│   │   ├── CHANNELS.md                    # Channel security policy + allowlists
+│   │   └── SANDBOX.md                     # Sandbox policy + agent isolation rules
+│   ├── agents/
+│   │   └── work/                          # Work agent ("Claw Work") — sandboxed
+│   │       ├── SOUL.md                    # Professional-only scope, stricter rules
+│   │       ├── TOOLS.md                   # Restricted tool policy
+│   │       ├── USER.md                    # Work-context profile only
+│   │       ├── MEMORY.md                  # Work-specific memory (isolated)
+│   │       └── HEARTBEAT.md               # Work-hours schedule (08:00-20:00)
 │   ├── skills/
 │   │   ├── daily-briefing/SKILL.md        # Morning briefing (Haiku, scheduled)
 │   │   ├── research-assistant/SKILL.md    # Deep research (Sonnet, on-demand)
 │   │   └── task-tracker/SKILL.md          # Task management (Haiku, triggered)
-│   └── openclaw-config.json               # Gateway config template
+│   ├── memory/                            # Daily + weekly log storage
+│   │   ├── weekly/                        # Weekly review summaries
+│   │   └── (YYYY-MM-DD.md files)          # Auto-generated daily logs
+│   └── openclaw-config.json               # Gateway config (multi-agent + sandbox)
 ├── sentinel/                              # Sysadmin Bot (Anthropic SDK + tool_use)
 │   ├── sentinel.py                        # Agentic loop with tool chaining
 │   ├── tools.py                           # 8 tools + whitelist/blocklist security
@@ -181,7 +202,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── env.template                       # Secret placeholders (never committed)
 │   ├── deploy.sh                          # One-shot VPS deployment
 │   ├── secure.sh                          # UFW + fail2ban + SSH hardening
-│   ├── backup.sh                          # Automated backup (7-day rotation)
+│   ├── backup.sh                          # Automated backup (7-day rotation, no secrets)
 │   ├── restore.sh                         # Interactive restore from backup
 │   ├── health-check.sh                    # 8-point system health verification
 │   └── ssh-config-snippet                 # Mac SSH config with tunnel
@@ -228,13 +249,21 @@ With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well unde
 - **Sentinel command whitelist**: deny-by-default, prefix-based allow list
 - **Sentinel blocklist**: explicit rejection of destructive patterns
 - **Telegram auth**: user ID whitelist — unauthorized users get rejected immediately
-- **No secrets in git**: `.env` in `.gitignore`, template file uses placeholders only
+- **No secrets in git**: `.env` in `.gitignore`, backup excludes `.env`/`.pem`/`.key`
 - **Docker isolation**: OpenClaw runs as non-root user in container with resource limits
 
+### Agent Isolation
+- **Multi-agent separation**: main and work agents have separate workspaces, memory, and tool policies
+- **Work agent sandboxing**: agent-scope sandbox prevents cross-contamination of personal/professional data
+- **No elevated exec**: neither agent can bypass sandbox to run commands on host
+- **Channel security**: private DM only, no group chats, sender allowlist enforced
+- **Tool call caps**: max 10 per task (main), max 8 per task (work) — prevents runaway loops
+
 ### Operational
-- **Automated backups**: daily at 03:00, 7-day rotation
+- **Automated backups**: daily at 03:00, 7-day rotation, secrets excluded from tarballs
 - **Health checks**: 8-point verification script (Docker, HTTP, disk, memory, UFW, backups)
 - **Automatic security updates**: unattended-upgrades enabled
+- **Post-config checks**: security audit + health check required after sandbox or channel changes
 
 ## Testing
 
@@ -292,6 +321,10 @@ pytest tests/ -v
 | 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping a week of recovery points. |
 | Sentinel on Haiku only | Sysadmin tasks (status, logs, restart) never need Sonnet-level reasoning. |
 | Silent hours (23:00-07:00) | Eliminates ~33% of heartbeat API calls with zero utility loss. |
+| Multi-agent (main + work) | Separates personal/professional data, enables sandboxing, reduces context per agent. |
+| Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |
+| No elevated exec | Sandboxing is meaningless if agents can bypass it via host execution. |
+| Channel allowlist + no groups | Group chats are the highest prompt injection surface area. |
 
 ## License
 
