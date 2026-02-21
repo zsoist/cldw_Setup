@@ -103,6 +103,25 @@ deploy:
 
 This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either service from starving the other.
 
+### 8. Cron Job Architecture
+
+10 scheduled jobs defined in `openclaw/config/CRON.md`, split between personal and business:
+
+| # | Job | Schedule | Agent | Model |
+|---|-----|----------|-------|-------|
+| 1 | Daily Planning Brief | 07:00 daily | Main | Haiku |
+| 2 | EOD Review | 20:00 daily | Main | Haiku |
+| 3 | Weekly Personal Review | Sun 20:00 | Main | Haiku |
+| 4 | Calendar Prep Watch | Every 4h | Main | Haiku |
+| 5 | Knowledge Capture | Mon/Wed/Fri 19:00 | Main | Haiku |
+| 6 | Business Daily Snapshot | Weekdays 08:00 | Work | Haiku |
+| 7 | Meeting Prep Generator | Hourly (work hours) | Work | Haiku/Sonnet |
+| 8 | Pipeline Stale Check | Weekdays 16:00 | Work | Haiku |
+| 9 | Weekly KPI Digest | Fri 17:00 | Work | Haiku |
+| 10 | Security Hygiene | Mon 09:00 | Work | Haiku |
+
+Every job follows the read → analyze → notify pattern. Deep research and destructive actions never run automatically.
+
 ## Sentinel: Agentic Sysadmin Bot
 
 Sentinel is built on the **Anthropic SDK's tool_use pattern** — a production implementation of the agentic loop where Claude decides which tools to invoke, processes results, and iterates until it can provide a final answer.
@@ -163,11 +182,13 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │   ├── SOUL.md                        # Orchestrator identity + delegation protocol
 │   │   ├── USER.md                        # Daniel's profile + preferences
 │   │   ├── AGENTS.md                      # Sub-agent registry + model routing
-│   │   ├── TOOLS.md                       # Tool policy + permissions
+│   │   ├── TOOLS.md                       # Tool policy + permissions + operating rules
 │   │   ├── HEARTBEAT.md                   # Proactive schedule + EOD/weekly logs
 │   │   ├── MEMORY.md                      # Persistent memory + daily log system
 │   │   ├── IDENTITY.md                    # Persona tone + style
 │   │   ├── BOOTSTRAP.md                   # First-run behavior (retires after setup)
+│   │   ├── BOOT.md                        # Startup health checks (runs every boot)
+│   │   ├── CRON.md                        # Full cron job registry (10 jobs)
 │   │   ├── CHANNELS.md                    # Channel security policy + allowlists
 │   │   └── SANDBOX.md                     # Sandbox policy + agent isolation rules
 │   ├── agents/
@@ -177,6 +198,23 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │       ├── USER.md                    # Work-context profile only
 │   │       ├── MEMORY.md                  # Work-specific memory (isolated)
 │   │       └── HEARTBEAT.md               # Work-hours schedule (08:00-20:00)
+│   ├── workspace/                         # Runtime workspace content
+│   │   ├── personal/                      # Personal context (main agent)
+│   │   │   ├── goals.md                   # Quarterly/monthly goals + success criteria
+│   │   │   ├── routines.md                # Daily/weekly routines + reminder prefs
+│   │   │   └── projects/                  # Personal project files
+│   │   ├── business/                      # Professional context (work agent)
+│   │   │   ├── goals-okrs.md              # Business objectives + key results
+│   │   │   ├── operating-rules.md         # Work boundaries + quality standards
+│   │   │   └── projects/active|archived/  # Business project files
+│   │   ├── outputs/                       # Generated deliverables
+│   │   │   ├── summaries/                 # Daily briefs, meeting prep, knowledge capture
+│   │   │   ├── reports/                   # Weekly digests, security hygiene, stale items
+│   │   │   ├── drafts/                    # In-progress documents
+│   │   │   └── exports/                   # Finalized exports
+│   │   └── logs/                          # Operational logs
+│   │       ├── change-log.md              # Config/infrastructure change record
+│   │       └── cron-job-results.md        # Cron execution log (append-only)
 │   ├── skills/
 │   │   ├── daily-briefing/SKILL.md        # Morning briefing (Haiku, scheduled)
 │   │   ├── research-assistant/SKILL.md    # Deep research (Sonnet, on-demand)
@@ -207,6 +245,20 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── health-check.sh                    # 8-point system health verification
 │   └── ssh-config-snippet                 # Mac SSH config with tunnel
 └── docs/
+    ├── setup/
+    │   └── model-routing-policy.md        # Detailed model routing reference
+    ├── security/
+    │   └── access-boundaries.md           # Agent/channel access matrix
+    ├── playbooks/
+    │   ├── daily-planning.md              # Daily brief playbook
+    │   ├── personal-weekly-review.md      # Weekly review playbook
+    │   ├── meeting-prep.md                # Meeting preparation playbook
+    │   └── decision-log-template.md       # Decision record format
+    ├── templates/
+    │   ├── research-summary-template.md   # Research output format
+    │   ├── brief-template.md              # Executive brief format
+    │   └── sop-template.md                # Standard operating procedure format
+    ├── research/                           # Saved reusable research (date-stamped)
     ├── DEPLOYMENT.md                      # Step-by-step deployment guide
     ├── COST-MANAGEMENT.md                 # Budget tracking + optimization tips
     ├── TROUBLESHOOTING.md                 # Common issues + recovery procedures
@@ -262,8 +314,11 @@ With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well unde
 ### Operational
 - **Automated backups**: daily at 03:00, 7-day rotation, secrets excluded from tarballs
 - **Health checks**: 8-point verification script (Docker, HTTP, disk, memory, UFW, backups)
+- **Boot checks**: startup health verification before agent activation (BOOT.md)
 - **Automatic security updates**: unattended-upgrades enabled
+- **Change management**: no silent config mutations — explain, apply, validate, test, report
 - **Post-config checks**: security audit + health check required after sandbox or channel changes
+- **Cron discipline**: all jobs read/notify first, deep research opt-in only, results logged
 
 ## Testing
 
@@ -325,6 +380,11 @@ pytest tests/ -v
 | Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |
 | No elevated exec | Sandboxing is meaningless if agents can bypass it via host execution. |
 | Channel allowlist + no groups | Group chats are the highest prompt injection surface area. |
+| 10 cron jobs, all Haiku default | Scheduled tasks are repetitive — never worth Sonnet unless strategic depth needed. |
+| Read/notify before act | Cron jobs that auto-execute risky actions compound errors at scale. |
+| Deep research opt-in only | Auto-triggered deep research is the fastest way to blow through API budget. |
+| Save reusable research to docs/ | Prevents redundant web searches for the same topic. |
+| Workspace content separation | personal/ vs business/ vs outputs/ vs logs/ prevents cross-contamination. |
 
 ## License
 

@@ -29,6 +29,37 @@
 - Sending messages to third parties without approval
 - Accessing or modifying Sentinel's configuration
 
+## Operating Rules
+
+### Change Management — No Silent Config Mutations
+Before changing any configuration, connector, or automation behavior:
+1. Explain the planned change in plain English
+2. Summarize the files/config that will be modified
+3. Apply changes
+4. Validate syntax/config where possible
+5. Restart services only if required
+6. Run a small test
+7. Report outcomes and rollback steps
+8. Log the change to workspace/logs/change-log.md
+
+### Read/Notify Before Act
+Cron and heartbeat jobs must notify FIRST unless explicitly authorized to execute.
+Order: read → analyze → notify → wait for approval → act.
+
+### Deep Research is Opt-In
+Never trigger deep research endpoints automatically.
+Require explicit user request: "deep research", "investigate thoroughly", or scheduled job with budget.
+
+### Save Reusable Outputs
+If a result is likely reusable, save it under docs/research/ or workspace/outputs/ with date and context.
+Do not repeatedly search for the same topic if a recent local doc exists (<30 days old).
+
+### Secret Handling
+- Never store raw secrets in markdown files
+- Use environment variables / secret store
+- Refer to secret names only (e.g., ANTHROPIC_API_KEY)
+- Redact secrets in logs and reports
+
 ## Sub-Agent Tool Inheritance
 - Sub-agents inherit only the tools relevant to their role
 - Researcher: web search + read-only docs
