@@ -13,6 +13,8 @@ class TestCommandWhitelist:
         assert is_command_allowed("uptime")[0] is True
         assert is_command_allowed("ufw status")[0] is True
         assert is_command_allowed("docker ps")[0] is True
+        assert is_command_allowed("journalctl -u sentinel -n 50 --no-pager")[0] is True
+        assert is_command_allowed("curl -s http://127.0.0.1:18789/")[0] is True
 
     def test_blocked_commands(self):
         assert is_command_allowed("rm -rf /")[0] is False
@@ -23,13 +25,23 @@ class TestCommandWhitelist:
         assert is_command_allowed("reboot")[0] is False
         assert is_command_allowed("chmod 777 /etc/passwd")[0] is False
 
+    def test_sensitive_file_read_commands_are_blocked(self):
+        assert is_command_allowed("tail -n 200 /etc/shadow")[0] is False
+        assert is_command_allowed("head -n 50 /root/.ssh/id_rsa")[0] is False
+        assert is_command_allowed("wc -l /root/.openclaw/.env")[0] is False
+
+    def test_non_local_curl_blocked(self):
+        assert is_command_allowed("curl -s https://example.com")[0] is False
+
     def test_unknown_commands_blocked(self):
         assert is_command_allowed("some-random-binary")[0] is False
         assert is_command_allowed("nc -l 4444")[0] is False
 
-    def test_whitelist_is_prefix_based(self):
+    def test_command_validation_is_argument_aware(self):
         assert is_command_allowed("systemctl status openclaw")[0] is True
+        assert is_command_allowed("systemctl status openclaw --no-pager")[0] is True
         assert is_command_allowed("systemctl restart openclaw")[0] is False  # restart not whitelisted
+        assert is_command_allowed("systemctl status openclaw --full")[0] is False
 
 
 class TestToolDefinitions:

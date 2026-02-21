@@ -2,6 +2,9 @@
 # Optimized for 3 vCPU / 4GB RAM environment
 FROM node:20-slim
 
+ARG OPENCLAW_REPO=https://github.com/openclaw/openclaw.git
+ARG OPENCLAW_REF=58f7b7638a997ebb7da3a4877e6c64c40bc20e7e
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
@@ -15,10 +18,12 @@ RUN groupadd -r openclaw && useradd -r -g openclaw -m -d /home/node openclaw
 # Set working directory
 WORKDIR /home/node
 
-# Clone and install OpenClaw (pinned to stable)
-RUN git clone https://github.com/openclaw/openclaw.git /home/node/openclaw \
+# Clone and install OpenClaw (pinned for reproducible builds)
+RUN git clone "$OPENCLAW_REPO" /home/node/openclaw \
     && cd /home/node/openclaw \
-    && npm ci --production
+    && git checkout "$OPENCLAW_REF" \
+    && npm ci --production \
+    && rm -rf .git
 
 # Copy configuration
 COPY openclaw-config.json /home/node/.openclaw/openclaw.json

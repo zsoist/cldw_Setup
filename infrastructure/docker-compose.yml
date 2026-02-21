@@ -6,6 +6,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        OPENCLAW_REF: ${OPENCLAW_REF:-58f7b7638a997ebb7da3a4877e6c64c40bc20e7e}
     container_name: openclaw-openclaw-gateway-1
     restart: unless-stopped
     ports:
@@ -18,6 +20,9 @@ services:
     volumes:
       - ${OPENCLAW_CONFIG_DIR:-/root/.openclaw}:/home/node/.openclaw
       - ${OPENCLAW_WORKSPACE_DIR:-/root/.openclaw/workspace}:/home/node/.openclaw/workspace
+    cpus: "2.0"
+    mem_limit: 2560m
+    mem_reservation: 1024m
     deploy:
       resources:
         limits:

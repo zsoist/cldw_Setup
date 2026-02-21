@@ -6,6 +6,8 @@ PROJECT_DIR="/root/openclaw-project"
 OPENCLAW_DIR="/root/openclaw"
 SENTINEL_DIR="/opt/sentinel"
 OPENCLAW_CONFIG="/root/.openclaw"
+OPENCLAW_REPO="https://github.com/openclaw/openclaw.git"
+OPENCLAW_REF="${OPENCLAW_REF:-58f7b7638a997ebb7da3a4877e6c64c40bc20e7e}"
 
 echo "=== [1/9] Install Docker ==="
 if ! command -v docker &>/dev/null; then
@@ -14,12 +16,13 @@ fi
 docker --version
 docker compose version
 
-echo "=== [2/9] Clone OpenClaw ==="
-if [ ! -d "$OPENCLAW_DIR" ]; then
-    git clone https://github.com/openclaw/openclaw.git "$OPENCLAW_DIR"
+echo "=== [2/9] Clone OpenClaw (pinned ref: $OPENCLAW_REF) ==="
+if [ ! -d "$OPENCLAW_DIR/.git" ]; then
+    git clone "$OPENCLAW_REPO" "$OPENCLAW_DIR"
 fi
 cd "$OPENCLAW_DIR"
-git pull
+git fetch --tags origin
+git checkout "$OPENCLAW_REF"
 
 echo "=== [3/9] Create persistent directories ==="
 mkdir -p "$OPENCLAW_CONFIG/workspace/personal/projects"
@@ -60,6 +63,7 @@ cp -r "$PROJECT_DIR/openclaw/skills/"* "$OPENCLAW_CONFIG/skills/" 2>/dev/null ||
 echo "=== [7/9] Copy infrastructure files + setup Sentinel ==="
 cp "$PROJECT_DIR/infrastructure/Dockerfile" "$OPENCLAW_DIR/"
 cp "$PROJECT_DIR/infrastructure/docker-compose.yml" "$OPENCLAW_DIR/"
+cp "$PROJECT_DIR/openclaw/openclaw-config.json" "$OPENCLAW_DIR/openclaw-config.json"
 
 mkdir -p "$SENTINEL_DIR"
 cp "$PROJECT_DIR/sentinel/"*.py "$SENTINEL_DIR/"
@@ -79,6 +83,9 @@ if [ ! -f .env ]; then
     echo "   Run: nano /root/openclaw/.env"
     echo ""
 fi
+if ! grep -q '^OPENCLAW_REF=' .env; then
+    echo "OPENCLAW_REF=$OPENCLAW_REF" >> .env
+fi
 docker compose build
 
 echo "=== [9/9] Enable Sentinel service ==="
@@ -89,6 +96,7 @@ echo ""
 echo "Deployment staged. NOT yet running."
 echo ""
 echo "Files deployed:"
+echo "   OpenClaw:  pinned to $OPENCLAW_REF"
 echo "   Config:    12 main agent files + openclaw-config.json"
 echo "   Work:      5 work agent files (sandbox enabled)"
 echo "   Workspace: personal/, business/, outputs/, logs/"

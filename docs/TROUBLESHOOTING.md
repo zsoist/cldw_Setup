@@ -56,15 +56,15 @@ systemctl status sentinel
 journalctl -u sentinel -n 50
 
 # Common causes:
-# 1. Missing env vars — check /opt/sentinel/.env or system environment
+# 1. Missing env vars — check /root/openclaw/.env (loaded by systemd)
 # 2. Python venv broken — recreate: python3 -m venv /opt/sentinel/venv
 # 3. Dependencies missing — reinstall: /opt/sentinel/venv/bin/pip install -r requirements.txt
 ```
 
 ### Sentinel command blocked
 The tool whitelist is intentionally strict. If a legitimate command is blocked:
-1. Check `tools.py` ALLOWED_COMMAND_PREFIXES list
-2. Add the command prefix if it's safe
+1. Check validator functions in `tools.py` (`is_command_allowed` and `_validate_*`)
+2. Add or adjust a validator for the command shape if it's safe
 3. Restart Sentinel: `systemctl restart sentinel`
 
 ### Sentinel Telegram bot not responding
@@ -76,7 +76,7 @@ systemctl is-active sentinel
 journalctl -u sentinel --since "1 hour ago" | grep -i error
 
 # Verify Telegram token
-grep SENTINEL_TELEGRAM_TOKEN /opt/sentinel/.env 2>/dev/null || echo "Check environment variables"
+grep SENTINEL_TELEGRAM_TOKEN /root/openclaw/.env 2>/dev/null || echo "Check environment variables"
 ```
 
 ## Infrastructure Issues

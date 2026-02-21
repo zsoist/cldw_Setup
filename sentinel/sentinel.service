@@ -7,8 +7,10 @@ Wants=docker.service
 Type=simple
 User=root
 WorkingDirectory=/opt/sentinel
-ExecStart=/opt/sentinel/venv/bin/python sentinel.py
-Restart=always
+EnvironmentFile=-/root/openclaw/.env
+EnvironmentFile=-/opt/sentinel/.env
+ExecStart=/opt/sentinel/venv/bin/python telegram_handler.py
+Restart=on-failure
 RestartSec=10
 Environment=PATH=/opt/sentinel/venv/bin:/usr/local/bin:/usr/bin:/bin
 

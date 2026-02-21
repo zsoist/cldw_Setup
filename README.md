@@ -146,9 +146,9 @@ Sentinel is built on the **Anthropic SDK's tool_use pattern** — a production i
 The `run_command` tool implements a **dual-layer filter**:
 
 1. **Blocklist check** (runs first): Rejects any command containing dangerous patterns (`rm`, `sudo su`, `apt`, `wget`, `reboot`, `chmod 777`, arbitrary script execution)
-2. **Whitelist check** (prefix-based): Only allows commands starting with known-safe prefixes (`df`, `free`, `uptime`, `ufw status`, `docker ps`, etc.)
+2. **Whitelist check** (argument-aware): Only allows explicitly validated command shapes (for example `df -h`, `systemctl status <unit>`, `docker ps`, local-only `curl` health checks)
 
-Unknown commands are rejected by default. This is a deny-by-default security posture — even if a novel attack bypasses the blocklist, it still needs to match a whitelisted prefix.
+Unknown commands are rejected by default. This is a deny-by-default posture — even if a novel attack bypasses the blocklist, it still must match a validated safe command form.
 
 ### Agentic Loop Implementation
 
@@ -298,7 +298,7 @@ With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well unde
 - **SSH**: key-only authentication, password auth disabled
 
 ### Application
-- **Sentinel command whitelist**: deny-by-default, prefix-based allow list
+- **Sentinel command whitelist**: deny-by-default, argument-aware allow list
 - **Sentinel blocklist**: explicit rejection of destructive patterns
 - **Telegram auth**: user ID whitelist — unauthorized users get rejected immediately
 - **No secrets in git**: `.env` in `.gitignore`, backup excludes `.env`/`.pem`/`.key`

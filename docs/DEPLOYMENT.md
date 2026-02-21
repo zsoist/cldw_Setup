@@ -64,6 +64,7 @@ chmod +x infrastructure/deploy.sh
 ```
 
 This installs Docker, clones OpenClaw, sets up Sentinel's Python venv, and builds the Docker image.
+By default it pins OpenClaw to the commit configured in `OPENCLAW_REF` (see `.env`).
 
 ## Step 5: Configure secrets
 
@@ -78,6 +79,9 @@ Fill in all placeholder values:
 - `OPENCLAW_TELEGRAM_TOKEN` — from @BotFather (assistant bot)
 - `SENTINEL_TELEGRAM_TOKEN` — from @BotFather (sysadmin bot)
 - `SENTINEL_ALLOWED_USERS` — your Telegram user ID
+- `OPENCLAW_REF` — pinned OpenClaw git commit/tag (keep default unless intentionally upgrading)
+
+Sentinel reads the same `/root/openclaw/.env` file via systemd `EnvironmentFile`.
 
 ## Step 6: Start services
 

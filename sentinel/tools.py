@@ -5,6 +5,7 @@ Tools are restricted to safe operations. Destructive commands require confirmati
 """
 import subprocess
 import shlex
+import re
 import psutil
 import docker
 from typing import Any
@@ -109,45 +110,198 @@ TOOLS = [
 
 # --- COMMAND WHITELIST ---
 
-ALLOWED_COMMAND_PREFIXES = [
-    "systemctl status", "systemctl is-active",
-    "journalctl", "df", "free", "uptime", "top -bn1",
-    "ufw status", "ss -tlnp", "ping -c", "dig",
-    "curl -s http://127.0.0.1", "cat /var/log/auth.log",
-    "last -n", "who", "w", "ps aux",
-    "docker stats --no-stream", "docker ps",
-    "tail -n", "head -n", "wc -l",
-    "date", "timedatectl", "hostnamectl",
-]
-
 BLOCKED_PATTERNS = [
     "rm ", "rm\t", "rmdir", "mkfs", "dd ", "format",
     "sudo su", "sudo -i", "sudo bash",
     "apt ", "apt-get", "dpkg", "snap ",
     "> /dev/", "chmod 777", "wget ",
-    "curl -o", "curl -O",
+    "curl -o",
     "python ", "node ", "bash -c", "sh -c",
     "export ", "unset ", "env ",
     "passwd", "useradd", "userdel", "usermod",
     "reboot", "shutdown", "halt", "init ",
 ]
 
+UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9_.@-]+$")
+HOST_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
+LOCAL_HTTP_RE = re.compile(r"^http://127\.0\.0\.1(?::\d{1,5})?(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?$")
+
+
+def _is_bounded_int(value: str, min_value: int, max_value: int) -> bool:
+    if not value.isdigit():
+        return False
+    number = int(value)
+    return min_value <= number <= max_value
+
+
+def _validate_systemctl(args: list[str]) -> tuple[bool, str]:
+    if len(args) < 2:
+        return False, "systemctl requires action and unit"
+    action = args[0]
+    unit = args[1]
+    extra = args[2:]
+    if action not in {"status", "is-active"}:
+        return False, "systemctl action must be status or is-active"
+    if not UNIT_NAME_RE.fullmatch(unit):
+        return False, "Invalid systemctl unit name"
+    if extra and extra != ["--no-pager"]:
+        return False, "Only --no-pager is allowed as extra argument"
+    return True, "OK"
+
+
+def _validate_journalctl(args: list[str]) -> tuple[bool, str]:
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--no-pager":
+            i += 1
+        elif arg in {"-u", "-n", "--since", "--until"}:
+            if i + 1 >= len(args):
+                return False, f"{arg} requires a value"
+            value = args[i + 1]
+            if arg == "-u" and not UNIT_NAME_RE.fullmatch(value):
+                return False, "Invalid unit name for journalctl -u"
+            if arg == "-n" and not _is_bounded_int(value, 1, 1000):
+                return False, "journalctl -n must be between 1 and 1000"
+            i += 2
+        else:
+            return False, f"Unsupported journalctl argument: {arg}"
+    return True, "OK"
+
+
+def _validate_df(args: list[str]) -> tuple[bool, str]:
+    if args in ([], ["-h"], ["/"], ["-h", "/"]):
+        return True, "OK"
+    return False, "Allowed: df, df -h, df /, df -h /"
+
+
+def _validate_free(args: list[str]) -> tuple[bool, str]:
+    if args in ([], ["-m"], ["-h"]):
+        return True, "OK"
+    return False, "Allowed: free, free -m, free -h"
+
+
+def _validate_ufw(args: list[str]) -> tuple[bool, str]:
+    if args in (["status"], ["status", "verbose"]):
+        return True, "OK"
+    return False, "Allowed: ufw status [verbose]"
+
+
+def _validate_ping(args: list[str]) -> tuple[bool, str]:
+    if len(args) != 3 or args[0] != "-c":
+        return False, "Allowed: ping -c <1-5> <host>"
+    if not _is_bounded_int(args[1], 1, 5):
+        return False, "Ping count must be between 1 and 5"
+    if not HOST_RE.fullmatch(args[2]):
+        return False, "Invalid ping host"
+    return True, "OK"
+
+
+def _validate_dig(args: list[str]) -> tuple[bool, str]:
+    if len(args) != 1:
+        return False, "Allowed: dig <host>"
+    if not HOST_RE.fullmatch(args[0]):
+        return False, "Invalid host"
+    return True, "OK"
+
+
+def _validate_curl(args: list[str]) -> tuple[bool, str]:
+    if not args:
+        return False, "curl requires arguments"
+    url = args[-1]
+    if not LOCAL_HTTP_RE.fullmatch(url):
+        return False, "curl is limited to local http://127.0.0.1 endpoints"
+    options = args[:-1]
+    if options in ([], ["-s"], ["-sf"]):
+        return True, "OK"
+    if options in (
+        ["-s", "-o", "/dev/null", "-w", "%{http_code}"],
+        ["-sf", "-o", "/dev/null", "-w", "%{http_code}"],
+    ):
+        return True, "OK"
+    return False, "Unsupported curl options"
+
+
+def _validate_last(args: list[str]) -> tuple[bool, str]:
+    if len(args) == 2 and args[0] == "-n" and _is_bounded_int(args[1], 1, 100):
+        return True, "OK"
+    return False, "Allowed: last -n <1-100>"
+
+
+def _validate_command_tokens(tokens: list[str]) -> tuple[bool, str]:
+    cmd = tokens[0]
+    args = tokens[1:]
+
+    if cmd == "systemctl":
+        return _validate_systemctl(args)
+    if cmd == "journalctl":
+        return _validate_journalctl(args)
+    if cmd == "df":
+        return _validate_df(args)
+    if cmd == "free":
+        return _validate_free(args)
+    if cmd == "uptime":
+        return (True, "OK") if not args else (False, "uptime takes no arguments")
+    if cmd == "top":
+        return (True, "OK") if args == ["-bn1"] else (False, "Allowed: top -bn1")
+    if cmd == "ufw":
+        return _validate_ufw(args)
+    if cmd == "ss":
+        return (True, "OK") if args == ["-tlnp"] else (False, "Allowed: ss -tlnp")
+    if cmd == "ping":
+        return _validate_ping(args)
+    if cmd == "dig":
+        return _validate_dig(args)
+    if cmd == "curl":
+        return _validate_curl(args)
+    if cmd == "cat":
+        return (True, "OK") if args == ["/var/log/auth.log"] else (False, "Allowed: cat /var/log/auth.log")
+    if cmd == "last":
+        return _validate_last(args)
+    if cmd == "who":
+        return (True, "OK") if not args else (False, "who takes no arguments")
+    if cmd == "w":
+        return (True, "OK") if not args else (False, "w takes no arguments")
+    if cmd == "ps":
+        return (True, "OK") if args == ["aux"] else (False, "Allowed: ps aux")
+    if cmd == "docker":
+        if args == ["stats", "--no-stream"] or args == ["ps"]:
+            return True, "OK"
+        return False, "Allowed: docker ps | docker stats --no-stream"
+    if cmd == "date":
+        return (True, "OK") if not args else (False, "date takes no arguments")
+    if cmd == "timedatectl":
+        return (True, "OK") if not args else (False, "timedatectl takes no arguments")
+    if cmd == "hostnamectl":
+        return (True, "OK") if not args else (False, "hostnamectl takes no arguments")
+
+    return False, "Command not in whitelist"
+
 
 def is_command_allowed(command: str) -> tuple[bool, str]:
     """Check if a command is in the whitelist and not in the blocklist."""
     command_stripped = command.strip()
+    if not command_stripped:
+        return False, "Empty command"
+    if len(command_stripped) > 256:
+        return False, "Command too long"
+    command_lower = command_stripped.lower()
 
     # Check blocklist first
     for pattern in BLOCKED_PATTERNS:
-        if pattern in command_stripped:
+        if pattern in command_lower:
             return False, f"Blocked pattern detected: '{pattern}'"
 
-    # Check whitelist
-    for prefix in ALLOWED_COMMAND_PREFIXES:
-        if command_stripped.startswith(prefix):
-            return True, "OK"
+    try:
+        tokens = shlex.split(command_stripped)
+    except ValueError as e:
+        return False, f"Invalid shell syntax: {e}"
 
-    return False, f"Command not in whitelist. Allowed prefixes: {', '.join(ALLOWED_COMMAND_PREFIXES[:5])}..."
+    allowed, reason = _validate_command_tokens(tokens)
+    if allowed:
+        return True, "OK"
+
+    return False, f"Command blocked: {reason}"
 
 
 # --- TOOL EXECUTORS ---

@@ -26,7 +26,7 @@
     "profiles": {
       "main": {
         "description": "Personal assistant — general tasks, research, scheduling",
-        "workspace": "/home/node/.openclaw/workspace/main",
+        "workspace": "/home/node/.openclaw/workspace/personal",
         "configDir": "config",
         "sandbox": {
           "enabled": false
@@ -36,7 +36,7 @@
       },
       "work": {
         "description": "Professional assistant — Dialectica, job search, work drafts",
-        "workspace": "/home/node/.openclaw/workspace/work",
+        "workspace": "/home/node/.openclaw/workspace/business",
         "configDir": "agents/work",
         "model": {
           "primary": "anthropic/claude-haiku-4-5",

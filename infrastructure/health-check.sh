@@ -12,17 +12,17 @@ check() {
     local result="$2"
     if [ "$result" -eq 0 ]; then
         echo "[PASS] $name"
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
         echo "[FAIL] $name"
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
     fi
 }
 
 warn() {
     local name="$1"
     echo "[WARN] $name"
-    ((WARN++))
+    WARN=$((WARN + 1))
 }
 
 echo "=== OpenClaw + Sentinel Health Check ==="
@@ -30,8 +30,11 @@ echo "Date: $(date)"
 echo ""
 
 # 1. Docker running
-docker info &>/dev/null
-check "Docker daemon running" $?
+if docker info &>/dev/null; then
+    check "Docker daemon running" 0
+else
+    check "Docker daemon running" 1
+fi
 
 # 2. OpenClaw container running
 OPENCLAW_STATUS=$(docker inspect -f '{{.State.Running}}' openclaw-openclaw-gateway-1 2>/dev/null || echo "false")
@@ -50,12 +53,18 @@ else
 fi
 
 # 4. Sentinel service running
-systemctl is-active sentinel &>/dev/null
-check "Sentinel service running" $?
+if systemctl is-active sentinel &>/dev/null; then
+    check "Sentinel service running" 0
+else
+    check "Sentinel service running" 1
+fi
 
 # 5. UFW active
-ufw status | grep -q "Status: active"
-check "UFW firewall active" $?
+if ufw status | grep -q "Status: active"; then
+    check "UFW firewall active" 0
+else
+    check "UFW firewall active" 1
+fi
 
 # 6. Disk space (warn if >80%)
 DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
@@ -80,7 +89,13 @@ else
 fi
 
 # 8. Recent backups exist
-LATEST_BACKUP=$(ls -t /root/backups/openclaw-*.tar.gz 2>/dev/null | head -1)
+shopt -s nullglob
+BACKUPS=(/root/backups/openclaw-*.tar.gz)
+shopt -u nullglob
+LATEST_BACKUP=""
+if [ "${#BACKUPS[@]}" -gt 0 ]; then
+    LATEST_BACKUP=$(ls -t "${BACKUPS[@]}" | head -1)
+fi
 if [ -n "$LATEST_BACKUP" ]; then
     BACKUP_AGE=$(( ($(date +%s) - $(stat -c %Y "$LATEST_BACKUP")) / 86400 ))
     if [ "$BACKUP_AGE" -gt 7 ]; then

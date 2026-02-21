@@ -1,9 +1,33 @@
 """Sentinel configuration management."""
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
-load_dotenv()
+
+def _load_env_files() -> None:
+    """Load environment variables from common deployment/local paths."""
+    env_hint = os.getenv("SENTINEL_ENV_FILE")
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parent / ".env",
+        Path("/root/openclaw/.env"),
+        Path("/opt/sentinel/.env"),
+    ]
+    if env_hint:
+        candidates.insert(0, Path(env_hint))
+
+    seen = set()
+    for path in candidates:
+        resolved = str(path)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if path.exists():
+            load_dotenv(path, override=False)
+
+
+_load_env_files()
 
 
 @dataclass
