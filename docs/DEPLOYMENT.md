@@ -100,7 +100,13 @@ docker compose logs -f
 # Start Sentinel
 systemctl start sentinel
 systemctl status sentinel
+
+# Run full system checks
+/root/openclaw-project/infrastructure/health-check.sh
 ```
+
+Note: OpenClaw is a WebSocket gateway, so root HTTP probes can return `000`/`404` depending on route handling.  
+The bundled health check validates Docker health status for the gateway container.
 
 ## Step 7: Verify via SSH tunnel
 

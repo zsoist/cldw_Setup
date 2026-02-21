@@ -44,12 +44,12 @@ else
     check "OpenClaw container running" 1
 fi
 
-# 3. OpenClaw HTTP response
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18789/ 2>/dev/null || true)
-if [[ "$HTTP_CODE" =~ ^[0-9]{3}$ ]] && [ "$HTTP_CODE" != "000" ]; then
-    check "OpenClaw HTTP reachable (status: $HTTP_CODE)" 0
+# 3. OpenClaw gateway health (WebSocket gateway, not HTTP root)
+OPENCLAW_HEALTH=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}' openclaw-openclaw-gateway-1 2>/dev/null || echo "unknown")
+if [ "$OPENCLAW_HEALTH" = "healthy" ]; then
+    check "OpenClaw gateway healthy" 0
 else
-    check "OpenClaw HTTP reachable" 1
+    check "OpenClaw gateway healthy (status: $OPENCLAW_HEALTH)" 1
 fi
 
 # 4. Sentinel service running

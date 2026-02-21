@@ -372,6 +372,19 @@ pytest tests/ -v
 # 7. When ready to deploy, see docs/DEPLOYMENT.md
 ```
 
+## VPS Validation (Post-Deploy)
+
+```bash
+cd /root/openclaw
+docker compose ps
+systemctl status sentinel --no-pager
+/root/openclaw-project/infrastructure/health-check.sh
+```
+
+Notes:
+- OpenClaw is a WebSocket gateway; root HTTP probes can be misleading on some builds.
+- Treat Docker health (`healthy`) and `health-check.sh` as the source of truth.
+
 ## Key Optimization Decisions Explained
 
 | Decision | Rationale |
