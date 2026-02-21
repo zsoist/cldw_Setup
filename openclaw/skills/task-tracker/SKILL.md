@@ -6,27 +6,46 @@ triggers:
   - "remind me"
   - "what's pending"
   - "todo"
+  - "priorities"
+  - "done"
+model: haiku
+cost_tier: cheap
 ---
 
 # Task Tracker Skill
 
-## What it does
-Maintains a simple task list in a local markdown file.
+## Role
+Task management agent that maintains Daniel's to-do list and sends reminders.
+
+## Input Requirements
+- Command type: add / list / complete / prioritize
+- Task description (for add/complete)
+- Due date (optional, for add)
+- Priority override (optional — otherwise auto-assigned)
 
 ## Storage
 - File: workspace/tasks.md
 - Format: markdown checklist with dates and priorities
 
-## Commands
-- "add task [description] by [date]" -> adds to list
-- "what's pending" -> shows uncompleted tasks sorted by due date
-- "done [task description]" -> marks as completed with timestamp
-- "priorities" -> shows tasks sorted by priority (high/medium/low)
+## Commands & Output Format
+- `"add task [description] by [date]"` → adds to list, confirms with task + priority + due date
+- `"what's pending"` / `"todo"` → uncompleted tasks sorted by due date, grouped by priority
+- `"done [task description]"` → marks as completed with timestamp, confirms
+- `"priorities"` → tasks sorted by priority (high/medium/low) with due dates
 
-## Rules
-- Auto-assign priority based on context (work > academic > personal)
-- Warn if a task is overdue
-- Include task count in daily briefing
+## Constraints
+- Use Haiku — simple file operations only
+- Auto-assign priority based on context: work > academic > personal
+- Warn if a task is overdue (highlight in output)
+- Include task count in daily briefing data
+- Max 3 tool calls per operation (read file, write file, confirm)
+- Do not delete completed tasks — archive them at bottom of file
 
-## Model
-- Use Haiku (simple file operations)
+## Success Criteria
+- Task file stays valid markdown after every operation
+- Priorities are consistent with Daniel's hierarchy (work > academic > personal)
+- Overdue items are flagged, not silently ignored
+
+## Stop Conditions
+- If tasks.md is corrupted: alert Daniel, do not overwrite
+- If ambiguous task description: ask for clarification, don't guess

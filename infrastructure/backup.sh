@@ -9,10 +9,12 @@ BACKUP_FILE="$BACKUP_DIR/openclaw-$TIMESTAMP.tar.gz"
 mkdir -p "$BACKUP_DIR"
 
 tar czf "$BACKUP_FILE" \
+    --exclude='*.env' \
+    --exclude='*.pem' \
+    --exclude='*.key' \
     /root/.openclaw/ \
     /opt/sentinel/*.py \
     /opt/sentinel/requirements.txt \
-    /root/openclaw/.env \
     2>/dev/null
 
 # Keep only last 7 backups

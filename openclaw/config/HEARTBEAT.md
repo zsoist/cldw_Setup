@@ -8,10 +8,43 @@
 ## Heartbeat tasks (in order)
 1. Check for unread Telegram messages that need follow-up
 2. Review pending reminders/tasks due within 2 hours
-3. If morning (07:00-08:00): prepare daily briefing (calendar, weather, top news in AI/tech)
-4. If evening (20:00-21:00): summarize what was accomplished today
+3. If morning (07:00-08:00): trigger daily briefing skill
+4. If evening (20:00-21:00): run end-of-day log
+5. If Sunday evening (20:00-21:00): run weekly review
 
 ## Rules
 - Heartbeat should complete in <30 seconds
 - If nothing actionable, do NOT send a message (stay silent)
 - Never wake Daniel during silent hours unless explicitly overridden
+- Max 5 tool calls per heartbeat cycle
+
+## End-of-Day Log (20:00 COT)
+Persist the day's summary to `memory/YYYY-MM-DD.md` with this structure:
+- **Completed:** tasks finished, requests handled
+- **Decisions:** choices made and reasoning
+- **Learned:** new facts, corrections, discoveries from today's interactions
+- **Carry Forward:** unfinished items for tomorrow
+
+After writing the daily log:
+1. Promote any confirmed new preferences to `MEMORY.md` → Confirmed Preferences
+2. Update Active Projects if project status changed
+3. Add any failure patterns to Recent Lessons
+4. Send a concise Telegram summary (max 100 words) — do NOT send the full log
+
+Anti-spam: if no meaningful activity occurred, write a minimal log and send:
+"Quiet day. No actions required."
+
+## Weekly Review (Sunday 20:00 COT)
+Persist to `memory/weekly/YYYY-WXX.md` with this structure:
+- **Week summary:** 3-5 bullet points of key accomplishments
+- **Patterns:** recurring themes or requests detected
+- **Metrics:** tasks completed vs. created, model usage breakdown
+- **Recommendations:** 1-2 suggestions for next week
+- **Memory maintenance:** flag stale MEMORY.md entries for cleanup
+
+After writing the weekly review:
+1. Compact daily logs from the past week (keep summaries, archive details)
+2. Send a Telegram summary (max 150 words)
+
+Anti-spam: if week was uneventful, send:
+"Quiet week. Systems nominal. No recommendations."
