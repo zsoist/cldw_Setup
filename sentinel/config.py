@@ -5,6 +5,11 @@ from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
 
+def _clean_env_value(raw: str) -> str:
+    """Trim whitespace and inline comments from .env style values."""
+    return raw.split("#", 1)[0].strip()
+
+
 def _parse_allowed_user_ids(raw: str) -> list[int]:
     """Parse comma-separated Telegram user IDs, tolerating inline comments."""
     ids: list[int] = []
@@ -47,14 +52,20 @@ class SentinelConfig:
     """Configuration for the Sentinel sysadmin bot."""
 
     # Telegram
-    telegram_token: str = field(default_factory=lambda: os.getenv("SENTINEL_TELEGRAM_TOKEN", ""))
+    telegram_token: str = field(
+        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_TELEGRAM_TOKEN", ""))
+    )
     allowed_user_ids: list[int] = field(
         default_factory=lambda: _parse_allowed_user_ids(os.getenv("SENTINEL_ALLOWED_USERS", ""))
     )
 
     # Anthropic
-    anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
-    model: str = field(default_factory=lambda: os.getenv("SENTINEL_MODEL", "claude-haiku-4-5"))
+    anthropic_api_key: str = field(
+        default_factory=lambda: _clean_env_value(os.getenv("ANTHROPIC_API_KEY", ""))
+    )
+    model: str = field(
+        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_MODEL", "claude-haiku-4-5"))
+    )
     max_tokens: int = 1024
 
     # System

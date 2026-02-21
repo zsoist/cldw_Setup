@@ -143,3 +143,11 @@ class TestConfigValidation:
             anthropic_api_key="test-key",
         )
         assert config.allowed_user_ids == [12345, 67890]
+
+    def test_telegram_token_parses_inline_comment(self, monkeypatch):
+        monkeypatch.setenv("SENTINEL_TELEGRAM_TOKEN", "123:abc # bot token")
+        config = SentinelConfig(
+            allowed_user_ids=[12345],
+            anthropic_api_key="test-key",
+        )
+        assert config.telegram_token == "123:abc"
