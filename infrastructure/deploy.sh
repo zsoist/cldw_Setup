@@ -128,8 +128,11 @@ done
 copy_checked "$PROJECT_DIR/sentinel/requirements.txt" "$SENTINEL_DIR/requirements.txt"
 copy_checked "$PROJECT_DIR/sentinel/sentinel.service" "/etc/systemd/system/sentinel.service"
 copy_checked "$PROJECT_DIR/infrastructure/sync-sentinel-env.sh" "/usr/local/sbin/sync-sentinel-env.sh"
+copy_checked "$PROJECT_DIR/infrastructure/sync-openclaw-config.sh" "/usr/local/sbin/sync-openclaw-config.sh"
 chmod 750 /usr/local/sbin/sync-sentinel-env.sh
+chmod 750 /usr/local/sbin/sync-openclaw-config.sh
 chown root:sentinel /usr/local/sbin/sync-sentinel-env.sh
+chown root:root /usr/local/sbin/sync-openclaw-config.sh
 mkdir -p /etc/sentinel /var/log/sentinel /var/backups/openclaw
 chown root:sentinel /etc/sentinel
 chmod 750 /etc/sentinel
@@ -168,6 +171,9 @@ chmod 600 "$OPENCLAW_CONFIG/openclaw.json" "$OPENCLAW_CONFIG/openclaw-config.jso
 if [ -x /usr/local/sbin/sync-sentinel-env.sh ]; then
     /usr/local/sbin/sync-sentinel-env.sh || true
 fi
+if [ -x /usr/local/sbin/sync-openclaw-config.sh ]; then
+    /usr/local/sbin/sync-openclaw-config.sh || true
+fi
 
 if grep -q 'REPLACE_WITH_VPS_IP' "$PROJECT_DIR/infrastructure/ssh-config-snippet"; then
     echo "WARNING: infrastructure/ssh-config-snippet still has REPLACE_WITH_VPS_IP."
@@ -192,8 +198,9 @@ echo "Next steps:"
 echo "  1. Edit secrets:    nano /root/openclaw/.env"
 echo "  2. Validate secrets: /root/openclaw-project/infrastructure/validate-placeholders.sh /root/openclaw/.env"
 echo "  3. Sync Sentinel env: /usr/local/sbin/sync-sentinel-env.sh"
-echo "  4. Start OpenClaw:  cd /root/openclaw && docker compose up -d"
-echo "  5. Start Sentinel:  systemctl start sentinel"
-echo "  6. SSH tunnel:      ssh -N -L 18789:127.0.0.1:18789 root@YOUR_VPS_IP"
-echo "  7. Open browser:    http://127.0.0.1:18789/"
-echo "  8. Run health check: /root/openclaw-project/infrastructure/health-check.sh"
+echo "  4. Sync OpenClaw config: /usr/local/sbin/sync-openclaw-config.sh"
+echo "  5. Start OpenClaw:  cd /root/openclaw && docker compose up -d"
+echo "  6. Start Sentinel:  systemctl start sentinel"
+echo "  7. SSH tunnel:      ssh -N -L 18789:127.0.0.1:18789 root@YOUR_VPS_IP"
+echo "  8. Open browser:    http://127.0.0.1:18789/"
+echo "  9. Run health check: /root/openclaw-project/infrastructure/health-check.sh"

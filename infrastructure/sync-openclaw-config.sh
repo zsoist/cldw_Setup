@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Render OpenClaw runtime config from /root/openclaw/.env into mounted config paths.
+set -euo pipefail
+
+SOURCE_ENV="${1:-/root/openclaw/.env}"
+TEMPLATE_JSON="${2:-/root/openclaw-project/openclaw/openclaw-config.json}"
+RUNTIME_JSON="/root/.openclaw/openclaw.json"
+RUNTIME_COPY_JSON="/root/.openclaw/openclaw-config.json"
+IMAGE_COPY_JSON="/root/openclaw/openclaw-config.json"
+
+if [ ! -f "$SOURCE_ENV" ]; then
+    echo "Env file not found: $SOURCE_ENV" >&2
+    exit 1
+fi
+
+if [ ! -f "$TEMPLATE_JSON" ]; then
+    echo "Template config not found: $TEMPLATE_JSON" >&2
+    exit 1
+fi
+
+extract_key() {
+    local key="$1"
+    local line value
+    line="$(grep -E "^${key}=" "$SOURCE_ENV" | tail -n 1 || true)"
+    if [ -z "$line" ]; then
+        return 1
+    fi
+    value="${line#*=}"
+    value="${value%%#*}"
+    value="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<<"$value")"
+    if [ -z "$value" ] || [[ "$value" == REPLACE_* ]]; then
+        return 1
+    fi
+    printf "%s" "$value"
+}
+
+OPENCLAW_GATEWAY_TOKEN="$(extract_key OPENCLAW_GATEWAY_TOKEN || true)"
+OPENCLAW_TELEGRAM_TOKEN="$(extract_key OPENCLAW_TELEGRAM_TOKEN || true)"
+OPENCLAW_GATEWAY_BIND="$(extract_key OPENCLAW_GATEWAY_BIND || true)"
+OPENCLAW_GATEWAY_PORT="$(extract_key OPENCLAW_GATEWAY_PORT || true)"
+
+if [ -z "$OPENCLAW_GATEWAY_TOKEN" ] || [ -z "$OPENCLAW_TELEGRAM_TOKEN" ]; then
+    echo "Missing required OpenClaw values in $SOURCE_ENV (OPENCLAW_GATEWAY_TOKEN / OPENCLAW_TELEGRAM_TOKEN)." >&2
+    exit 1
+fi
+
+if [ -z "$OPENCLAW_GATEWAY_BIND" ]; then
+    OPENCLAW_GATEWAY_BIND="lan"
+fi
+if [ -z "$OPENCLAW_GATEWAY_PORT" ]; then
+    OPENCLAW_GATEWAY_PORT="18789"
+fi
+if ! [[ "$OPENCLAW_GATEWAY_PORT" =~ ^[0-9]+$ ]] || [ "$OPENCLAW_GATEWAY_PORT" -lt 1 ] || [ "$OPENCLAW_GATEWAY_PORT" -gt 65535 ]; then
+    echo "Invalid OPENCLAW_GATEWAY_PORT: $OPENCLAW_GATEWAY_PORT" >&2
+    exit 1
+fi
+
+mkdir -p /root/.openclaw
+export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
+
+python3 - "$TEMPLATE_JSON" "$RUNTIME_JSON" <<'PY'
+import json
+import os
+import sys
+
+template_path, output_path = sys.argv[1], sys.argv[2]
+
+with open(template_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+data.setdefault("gateway", {})
+data["gateway"]["mode"] = "local"
+data["gateway"]["bind"] = os.environ["OPENCLAW_GATEWAY_BIND"]
+data["gateway"]["port"] = int(os.environ["OPENCLAW_GATEWAY_PORT"])
+data.setdefault("gateway", {}).setdefault("auth", {})
+data["gateway"]["auth"]["token"] = os.environ["OPENCLAW_GATEWAY_TOKEN"]
+
+data.setdefault("channels", {}).setdefault("telegram", {})
+data["channels"]["telegram"]["enabled"] = True
+data["channels"]["telegram"]["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
+
+with open(output_path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+
+cp "$RUNTIME_JSON" "$RUNTIME_COPY_JSON"
+cp "$RUNTIME_JSON" "$IMAGE_COPY_JSON"
+
+chmod 600 "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON"
+
+echo "Wrote OpenClaw config: $RUNTIME_JSON"

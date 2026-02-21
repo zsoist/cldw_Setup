@@ -94,9 +94,11 @@ Validate and sync Sentinel environment:
 ```bash
 /root/openclaw-project/infrastructure/validate-placeholders.sh /root/openclaw/.env
 /usr/local/sbin/sync-sentinel-env.sh
+/usr/local/sbin/sync-openclaw-config.sh
 ```
 
 Sentinel runs as a dedicated non-root `sentinel` user and reads `/etc/sentinel/sentinel.env`.
+OpenClaw runtime config (`/root/.openclaw/openclaw.json`) is rendered from `.env` via `sync-openclaw-config.sh`.
 
 ## Step 6: Start services
 

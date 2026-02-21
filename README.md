@@ -241,6 +241,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── deploy.sh                          # One-shot VPS deployment
 │   ├── secure.sh                          # UFW + fail2ban + SSH hardening
 │   ├── sync-sentinel-env.sh               # Syncs /root/openclaw/.env -> /etc/sentinel/sentinel.env
+│   ├── sync-openclaw-config.sh            # Renders /root/.openclaw/openclaw.json from /root/openclaw/.env
 │   ├── validate-placeholders.sh           # Validates required secrets are non-placeholder
 │   ├── backup.sh                          # Automated backup (7-day rotation, no secrets)
 │   ├── restore.sh                         # Interactive restore from backup
