@@ -6,9 +6,12 @@ Tools are restricted to safe operations. Destructive commands require confirmati
 import subprocess
 import shlex
 import re
+import ipaddress
+import unicodedata
 import psutil
 import docker
 from typing import Any
+from urllib.parse import urlsplit
 
 
 # --- TOOL DEFINITIONS (sent to Anthropic API) ---
@@ -123,8 +126,10 @@ BLOCKED_PATTERNS = [
 ]
 
 UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9_.@-]+$")
-HOST_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
-LOCAL_HTTP_RE = re.compile(r"^http://127\.0\.0\.1(?::\d{1,5})?(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?$")
+FQDN_RE = re.compile(
+    r"^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$"
+)
+ALLOWED_DOCKER_CONTAINERS = {"openclaw-openclaw-gateway-1"}
 
 
 def _is_bounded_int(value: str, min_value: int, max_value: int) -> bool:
@@ -132,6 +137,45 @@ def _is_bounded_int(value: str, min_value: int, max_value: int) -> bool:
         return False
     number = int(value)
     return min_value <= number <= max_value
+
+
+def _normalize_command(command: str) -> str:
+    """Normalize unicode and whitespace before validation."""
+    normalized = unicodedata.normalize("NFKC", command)
+    return re.sub(r"[ \t]+", " ", normalized).strip()
+
+
+def _is_valid_host(host: str) -> bool:
+    """Allow IPv4/IPv6 literals and FQDNs only."""
+    if not host or host.startswith("-"):
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return bool(FQDN_RE.fullmatch(host))
+
+
+def _validate_local_http_url(url: str) -> bool:
+    """Allow http://127.0.0.1[:port][/path...] with valid port range."""
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        return False
+    if parsed.scheme != "http":
+        return False
+    if parsed.hostname != "127.0.0.1":
+        return False
+    if parsed.username or parsed.password:
+        return False
+    if port is not None and not (1 <= port <= 65535):
+        return False
+    return True
+
+
+def _is_allowed_container_name(container_name: str) -> bool:
+    return container_name in ALLOWED_DOCKER_CONTAINERS
 
 
 def _validate_systemctl(args: list[str]) -> tuple[bool, str]:
@@ -192,7 +236,7 @@ def _validate_ping(args: list[str]) -> tuple[bool, str]:
         return False, "Allowed: ping -c <1-5> <host>"
     if not _is_bounded_int(args[1], 1, 5):
         return False, "Ping count must be between 1 and 5"
-    if not HOST_RE.fullmatch(args[2]):
+    if not _is_valid_host(args[2]):
         return False, "Invalid ping host"
     return True, "OK"
 
@@ -200,7 +244,7 @@ def _validate_ping(args: list[str]) -> tuple[bool, str]:
 def _validate_dig(args: list[str]) -> tuple[bool, str]:
     if len(args) != 1:
         return False, "Allowed: dig <host>"
-    if not HOST_RE.fullmatch(args[0]):
+    if not _is_valid_host(args[0]):
         return False, "Invalid host"
     return True, "OK"
 
@@ -209,7 +253,7 @@ def _validate_curl(args: list[str]) -> tuple[bool, str]:
     if not args:
         return False, "curl requires arguments"
     url = args[-1]
-    if not LOCAL_HTTP_RE.fullmatch(url):
+    if not _validate_local_http_url(url):
         return False, "curl is limited to local http://127.0.0.1 endpoints"
     options = args[:-1]
     if options in ([], ["-s"], ["-sf"]):
@@ -265,9 +309,11 @@ def _validate_command_tokens(tokens: list[str]) -> tuple[bool, str]:
     if cmd == "ps":
         return (True, "OK") if args == ["aux"] else (False, "Allowed: ps aux")
     if cmd == "docker":
-        if args == ["stats", "--no-stream"] or args == ["ps"]:
+        if args == ["ps", "--filter", "name=openclaw-openclaw-gateway-1"]:
             return True, "OK"
-        return False, "Allowed: docker ps | docker stats --no-stream"
+        if args == ["stats", "--no-stream", "openclaw-openclaw-gateway-1"]:
+            return True, "OK"
+        return False, "Allowed: docker ps --filter name=openclaw-openclaw-gateway-1 | docker stats --no-stream openclaw-openclaw-gateway-1"
     if cmd == "date":
         return (True, "OK") if not args else (False, "date takes no arguments")
     if cmd == "timedatectl":
@@ -280,12 +326,14 @@ def _validate_command_tokens(tokens: list[str]) -> tuple[bool, str]:
 
 def is_command_allowed(command: str) -> tuple[bool, str]:
     """Check if a command is in the whitelist and not in the blocklist."""
-    command_stripped = command.strip()
-    if not command_stripped:
+    command_normalized = _normalize_command(command)
+    if not command_normalized:
         return False, "Empty command"
-    if len(command_stripped) > 256:
+    if len(command_normalized) > 256:
         return False, "Command too long"
-    command_lower = command_stripped.lower()
+    if any(ord(ch) < 32 and ch not in {"\t", "\n"} for ch in command_normalized):
+        return False, "Command contains control characters"
+    command_lower = command_normalized.lower()
 
     # Check blocklist first
     for pattern in BLOCKED_PATTERNS:
@@ -293,7 +341,7 @@ def is_command_allowed(command: str) -> tuple[bool, str]:
             return False, f"Blocked pattern detected: '{pattern}'"
 
     try:
-        tokens = shlex.split(command_stripped)
+        tokens = shlex.split(command_normalized)
     except ValueError as e:
         return False, f"Invalid shell syntax: {e}"
 
@@ -328,26 +376,33 @@ def execute_system_stats() -> dict[str, Any]:
     }
 
 
-def execute_docker_status() -> list[dict[str, str]]:
-    """List all Docker containers."""
+def execute_docker_status() -> dict[str, Any]:
+    """List explicitly allowed Docker containers."""
     try:
         client = docker.from_env()
-        containers = client.containers.list(all=True)
-        return [
-            {
-                "name": c.name,
-                "status": c.status,
-                "image": c.image.tags[0] if c.image.tags else "unknown",
-                "created": str(c.attrs["Created"])[:19],
-            }
-            for c in containers
-        ]
+        containers = []
+        for name in sorted(ALLOWED_DOCKER_CONTAINERS):
+            try:
+                c = client.containers.get(name)
+                containers.append(
+                    {
+                        "name": c.name,
+                        "status": c.status,
+                        "image": c.image.tags[0] if c.image.tags else "unknown",
+                        "created": str(c.attrs["Created"])[:19],
+                    }
+                )
+            except docker.errors.NotFound:
+                containers.append({"name": name, "status": "not_found"})
+        return {"containers": containers}
     except docker.errors.DockerException as e:
-        return [{"error": str(e)}]
+        return {"error": str(e)}
 
 
 def execute_docker_restart(container_name: str) -> dict[str, str]:
     """Restart a Docker container."""
+    if not _is_allowed_container_name(container_name):
+        return {"error": f"Container '{container_name}' is not in the allowlist"}
     try:
         client = docker.from_env()
         container = client.containers.get(container_name)
@@ -359,17 +414,23 @@ def execute_docker_restart(container_name: str) -> dict[str, str]:
         return {"error": str(e)}
 
 
-def execute_docker_logs(container_name: str, lines: int = 50) -> str:
+def execute_docker_logs(container_name: str, lines: int = 50) -> dict[str, Any]:
     """Get recent logs from a container."""
     lines = min(lines, 200)  # Cap at 200
+    if not _is_allowed_container_name(container_name):
+        return {"error": f"Container '{container_name}' is not in the allowlist"}
     try:
         client = docker.from_env()
         container = client.containers.get(container_name)
-        return container.logs(tail=lines).decode("utf-8", errors="replace")
+        return {
+            "container": container_name,
+            "lines": lines,
+            "logs": container.logs(tail=lines).decode("utf-8", errors="replace"),
+        }
     except docker.errors.NotFound:
-        return f"Container '{container_name}' not found"
+        return {"error": f"Container '{container_name}' not found"}
     except docker.errors.DockerException as e:
-        return str(e)
+        return {"error": str(e)}
 
 
 def execute_run_command(command: str) -> dict[str, Any]:
@@ -458,6 +519,15 @@ def execute_check_openclaw_health() -> dict[str, Any]:
         error_lines = [line for line in logs.split("\n") if "error" in line.lower() or "fatal" in line.lower()]
         health["recent_errors"] = error_lines[-5:] if error_lines else []
 
+        # HTTP fallback endpoint (useful when Telegram channel is degraded)
+        probe = subprocess.run(
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:18789/__openclaw__/canvas/"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        health["http_fallback_status"] = probe.stdout.strip() or "000"
+
     except docker.errors.NotFound:
         health["status"] = "container not found"
     except docker.errors.DockerException as e:
@@ -469,21 +539,28 @@ def execute_check_openclaw_health() -> dict[str, Any]:
 def execute_backup_openclaw() -> dict[str, str]:
     """Backup OpenClaw configuration and workspace."""
     import datetime
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = f"/root/backups/openclaw-{timestamp}.tar.gz"
+    import os
+    from pathlib import Path
+
+    backup_dir = Path("/var/backups/openclaw")
+    timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
+    backup_path = backup_dir / f"openclaw-{timestamp}.tar"
 
     try:
-        subprocess.run(["mkdir", "-p", "/root/backups"], check=True)
-        result = subprocess.run(
-            ["tar", "czf", backup_path, "/root/.openclaw/"],
-            capture_output=True, text=True, timeout=120
-        )
-        if result.returncode == 0:
-            import os
-            size = os.path.getsize(backup_path)
-            return {"status": "success", "path": backup_path, "size_mb": round(size / (1024 * 1024), 2)}
-        else:
-            return {"status": "failed", "error": result.stderr[:500]}
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        client = docker.from_env()
+        container = client.containers.get("openclaw-openclaw-gateway-1")
+        stream, _ = container.get_archive("/home/node/.openclaw")
+        with backup_path.open("wb") as f:
+            for chunk in stream:
+                f.write(chunk)
+
+        backups = sorted(backup_dir.glob("openclaw-*.tar"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in backups[7:]:
+            old.unlink(missing_ok=True)
+
+        size = os.path.getsize(backup_path)
+        return {"status": "success", "path": str(backup_path), "size_mb": round(size / (1024 * 1024), 2)}
     except Exception as e:
         return {"status": "failed", "error": str(e)}
 

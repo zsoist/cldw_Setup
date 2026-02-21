@@ -1,4 +1,5 @@
 # Add this to ~/.ssh/config on your Mac
+# Replace REPLACE_WITH_VPS_IP before using this profile.
 
 Host openclaw
     HostName REPLACE_WITH_VPS_IP

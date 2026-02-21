@@ -240,6 +240,8 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── env.template                       # Secret placeholders (never committed)
 │   ├── deploy.sh                          # One-shot VPS deployment
 │   ├── secure.sh                          # UFW + fail2ban + SSH hardening
+│   ├── sync-sentinel-env.sh               # Syncs /root/openclaw/.env -> /etc/sentinel/sentinel.env
+│   ├── validate-placeholders.sh           # Validates required secrets are non-placeholder
 │   ├── backup.sh                          # Automated backup (7-day rotation, no secrets)
 │   ├── restore.sh                         # Interactive restore from backup
 │   ├── health-check.sh                    # 8-point system health verification
@@ -250,7 +252,8 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
     │   └── performance-tuning.md          # API cost + responsiveness tuning
     ├── security/
     │   ├── access-boundaries.md           # Agent/channel access matrix
-    │   └── openclaw-hardening.md          # Gateway security hardening practices
+    │   ├── openclaw-hardening.md          # Gateway security hardening practices
+    │   └── secrets-rotation.md            # Secret rotation schedule and procedure
     ├── playbooks/
     │   ├── daily-planning.md              # Daily brief playbook
     │   ├── personal-weekly-review.md      # Weekly review playbook
@@ -303,6 +306,8 @@ With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well unde
 ### Application
 - **Sentinel command whitelist**: deny-by-default, argument-aware allow list
 - **Sentinel blocklist**: explicit rejection of destructive patterns
+- **Sentinel runtime identity**: dedicated non-root `sentinel` user (`docker` + `adm` groups only)
+- **Docker access scope**: Sentinel tooling is container-allowlisted (`openclaw-openclaw-gateway-1`)
 - **Telegram auth**: user ID whitelist — unauthorized users get rejected immediately
 - **No secrets in git**: `.env` in `.gitignore`, backup excludes `.env`/`.pem`/`.key`
 - **Docker isolation**: OpenClaw runs as non-root user in container with resource limits
@@ -318,6 +323,8 @@ With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well unde
 - **Automated backups**: daily at 03:00, 7-day rotation, secrets excluded from tarballs
 - **Health checks**: 8-point verification script (Docker + gateway health, disk, memory, UFW, backups)
 - **Deploy ownership alignment**: `/root/.openclaw` ownership is aligned to container `openclaw` UID/GID after image build
+- **Rate limiting**: Sentinel enforces per-user request windows to reduce abuse/API burn
+- **Tamper-evident audit trail**: tool execution events are hash-chained in `/var/log/sentinel/audit.log`
 - **Boot checks**: startup health verification before agent activation (BOOT.md)
 - **Automatic security updates**: unattended-upgrades enabled
 - **Change management**: no silent config mutations — explain, apply, validate, test, report
@@ -344,6 +351,17 @@ Test coverage includes:
 - **Command handlers** — /start, /status, /openclaw, /security, /backup
 - **Config validation** — missing tokens, API keys, user IDs
 - **Message handling** — free-text routing through the agentic loop
+- **Config parsing edge cases** — non-numeric/empty/multi-comment user ID parsing
+
+## Config Versioning
+
+OpenClaw instruction configs in `openclaw/config/*.md` and `openclaw/agents/work/*.md` include an inline marker:
+
+```md
+<!-- config-version: 2026.02.21-main-hardening -->
+```
+
+Use this marker when reviewing for schema drift across branches or deployments.
 
 ## Quick Start (Local Development)
 

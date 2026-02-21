@@ -5,14 +5,19 @@ Wants=docker.service
 
 [Service]
 Type=simple
-User=root
+User=sentinel
+Group=sentinel
+SupplementaryGroups=docker adm
 WorkingDirectory=/opt/sentinel
-EnvironmentFile=-/root/openclaw/.env
+EnvironmentFile=-/etc/sentinel/sentinel.env
 EnvironmentFile=-/opt/sentinel/.env
 ExecStart=/opt/sentinel/venv/bin/python telegram_handler.py
 Restart=on-failure
 RestartSec=10
 Environment=PATH=/opt/sentinel/venv/bin:/usr/local/bin:/usr/bin:/bin
+LogsDirectory=sentinel
+KillMode=control-group
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

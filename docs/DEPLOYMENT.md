@@ -73,8 +73,8 @@ nano /root/openclaw/.env
 ```
 
 Fill in all placeholder values:
-- `OPENCLAW_GATEWAY_TOKEN` — generate with `openssl rand -hex 32`
-- `GOG_KEYRING_PASSWORD` — generate with `openssl rand -hex 32`
+- `OPENCLAW_GATEWAY_TOKEN` — strong random secret from your preferred secret manager/process
+- `GOG_KEYRING_PASSWORD` — strong random secret from your preferred secret manager/process
 - `ANTHROPIC_API_KEY` — from console.anthropic.com
 - `OPENCLAW_TELEGRAM_TOKEN` — from @BotFather (assistant bot)
 - `SENTINEL_TELEGRAM_TOKEN` — from @BotFather (sysadmin bot)
@@ -83,7 +83,20 @@ Fill in all placeholder values:
 
 Important: assign plain values only in `.env` (no trailing inline comments after values).
 
-Sentinel reads the same `/root/openclaw/.env` file via systemd `EnvironmentFile`.
+Optional hardening: lock deployment source to a specific project commit:
+
+```bash
+export PROJECT_EXPECTED_REF="$(cd /root/openclaw-project && git rev-parse HEAD)"
+```
+
+Validate and sync Sentinel environment:
+
+```bash
+/root/openclaw-project/infrastructure/validate-placeholders.sh /root/openclaw/.env
+/usr/local/sbin/sync-sentinel-env.sh
+```
+
+Sentinel runs as a dedicated non-root `sentinel` user and reads `/etc/sentinel/sentinel.env`.
 
 ## Step 6: Start services
 
@@ -100,6 +113,7 @@ docker compose logs -f
 # Start Sentinel
 systemctl start sentinel
 systemctl status sentinel
+journalctl -u sentinel -n 80 --no-pager
 
 # Run full system checks
 /root/openclaw-project/infrastructure/health-check.sh

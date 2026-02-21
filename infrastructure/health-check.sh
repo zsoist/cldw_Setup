@@ -52,6 +52,14 @@ else
     check "OpenClaw gateway healthy (status: $OPENCLAW_HEALTH)" 1
 fi
 
+# 3b. HTTP fallback endpoint (for non-Telegram checks)
+HTTP_FALLBACK_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18789/__openclaw__/canvas/ 2>/dev/null || true)
+if [ "$HTTP_FALLBACK_CODE" = "200" ] || [ "$HTTP_FALLBACK_CODE" = "301" ] || [ "$HTTP_FALLBACK_CODE" = "302" ]; then
+    check "OpenClaw HTTP fallback endpoint reachable (status: $HTTP_FALLBACK_CODE)" 0
+else
+    warn "OpenClaw HTTP fallback endpoint not reachable (status: ${HTTP_FALLBACK_CODE:-000})"
+fi
+
 # 4. Sentinel service running
 if systemctl is-active sentinel &>/dev/null; then
     check "Sentinel service running" 0
@@ -64,6 +72,20 @@ if ufw status | grep -q "Status: active"; then
     check "UFW firewall active" 0
 else
     check "UFW firewall active" 1
+fi
+
+# 5b. UFW has explicit SSH allow rule
+if ufw status numbered | grep -Eq '22/tcp.*ALLOW'; then
+    check "UFW SSH allow rule present" 0
+else
+    check "UFW SSH allow rule present" 1
+fi
+
+# 5c. fail2ban sshd jail active
+if fail2ban-client status sshd 2>/dev/null | grep -q "Status for the jail: sshd"; then
+    check "fail2ban sshd jail active" 0
+else
+    check "fail2ban sshd jail active" 1
 fi
 
 # 6. Disk space (warn if >80%)
@@ -104,6 +126,30 @@ if [ -n "$LATEST_BACKUP" ]; then
     check "Backup exists" 0
 else
     check "Backup exists" 1
+fi
+
+# 9. SSH authorized_keys permissions
+if [ -f /root/.ssh/authorized_keys ]; then
+    AUTH_KEYS_PERM=$(stat -c %a /root/.ssh/authorized_keys)
+    if [ "$AUTH_KEYS_PERM" = "600" ]; then
+        check "SSH authorized_keys permissions (600)" 0
+    else
+        check "SSH authorized_keys permissions (currently $AUTH_KEYS_PERM)" 1
+    fi
+else
+    warn "SSH authorized_keys not found at /root/.ssh/authorized_keys"
+fi
+
+# 10. OpenClaw config permissions
+if [ -f /root/.openclaw/openclaw.json ]; then
+    OPENCLAW_CFG_PERM=$(stat -c %a /root/.openclaw/openclaw.json)
+    if [ "$OPENCLAW_CFG_PERM" = "600" ]; then
+        check "OpenClaw config permissions (600)" 0
+    else
+        check "OpenClaw config permissions (currently $OPENCLAW_CFG_PERM)" 1
+    fi
+else
+    check "OpenClaw config file exists" 1
 fi
 
 echo ""

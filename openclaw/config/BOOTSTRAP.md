@@ -1,3 +1,5 @@
+<!-- config-version: 2026.02.21-main-hardening -->
+
 # Bootstrap — First Run Only
 
 This file defines behavior for the very first interaction after setup.

@@ -1,3 +1,5 @@
+<!-- config-version: 2026.02.21-main-hardening -->
+
 # Memory — Work Agent
 
 ## Active Projects

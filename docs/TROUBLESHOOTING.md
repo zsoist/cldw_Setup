@@ -19,7 +19,7 @@ docker compose logs openclaw-gateway
 docker ps
 
 # Check if gateway is listening
-curl -s http://127.0.0.1:18789/
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:18789/__openclaw__/canvas/
 
 # Check Telegram token is correct
 docker compose logs openclaw-gateway | grep -i telegram
@@ -56,9 +56,10 @@ systemctl status sentinel
 journalctl -u sentinel -n 50
 
 # Common causes:
-# 1. Missing env vars — check /root/openclaw/.env (loaded by systemd)
+# 1. Missing env vars — check /root/openclaw/.env, then sync to /etc/sentinel/sentinel.env
 # 2. Python venv broken — recreate: python3 -m venv /opt/sentinel/venv
 # 3. Dependencies missing — reinstall: /opt/sentinel/venv/bin/pip install -r requirements.txt
+# 4. If .env was edited, run: /usr/local/sbin/sync-sentinel-env.sh
 ```
 
 ### Sentinel command blocked

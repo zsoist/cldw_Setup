@@ -12,7 +12,8 @@ class TestCommandWhitelist:
         assert is_command_allowed("free -m")[0] is True
         assert is_command_allowed("uptime")[0] is True
         assert is_command_allowed("ufw status")[0] is True
-        assert is_command_allowed("docker ps")[0] is True
+        assert is_command_allowed("docker ps --filter name=openclaw-openclaw-gateway-1")[0] is True
+        assert is_command_allowed("docker stats --no-stream openclaw-openclaw-gateway-1")[0] is True
         assert is_command_allowed("journalctl -u sentinel -n 50 --no-pager")[0] is True
         assert is_command_allowed("curl -s http://127.0.0.1:18789/")[0] is True
 
@@ -32,6 +33,9 @@ class TestCommandWhitelist:
 
     def test_non_local_curl_blocked(self):
         assert is_command_allowed("curl -s https://example.com")[0] is False
+
+    def test_invalid_local_port_blocked(self):
+        assert is_command_allowed("curl -s http://127.0.0.1:99999/")[0] is False
 
     def test_unknown_commands_blocked(self):
         assert is_command_allowed("some-random-binary")[0] is False
@@ -89,21 +93,35 @@ class TestDockerTools:
         mock_container.status = "running"
         mock_container.image.tags = ["openclaw:latest"]
         mock_container.attrs = {"Created": "2026-02-18T10:00:00"}
-        mock_docker.return_value.containers.list.return_value = [mock_container]
+        mock_docker.return_value.containers.get.return_value = mock_container
 
         result = execute_tool("docker_status", {})
-        assert len(result) == 1
-        assert result[0]["name"] == "openclaw-gateway"
-        assert result[0]["status"] == "running"
+        assert "containers" in result
+        assert result["containers"][0]["name"] == "openclaw-gateway"
+        assert result["containers"][0]["status"] == "running"
 
     @patch("tools.docker.from_env")
     def test_docker_restart(self, mock_docker):
         mock_container = MagicMock()
         mock_docker.return_value.containers.get.return_value = mock_container
 
-        result = execute_tool("docker_restart", {"container_name": "openclaw-gateway"})
+        result = execute_tool("docker_restart", {"container_name": "openclaw-openclaw-gateway-1"})
         assert result["status"] == "restarted"
         mock_container.restart.assert_called_once_with(timeout=30)
+
+    def test_docker_restart_disallowed_container(self):
+        result = execute_tool("docker_restart", {"container_name": "postgres"})
+        assert "allowlist" in result["error"]
+
+    @patch("tools.docker.from_env")
+    def test_docker_logs_consistent_shape(self, mock_docker):
+        mock_container = MagicMock()
+        mock_container.logs.return_value = b"log line"
+        mock_docker.return_value.containers.get.return_value = mock_container
+        result = execute_tool("docker_logs", {"container_name": "openclaw-openclaw-gateway-1", "lines": 5})
+        assert result["container"] == "openclaw-openclaw-gateway-1"
+        assert result["lines"] == 5
+        assert "log line" in result["logs"]
 
     @patch("tools.docker.from_env")
     def test_openclaw_health_uses_docker_health(self, mock_docker):
@@ -117,12 +135,14 @@ class TestDockerTools:
         }
         mock_container.logs.return_value = b"gateway started\nno errors"
         mock_docker.return_value.containers.get.return_value = mock_container
+        with patch("tools.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="200", returncode=0)
+            result = execute_tool("check_openclaw_health", {})
 
-        result = execute_tool("check_openclaw_health", {})
         assert result["status"] == "running"
         assert result["docker_health"] == "healthy"
         assert result["gateway_ready"] is True
-        assert "http_status" not in result
+        assert result["http_fallback_status"] == "200"
 
 
 class TestRunCommand:

@@ -22,12 +22,26 @@ def _parse_allowed_user_ids(raw: str) -> list[int]:
     return ids
 
 
+def _parse_positive_int(env_name: str, default: int, minimum: int = 1, maximum: int = 10_000) -> int:
+    """Parse integer env var with bounds and fallback to default."""
+    raw = _clean_env_value(os.getenv(env_name, ""))
+    if not raw:
+        return default
+    if not raw.isdigit():
+        return default
+    value = int(raw)
+    if value < minimum or value > maximum:
+        return default
+    return value
+
+
 def _load_env_files() -> None:
     """Load environment variables from common deployment/local paths."""
     env_hint = os.getenv("SENTINEL_ENV_FILE")
     candidates = [
         Path.cwd() / ".env",
         Path(__file__).resolve().parent / ".env",
+        Path("/etc/sentinel/sentinel.env"),
         Path("/root/openclaw/.env"),
         Path("/opt/sentinel/.env"),
     ]
@@ -67,10 +81,23 @@ class SentinelConfig:
         default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_MODEL", "claude-haiku-4-5"))
     )
     max_tokens: int = 1024
+    rate_limit_max_requests: int = field(
+        default_factory=lambda: _parse_positive_int("SENTINEL_RATE_LIMIT_MAX_REQUESTS", 8, minimum=1, maximum=100)
+    )
+    rate_limit_window_seconds: int = field(
+        default_factory=lambda: _parse_positive_int("SENTINEL_RATE_LIMIT_WINDOW_SECONDS", 300, minimum=10, maximum=3600)
+    )
+    conversation_ttl_seconds: int = field(
+        default_factory=lambda: _parse_positive_int("SENTINEL_CONVERSATION_TTL_SECONDS", 1800, minimum=60, maximum=86_400)
+    )
+    max_tool_iterations: int = field(
+        default_factory=lambda: _parse_positive_int("SENTINEL_MAX_TOOL_ITERATIONS", 5, minimum=1, maximum=20)
+    )
 
     # System
     openclaw_container_name: str = "openclaw-openclaw-gateway-1"
     log_file: str = "/var/log/sentinel/sentinel.log"
+    audit_log_file: str = "/var/log/sentinel/audit.log"
     workspace: str = os.path.expanduser("~/.sentinel")
 
     def validate(self) -> list[str]:
@@ -82,4 +109,12 @@ class SentinelConfig:
             errors.append("SENTINEL_ALLOWED_USERS is not set (comma-separated Telegram user IDs)")
         if not self.anthropic_api_key:
             errors.append("ANTHROPIC_API_KEY is not set")
+        if self.rate_limit_max_requests <= 0:
+            errors.append("SENTINEL_RATE_LIMIT_MAX_REQUESTS must be > 0")
+        if self.rate_limit_window_seconds <= 0:
+            errors.append("SENTINEL_RATE_LIMIT_WINDOW_SECONDS must be > 0")
+        if self.conversation_ttl_seconds <= 0:
+            errors.append("SENTINEL_CONVERSATION_TTL_SECONDS must be > 0")
+        if self.max_tool_iterations <= 0:
+            errors.append("SENTINEL_MAX_TOOL_ITERATIONS must be > 0")
         return errors

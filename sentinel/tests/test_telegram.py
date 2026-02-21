@@ -144,6 +144,22 @@ class TestConfigValidation:
         )
         assert config.allowed_user_ids == [12345, 67890]
 
+    def test_allowed_users_ignores_non_numeric_and_empty(self, monkeypatch):
+        monkeypatch.setenv("SENTINEL_ALLOWED_USERS", "12345, abc, , 67890, -10, 9000x")
+        config = SentinelConfig(
+            telegram_token="test-token",
+            anthropic_api_key="test-key",
+        )
+        assert config.allowed_user_ids == [12345, 67890]
+
+    def test_allowed_users_multi_comment_format(self, monkeypatch):
+        monkeypatch.setenv("SENTINEL_ALLOWED_USERS", "12345 # owner, 67890 # backup, # trailing")
+        config = SentinelConfig(
+            telegram_token="test-token",
+            anthropic_api_key="test-key",
+        )
+        assert config.allowed_user_ids == [12345, 67890]
+
     def test_telegram_token_parses_inline_comment(self, monkeypatch):
         monkeypatch.setenv("SENTINEL_TELEGRAM_TOKEN", "123:abc # bot token")
         config = SentinelConfig(
@@ -151,3 +167,12 @@ class TestConfigValidation:
             anthropic_api_key="test-key",
         )
         assert config.telegram_token == "123:abc"
+
+    def test_empty_allowed_users_triggers_validation_error(self):
+        config = SentinelConfig(
+            telegram_token="test-token",
+            allowed_user_ids=[],
+            anthropic_api_key="test-key",
+        )
+        errors = config.validate()
+        assert any("SENTINEL_ALLOWED_USERS" in e for e in errors)

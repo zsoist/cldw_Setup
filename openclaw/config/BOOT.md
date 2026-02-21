@@ -1,3 +1,5 @@
+<!-- config-version: 2026.02.21-main-hardening -->
+
 # Boot — Startup Behavior
 
 Run these checks every time the gateway/service starts.

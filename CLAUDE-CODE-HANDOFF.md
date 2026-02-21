@@ -5,159 +5,153 @@
 > Last updated: 2026-02-21  
 > Branch: `main`  
 > Current commit: run `git rev-parse --short HEAD` on your checkout  
-> Source branch merged into main: `claude/openclaw-optimization-readme-f9ha4`
 
 ---
 
-## Current Outcome (Production State)
+## Current State
 
-Deployment on Hetzner VPS (`46.225.170.60`) is now operational:
+`main` now includes a full security/ops hardening pass across Sentinel + infrastructure scripts.
 
-- OpenClaw container: `Up (healthy)`
-- Sentinel service: `active (running)`
-- Backup script: working, backup tarballs present in `/root/backups`
-- UFW + fail2ban: active
-- Health check (after script fix): `8 passed, 0 failed`
-
-OpenClaw is running as a WebSocket gateway (`ws://0.0.0.0:18789` in container), with host mapping `127.0.0.1:18789`.
-
----
-
-## What Was Broken and How It Was Fixed
-
-### 1. Sentinel failed to start from `.env` values
-
-Root cause:
-- Inline comments were appended to `.env` secrets and IDs, e.g.:
-  - `SENTINEL_ALLOWED_USERS=12345 # comment`
-  - `SENTINEL_TELEGRAM_TOKEN=... # comment`
-
-Fixes:
-- `sentinel/config.py` now tolerates inline comments and trims values.
-- Deployment docs now explicitly require plain values in `.env`.
-
-### 2. OpenClaw Docker build failed (`npm ci` lockfile mismatch)
-
-Root cause:
-- Upstream OpenClaw at pinned ref uses pnpm workspace; `npm ci` was invalid.
-
-Fixes:
-- `infrastructure/Dockerfile` updated to:
-  - Node 22 base
-  - `corepack enable`
-  - `pnpm install --frozen-lockfile`
-  - `pnpm build`
-  - `pnpm ui:build`
-
-### 3. OpenClaw gateway crash-looped on config validation
-
-Root cause:
-- `openclaw/openclaw-config.json` used legacy keys unsupported by pinned OpenClaw ref:
-  - `agents.profiles`
-  - `channels.telegram.token`
-  - `channels.telegram.groupChats`
-  - root `heartbeat`, `providers`, `security`
-
-Repository fix on `main`:
-- `openclaw/openclaw-config.json` now ships a schema-valid configuration for pinned OpenClaw.
-- Deploy now copies this valid schema to both runtime config targets.
-
-VPS operational fix (already applied before repo fix):
-- Replaced `/root/.openclaw/openclaw.json` with schema-valid config using:
-  - `gateway.mode`
-  - `gateway.bind`
-  - `gateway.auth.token`
-  - `agents.defaults.*`
-  - `channels.telegram.botToken` + `groups`
-
-### 4. OpenClaw state permissions caused write failures
-
-Root cause:
-- `deploy.sh` forced `/root/.openclaw` ownership to `1000:1000`, which may not match the image's `openclaw` user UID/GID.
-- On some hosts this caused EACCES during session/credentials/state writes.
-
-Fix:
-- `infrastructure/deploy.sh` now resolves the built image runtime UID/GID dynamically and chowns `/root/.openclaw` accordingly.
-- Deploy also pre-creates required state dirs (`agents/main/sessions`, `credentials`) and applies strict config permissions.
-### 5. Health check false-negative for OpenClaw HTTP
-
-Root cause:
-- Health script used HTTP root probe (`curl /`) for a WS gateway path and marked healthy gateway as failed.
-
-Fix:
-- `infrastructure/health-check.sh` now checks Docker container health status instead of raw HTTP root code.
-- `sentinel/tools.py` (`check_openclaw_health`) now reports Docker health and no longer relies on root HTTP status.
+### Production outcome target
+- OpenClaw gateway should run healthy via Docker health checks.
+- Sentinel now runs as a **dedicated non-root user**.
+- Env handling split:
+  - Primary edit source: `/root/openclaw/.env`
+  - Sentinel runtime env: `/etc/sentinel/sentinel.env` (synced via script)
+- Backup/restore workflows hardened.
 
 ---
 
-## Important Reality About OpenClaw Health
+## Major Changes in This Pass
 
-For this deployment, root HTTP code is not reliable as readiness signal.
-Use either:
+### 1) Sentinel runtime hardening
 
-1. `docker inspect` health status on `openclaw-openclaw-gateway-1`
-2. Gateway RPC health call:
+- `sentinel/sentinel.service`
+  - `User=sentinel`, `Group=sentinel`
+  - `SupplementaryGroups=docker adm`
+  - `EnvironmentFile=-/etc/sentinel/sentinel.env`
+  - `KillMode=control-group`
+  - `NoNewPrivileges=true`
+  - `LogsDirectory=sentinel`
 
-```bash
-TOKEN=$(grep '^OPENCLAW_GATEWAY_TOKEN=' /root/openclaw/.env | cut -d= -f2-)
-docker exec -it openclaw-openclaw-gateway-1 \
-  node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$TOKEN" --json
-```
+### 2) Sentinel abuse controls + auditability
 
----
-
-## Files Most Relevant to Continue Work
-
-- `infrastructure/health-check.sh`
-- `infrastructure/Dockerfile`
-- `infrastructure/deploy.sh`
-- `infrastructure/env.template`
-- `docs/DEPLOYMENT.md`
-- `openclaw/openclaw-config.json`
 - `sentinel/config.py`
+  - Added bounded env-driven controls:
+    - `SENTINEL_RATE_LIMIT_MAX_REQUESTS`
+    - `SENTINEL_RATE_LIMIT_WINDOW_SECONDS`
+    - `SENTINEL_CONVERSATION_TTL_SECONDS`
+    - `SENTINEL_MAX_TOOL_ITERATIONS`
+
+- `sentinel/sentinel.py`
+  - Added per-user sliding-window rate limiting.
+  - Added conversation TTL expiry/reset (reduces stale-context replay risk).
+  - Added tamper-evident hash-chained audit log events (`/var/log/sentinel/audit.log`).
+  - Removed silent `default=str` serialization masking.
+  - Tool result truncation now explicit (`truncated`, `original_length`, `preview`).
+
+### 3) Tooling security boundaries
+
 - `sentinel/tools.py`
+  - Host/url validation tightened (`ipaddress`, URL parsing, local HTTP validation).
+  - Docker operations restricted to allowlisted container:
+    - `openclaw-openclaw-gateway-1`
+  - `docker` command whitelist tightened:
+    - `docker ps --filter name=openclaw-openclaw-gateway-1`
+    - `docker stats --no-stream openclaw-openclaw-gateway-1`
+  - `check_openclaw_health` now reports docker health + HTTP fallback endpoint status.
+  - Docker tool outputs normalized to structured dicts.
+
+### 4) Backup/restore hardening
+
+- `infrastructure/backup.sh`
+  - Switched to explicit file allowlist backup collection.
+  - Backup timestamp now ISO-like UTC format in filename.
+  - Sensitive files excluded by policy (env/keys/certs/credentials paths).
+
+- `infrastructure/restore.sh`
+  - Archive validation now rejects non file/dir entry types.
+  - Extracts to temp dir first, then copies allowlisted paths only.
+  - Avoids direct blind extract to `/`.
+
+### 5) Deployment integrity improvements
+
+- `infrastructure/deploy.sh`
+  - Added checksum-verified copy helper for critical file transfers.
+  - Creates/updates `sentinel` system user and group assignments.
+  - Installs `/usr/local/sbin/sync-sentinel-env.sh`.
+  - Creates secure Sentinel dirs:
+    - `/etc/sentinel`
+    - `/var/log/sentinel`
+    - `/var/backups/openclaw`
+  - Still aligns OpenClaw state ownership to runtime UID/GID from built image.
+  - Adds warning if SSH snippet placeholder still unresolved.
+
+- Added scripts:
+  - `infrastructure/sync-sentinel-env.sh`
+  - `infrastructure/validate-placeholders.sh`
+
+### 6) Config drift management
+
+- Added version markers to all runtime markdown configs:
+  - `openclaw/config/*.md`
+  - `openclaw/agents/work/*.md`
+
+Marker:
+`<!-- config-version: 2026.02.21-main-hardening -->`
+
+### 7) Documentation updates
+
+- Updated:
+  - `README.md`
+  - `docs/DEPLOYMENT.md`
+  - `docs/TROUBLESHOOTING.md`
+- Added:
+  - `docs/security/secrets-rotation.md`
+
+---
+
+## Files Most Relevant for Next Session
+
+- `sentinel/sentinel.py`
+- `sentinel/tools.py`
+- `sentinel/config.py`
+- `sentinel/sentinel.service`
+- `infrastructure/deploy.sh`
+- `infrastructure/backup.sh`
+- `infrastructure/restore.sh`
+- `infrastructure/health-check.sh`
+- `infrastructure/sync-sentinel-env.sh`
+- `infrastructure/validate-placeholders.sh`
 - `README.md`
 
 ---
 
-## Remaining Work (Priority Order)
+## Known Follow-up Items
 
-1. **Rotate exposed secrets immediately**
-   - Anthropic API key
-   - OpenClaw Telegram bot token
-   - Sentinel Telegram bot token
-   - OpenClaw gateway token
-   - GOG keyring password
-
-2. **Stabilize SSH access**
-   - Ensure root key auth is correctly configured in `/root/.ssh/authorized_keys`.
-   - Keep `ServerAliveInterval` and `ServerAliveCountMax` client options.
-
-3. **Optional hardening cleanup**
-   - Validate no duplicated keys in `.env`.
-   - Add CI smoke checks for config schema + health-check behavior.
+1. Run full Sentinel test suite in a venv with Telegram dependency installed.
+2. Rotate all exposed secrets immediately if any were ever posted in logs/chat.
+3. Validate real VPS migration path for non-root Sentinel (`sync-sentinel-env.sh` + systemd restart).
+4. Consider adding signed release artifacts if repo integrity is part of threat model.
 
 ---
 
-## Verified Commands (Known Good)
+## Quick Operational Commands
 
 ```bash
-# OpenClaw + Sentinel status
+# Validate env + sync Sentinel env
+/root/openclaw-project/infrastructure/validate-placeholders.sh /root/openclaw/.env
+/usr/local/sbin/sync-sentinel-env.sh
+
+# Restart stack
 cd /root/openclaw
+docker compose up -d --force-recreate
+systemctl daemon-reload
+systemctl restart sentinel
+
+# Verify
 docker compose ps
 systemctl status sentinel --no-pager
+journalctl -u sentinel -n 100 --no-pager
 /root/openclaw-project/infrastructure/health-check.sh
-
-# OpenClaw gateway health (authoritative)
-TOKEN=$(grep '^OPENCLAW_GATEWAY_TOKEN=' /root/openclaw/.env | cut -d= -f2-)
-docker exec -it openclaw-openclaw-gateway-1 \
-  node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$TOKEN" --json
 ```
-
----
-
-## Notes for Next LLM
-
-- Do not trust historical failures in `journalctl` unless they are newer than the last restart.
-- Treat latest state snapshots (`docker compose ps`, recent logs, current health check) as source of truth.
-- If OpenClaw is `healthy` but HTTP root probe fails, this is expected in current topology.
