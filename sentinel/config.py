@@ -42,7 +42,6 @@ def _load_env_files() -> None:
         Path.cwd() / ".env",
         Path(__file__).resolve().parent / ".env",
         Path("/etc/sentinel/sentinel.env"),
-        Path("/root/openclaw/.env"),
         Path("/opt/sentinel/.env"),
     ]
     if env_hint:
@@ -54,8 +53,12 @@ def _load_env_files() -> None:
         if resolved in seen:
             continue
         seen.add(resolved)
-        if path.exists():
-            load_dotenv(path, override=False)
+        try:
+            if path.exists() and os.access(path, os.R_OK):
+                load_dotenv(path, override=False)
+        except OSError:
+            # Best-effort loading: ignore unreadable or inaccessible env files.
+            continue
 
 
 _load_env_files()

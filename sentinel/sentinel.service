@@ -11,6 +11,7 @@ SupplementaryGroups=docker adm
 WorkingDirectory=/opt/sentinel
 EnvironmentFile=-/etc/sentinel/sentinel.env
 EnvironmentFile=-/opt/sentinel/.env
+Environment=SENTINEL_ENV_FILE=/etc/sentinel/sentinel.env
 ExecStart=/opt/sentinel/venv/bin/python telegram_handler.py
 Restart=on-failure
 RestartSec=10
