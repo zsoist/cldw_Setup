@@ -1,6 +1,10 @@
 # Claude Code Handoff: OpenClaw + Sentinel — Current State
 
 > **For the next Claude Code session.** This document describes the current state of the project, what has been built, what remains, and how to pick up where this session left off. Read fully before making changes.
+>
+> **Last updated:** 2026-02-21  
+> **Branch:** `claude/openclaw-optimization-readme-f9ha4`  
+> **Latest commit:** `14f1296` (`fix: harden deployment, sentinel startup, and command safety`)
 
 ---
 
@@ -79,7 +83,7 @@ A two-layer AI assistant system on a **Hetzner CPX22 VPS** (3 vCPU, 4GB RAM, 80G
 | File | Purpose | Status |
 |------|---------|--------|
 | `sentinel/sentinel.py` | Agentic loop, 5-iteration cap, conversation history (20 msg) | Done |
-| `sentinel/tools.py` | 8 tools, dual-layer whitelist/blocklist, deny-by-default | Done |
+| `sentinel/tools.py` | 8 tools, argument-aware command validation + blocklist, deny-by-default | Done |
 | `sentinel/config.py` | Dataclass config with validation | Done |
 | `sentinel/telegram_handler.py` | Telegram interface, user ID auth, 5 command handlers | Done |
 | `sentinel/requirements.txt` | Python dependencies | Done |
@@ -90,14 +94,14 @@ A two-layer AI assistant system on a **Hetzner CPX22 VPS** (3 vCPU, 4GB RAM, 80G
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `infrastructure/Dockerfile` | node:20-slim, non-root user | Done |
-| `infrastructure/docker-compose.yml` | CPX22-tuned limits (2 CPU, 2.5GB), loopback port, healthcheck | Done |
-| `infrastructure/env.template` | All secret placeholders | Done |
-| `infrastructure/deploy.sh` | One-shot VPS deployment | **Needs update** |
+| `infrastructure/Dockerfile` | node:20-slim, non-root user, pinned OpenClaw ref build | Done |
+| `infrastructure/docker-compose.yml` | CPX22-tuned limits (2 CPU, 2.5GB), loopback port, healthcheck, build arg pin | Done |
+| `infrastructure/env.template` | All secret placeholders + `OPENCLAW_REF` pin | Done |
+| `infrastructure/deploy.sh` | One-shot VPS deployment with pinned upstream checkout and config copy fixes | Done |
 | `infrastructure/secure.sh` | UFW + fail2ban + SSH hardening | Done |
 | `infrastructure/backup.sh` | 7-day rotation, excludes .env/.pem/.key | Done |
-| `infrastructure/restore.sh` | Interactive restore | Done |
-| `infrastructure/health-check.sh` | 8-point verification | Done |
+| `infrastructure/restore.sh` | Interactive restore + archive path safety validation | Done |
+| `infrastructure/health-check.sh` | 8-point verification (aggregate reporting fixed) | Done |
 | `infrastructure/ssh-config-snippet` | Mac SSH config with tunnel | Done |
 
 ### Documentation
@@ -116,12 +120,48 @@ A two-layer AI assistant system on a **Hetzner CPX22 VPS** (3 vCPU, 4GB RAM, 80G
 
 ---
 
+## Session Update (2026-02-21)
+
+The following critical issues were fixed in commit `14f1296`:
+
+1. **Sentinel startup fixed**
+   - `sentinel.service` now starts `telegram_handler.py` (actual runtime entrypoint)
+   - Added systemd `EnvironmentFile` support for `/root/openclaw/.env` and optional `/opt/sentinel/.env`
+
+2. **Environment loading fixed**
+   - `sentinel/config.py` now loads env vars from common deployment paths (`/root/openclaw/.env`, `/opt/sentinel/.env`, local `.env`)
+
+3. **Workspace path consistency fixed**
+   - `openclaw/openclaw-config.json` profile workspaces now align with seeded folders:
+     - main -> `/home/node/.openclaw/workspace/personal`
+     - work -> `/home/node/.openclaw/workspace/business`
+
+4. **Command execution hardening**
+   - Replaced prefix-only command checks with argument-aware validators in `sentinel/tools.py`
+   - Removed broad file-read vectors (`tail/head/wc` on arbitrary paths)
+   - Added tests covering blocked sensitive file reads and curl egress restrictions
+
+5. **Reproducible deployment hardening**
+   - Introduced `OPENCLAW_REF` pinning in deploy flow, Dockerfile, compose, and env template
+   - Ensured `openclaw-config.json` is copied into Docker build context before `docker compose build`
+
+6. **Operations safety hardening**
+   - `health-check.sh` now reports all checks without fail-fast behavior
+   - `restore.sh` validates archive paths before extraction
+
+Validation completed in-session:
+- `pytest` (Sentinel): **24 passed**
+- `bash -n` checks for all infra scripts: **pass**
+- Python compile + JSON config parse: **pass**
+
+---
+
 ## What Remains (Not Yet Done)
 
 ### Deployment
-1. **deploy.sh needs updating** — must copy all 12 config files (not just original 5), agents/work/ directory, workspace/ content, and openclaw-config.json
-2. **First real deployment to VPS** — Daniel has a Hetzner account but hasn't provisioned yet
-3. **Fill .env with real secrets** — Telegram bot tokens, Anthropic API key, gateway token
+1. **First real deployment to VPS** — Daniel has a Hetzner account but hasn't provisioned yet
+2. **Fill .env with real secrets** — Telegram bot tokens, Anthropic API key, gateway token
+3. **Keep or update `OPENCLAW_REF` intentionally** — only change when ready to test an upstream OpenClaw upgrade
 
 ### Post-Deployment
 4. **Telegram bot setup** — Create 2 bots via @BotFather, get tokens, get user ID
