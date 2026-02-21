@@ -10,6 +10,10 @@ OPENCLAW_REPO="https://github.com/openclaw/openclaw.git"
 OPENCLAW_REF="${OPENCLAW_REF:-58f7b7638a997ebb7da3a4877e6c64c40bc20e7e}"
 
 echo "=== [1/9] Install Docker ==="
+echo "Installing Python venv prerequisites..."
+apt-get update
+apt-get install -y python3 python3-venv python3-pip
+
 if ! command -v docker &>/dev/null; then
     curl -fsSL https://get.docker.com | sh
 fi

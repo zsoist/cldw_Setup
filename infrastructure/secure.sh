@@ -38,9 +38,9 @@ sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_c
 sed -i 's/#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
 
 SSH_SERVICE=""
-if systemctl list-unit-files | grep -q '^ssh\.service'; then
+if systemctl cat ssh >/dev/null 2>&1; then
     SSH_SERVICE="ssh"
-elif systemctl list-unit-files | grep -q '^sshd\.service'; then
+elif systemctl cat sshd >/dev/null 2>&1; then
     SSH_SERVICE="sshd"
 else
     echo "Error: could not find ssh.service or sshd.service"
