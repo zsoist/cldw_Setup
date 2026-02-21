@@ -1,7 +1,11 @@
 # OpenClaw Gateway Docker image for Hetzner CPX22
 # Optimized for 3 vCPU / 4GB RAM environment
-FROM node:20-slim
+FROM node:22-bookworm
 
+ARG OPENCLAW_REPO=https://github.com/openclaw/openclaw.git
+ARG OPENCLAW_REF=58f7b7638a997ebb7da3a4877e6c64c40bc20e7e
+
+# Build-time source controls
 ARG OPENCLAW_REPO=https://github.com/openclaw/openclaw.git
 ARG OPENCLAW_REF=58f7b7638a997ebb7da3a4877e6c64c40bc20e7e
 
@@ -12,17 +16,22 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Enable corepack for pnpm (OpenClaw uses pnpm workspace lockfile)
+RUN corepack enable
+
 # Create non-root user
 RUN groupadd -r openclaw && useradd -r -g openclaw -m -d /home/node openclaw
 
 # Set working directory
 WORKDIR /home/node
 
-# Clone and install OpenClaw (pinned for reproducible builds)
+# Clone and build OpenClaw (pinned for reproducible builds)
 RUN git clone "$OPENCLAW_REPO" /home/node/openclaw \
     && cd /home/node/openclaw \
     && git checkout "$OPENCLAW_REF" \
-    && npm ci --production \
+    && pnpm install --frozen-lockfile \
+    && pnpm build \
+    && OPENCLAW_PREFER_PNPM=1 pnpm ui:build \
     && rm -rf .git
 
 # Copy configuration
@@ -43,4 +52,4 @@ HEALTHCHECK --interval=60s --timeout=5s --retries=3 \
 
 # Start the gateway
 WORKDIR /home/node/openclaw
-CMD ["node", "src/gateway.js"]
+CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]

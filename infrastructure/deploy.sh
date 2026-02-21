@@ -12,7 +12,7 @@ OPENCLAW_REF="${OPENCLAW_REF:-58f7b7638a997ebb7da3a4877e6c64c40bc20e7e}"
 echo "=== [1/9] Install Docker ==="
 echo "Installing Python venv prerequisites..."
 apt-get update
-apt-get install -y python3 python3-venv python3-pip
+apt-get install -y python3 python3-venv
 
 if ! command -v docker &>/dev/null; then
     curl -fsSL https://get.docker.com | sh
@@ -49,6 +49,7 @@ for f in SOUL.md USER.md AGENTS.md TOOLS.md HEARTBEAT.md MEMORY.md \
     cp "$PROJECT_DIR/openclaw/config/$f" "$OPENCLAW_CONFIG/"
 done
 cp "$PROJECT_DIR/openclaw/openclaw-config.json" "$OPENCLAW_CONFIG/openclaw-config.json"
+cp "$PROJECT_DIR/openclaw/openclaw-config.json" "$OPENCLAW_CONFIG/openclaw.json"
 
 echo "=== [5/9] Copy work agent files ==="
 for f in SOUL.md TOOLS.md USER.md MEMORY.md HEARTBEAT.md; do
