@@ -3,8 +3,9 @@
 > For the next LLM session.
 >
 > Last updated: 2026-02-21  
-> Branch: `claude/openclaw-optimization-readme-f9ha4`  
-> Baseline before next commit: `eb4c4e7`
+> Branch: `main`  
+> Current commit: `12d2595`  
+> Source branch merged into main: `claude/openclaw-optimization-readme-f9ha4`
 
 ---
 
