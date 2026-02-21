@@ -45,8 +45,8 @@ else
 fi
 
 # 3. OpenClaw HTTP response
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18789/ 2>/dev/null || echo "000")
-if [ "$HTTP_CODE" != "000" ]; then
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18789/ 2>/dev/null || true)
+if [[ "$HTTP_CODE" =~ ^[0-9]{3}$ ]] && [ "$HTTP_CODE" != "000" ]; then
     check "OpenClaw HTTP reachable (status: $HTTP_CODE)" 0
 else
     check "OpenClaw HTTP reachable" 1

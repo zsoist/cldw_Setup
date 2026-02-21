@@ -5,6 +5,18 @@ from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
 
+def _parse_allowed_user_ids(raw: str) -> list[int]:
+    """Parse comma-separated Telegram user IDs, tolerating inline comments."""
+    ids: list[int] = []
+    for token in raw.split(","):
+        value = token.split("#", 1)[0].strip()
+        if not value:
+            continue
+        if value.isdigit():
+            ids.append(int(value))
+    return ids
+
+
 def _load_env_files() -> None:
     """Load environment variables from common deployment/local paths."""
     env_hint = os.getenv("SENTINEL_ENV_FILE")
@@ -36,9 +48,9 @@ class SentinelConfig:
 
     # Telegram
     telegram_token: str = field(default_factory=lambda: os.getenv("SENTINEL_TELEGRAM_TOKEN", ""))
-    allowed_user_ids: list[int] = field(default_factory=lambda: [
-        int(x) for x in os.getenv("SENTINEL_ALLOWED_USERS", "").split(",") if x.strip()
-    ])
+    allowed_user_ids: list[int] = field(
+        default_factory=lambda: _parse_allowed_user_ids(os.getenv("SENTINEL_ALLOWED_USERS", ""))
+    )
 
     # Anthropic
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))

@@ -81,6 +81,8 @@ Fill in all placeholder values:
 - `SENTINEL_ALLOWED_USERS` — your Telegram user ID
 - `OPENCLAW_REF` — pinned OpenClaw git commit/tag (keep default unless intentionally upgrading)
 
+Important: assign plain values only in `.env` (no trailing inline comments after values).
+
 Sentinel reads the same `/root/openclaw/.env` file via systemd `EnvironmentFile`.
 
 ## Step 6: Start services

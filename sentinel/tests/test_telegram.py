@@ -135,3 +135,11 @@ class TestConfigValidation:
         )
         errors = config.validate()
         assert any("ANTHROPIC_API_KEY" in e for e in errors)
+
+    def test_allowed_users_parses_inline_comments(self, monkeypatch):
+        monkeypatch.setenv("SENTINEL_ALLOWED_USERS", "12345 # me, 67890 # backup")
+        config = SentinelConfig(
+            telegram_token="test-token",
+            anthropic_api_key="test-key",
+        )
+        assert config.allowed_user_ids == [12345, 67890]
