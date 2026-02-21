@@ -246,9 +246,11 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   └── ssh-config-snippet                 # Mac SSH config with tunnel
 └── docs/
     ├── setup/
-    │   └── model-routing-policy.md        # Detailed model routing reference
+    │   ├── model-routing-policy.md        # Detailed model routing reference
+    │   └── performance-tuning.md          # API cost + responsiveness tuning
     ├── security/
-    │   └── access-boundaries.md           # Agent/channel access matrix
+    │   ├── access-boundaries.md           # Agent/channel access matrix
+    │   └── openclaw-hardening.md          # Gateway security hardening practices
     ├── playbooks/
     │   ├── daily-planning.md              # Daily brief playbook
     │   ├── personal-weekly-review.md      # Weekly review playbook
@@ -258,7 +260,8 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
     │   ├── research-summary-template.md   # Research output format
     │   ├── brief-template.md              # Executive brief format
     │   └── sop-template.md                # Standard operating procedure format
-    ├── research/                           # Saved reusable research (date-stamped)
+    ├── research/
+    │   └── job-search-automation.md       # Job search capabilities + implementation plan
     ├── DEPLOYMENT.md                      # Step-by-step deployment guide
     ├── COST-MANAGEMENT.md                 # Budget tracking + optimization tips
     ├── TROUBLESHOOTING.md                 # Common issues + recovery procedures

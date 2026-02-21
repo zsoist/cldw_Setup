@@ -113,10 +113,12 @@ A two-layer AI assistant system on a **Hetzner CPX22 VPS** (3 vCPU, 4GB RAM, 80G
 | `docs/TROUBLESHOOTING.md` | Common issues + recovery | Done |
 | `docs/PHASE3-CHECKLIST.md` | Go-live verification | Done |
 | `docs/setup/model-routing-policy.md` | 6-tier routing matrix | Done |
+| `docs/setup/performance-tuning.md` | API cost + responsiveness tuning | Done |
 | `docs/security/access-boundaries.md` | Agent/channel access matrix | Done |
+| `docs/security/openclaw-hardening.md` | Gateway security hardening (DM scope, plugins, patches) | Done |
 | `docs/playbooks/` | 4 playbooks (daily planning, weekly review, meeting prep, decision log) | Done |
 | `docs/templates/` | 3 templates (research summary, brief, SOP) | Done |
-| `docs/research/` | Empty directory for saved research | Done |
+| `docs/research/job-search-automation.md` | Job search capabilities + implementation plan | Done |
 
 ---
 
