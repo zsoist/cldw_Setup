@@ -1,7 +1,8 @@
 {
   "gateway": {
+    "mode": "local",
+    "bind": "lan",
     "port": 18789,
-    "bind": "loopback",
     "auth": {
       "token": "REPLACE_WITH_GATEWAY_TOKEN"
     }
@@ -15,65 +16,19 @@
         ]
       },
       "workspace": "/home/node/.openclaw/workspace",
-      "compaction": {
-        "mode": "safeguard"
-      },
-      "maxConcurrent": 4,
-      "subagents": {
-        "maxConcurrent": 4
-      }
-    },
-    "profiles": {
-      "main": {
-        "description": "Personal assistant — general tasks, research, scheduling",
-        "workspace": "/home/node/.openclaw/workspace/personal",
-        "configDir": "config",
-        "sandbox": {
-          "enabled": false
-        },
-        "elevatedExec": false,
-        "channels": ["telegram"]
-      },
-      "work": {
-        "description": "Professional assistant — Dialectica, job search, work drafts",
-        "workspace": "/home/node/.openclaw/workspace/business",
-        "configDir": "agents/work",
-        "model": {
-          "primary": "anthropic/claude-haiku-4-5",
-          "fallbacks": [
-            "anthropic/claude-sonnet-4-5"
-          ]
-        },
-        "sandbox": {
-          "enabled": true,
-          "scope": "agent",
-          "workspaceAccess": "readwrite"
-        },
-        "elevatedExec": false,
-        "channels": ["telegram"]
-      }
+      "maxConcurrent": 4
     }
-  },
-  "heartbeat": {
-    "interval": "55m"
   },
   "channels": {
     "telegram": {
       "enabled": true,
-      "token": "REPLACE_WITH_TELEGRAM_BOT_TOKEN",
+      "botToken": "REPLACE_WITH_TELEGRAM_BOT_TOKEN",
       "dmPolicy": "pairing",
-      "groupChats": false
+      "groups": {
+        "*": {
+          "requireMention": true
+        }
+      }
     }
-  },
-  "providers": {
-    "anthropic": {
-      "apiKey": "REPLACE_WITH_ANTHROPIC_API_KEY"
-    }
-  },
-  "security": {
-    "maxToolCallsPerTask": 10,
-    "maxRetriesOnFailure": 2,
-    "elevatedExecDefault": false,
-    "sandboxDefault": true
   }
 }

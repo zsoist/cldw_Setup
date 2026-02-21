@@ -138,7 +138,7 @@ Sentinel is built on the **Anthropic SDK's tool_use pattern** — a production i
 | `docker_logs` | Tail container logs (max 200 lines) | Read-only, truncated |
 | `run_command` | Execute shell command | **Whitelist-only**, blocklist enforced |
 | `check_security` | UFW, fail2ban, open ports audit | Read-only |
-| `check_openclaw_health` | Container + HTTP health | Read-only |
+| `check_openclaw_health` | Container state + Docker health + recent errors | Read-only |
 | `backup_openclaw` | Tar.gz config + workspace | Write (safe location only) |
 
 ### Command Whitelist Security Model
@@ -222,7 +222,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── memory/                            # Daily + weekly log storage
 │   │   ├── weekly/                        # Weekly review summaries
 │   │   └── (YYYY-MM-DD.md files)          # Auto-generated daily logs
-│   └── openclaw-config.json               # Gateway config (multi-agent + sandbox)
+│   └── openclaw-config.json               # Gateway runtime config (schema-valid for pinned OpenClaw)
 ├── sentinel/                              # Sysadmin Bot (Anthropic SDK + tool_use)
 │   ├── sentinel.py                        # Agentic loop with tool chaining
 │   ├── tools.py                           # 8 tools + whitelist/blocklist security
@@ -235,7 +235,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │       ├── test_tools.py                  # Whitelist, tool dispatch, Docker mocks
 │       └── test_telegram.py               # Auth, commands, message handling
 ├── infrastructure/                        # Deployment & operations
-│   ├── Dockerfile                         # OpenClaw container (node:20-slim)
+│   ├── Dockerfile                         # OpenClaw container (node:22-bookworm + pnpm build)
 │   ├── docker-compose.yml                 # Resource limits tuned for CPX22
 │   ├── env.template                       # Secret placeholders (never committed)
 │   ├── deploy.sh                          # One-shot VPS deployment
@@ -316,7 +316,8 @@ With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well unde
 
 ### Operational
 - **Automated backups**: daily at 03:00, 7-day rotation, secrets excluded from tarballs
-- **Health checks**: 8-point verification script (Docker, HTTP, disk, memory, UFW, backups)
+- **Health checks**: 8-point verification script (Docker + gateway health, disk, memory, UFW, backups)
+- **Deploy ownership alignment**: `/root/.openclaw` ownership is aligned to container `openclaw` UID/GID after image build
 - **Boot checks**: startup health verification before agent activation (BOOT.md)
 - **Automatic security updates**: unattended-upgrades enabled
 - **Change management**: no silent config mutations — explain, apply, validate, test, report

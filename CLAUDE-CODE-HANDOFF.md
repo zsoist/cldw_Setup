@@ -58,7 +58,11 @@ Root cause:
   - `channels.telegram.groupChats`
   - root `heartbeat`, `providers`, `security`
 
-Operational fix on VPS:
+Repository fix on `main`:
+- `openclaw/openclaw-config.json` now ships a schema-valid configuration for pinned OpenClaw.
+- Deploy now copies this valid schema to both runtime config targets.
+
+VPS operational fix (already applied before repo fix):
 - Replaced `/root/.openclaw/openclaw.json` with schema-valid config using:
   - `gateway.mode`
   - `gateway.bind`
@@ -66,13 +70,23 @@ Operational fix on VPS:
   - `agents.defaults.*`
   - `channels.telegram.botToken` + `groups`
 
-### 4. Health check false-negative for OpenClaw HTTP
+### 4. OpenClaw state permissions caused write failures
+
+Root cause:
+- `deploy.sh` forced `/root/.openclaw` ownership to `1000:1000`, which may not match the image's `openclaw` user UID/GID.
+- On some hosts this caused EACCES during session/credentials/state writes.
+
+Fix:
+- `infrastructure/deploy.sh` now resolves the built image runtime UID/GID dynamically and chowns `/root/.openclaw` accordingly.
+- Deploy also pre-creates required state dirs (`agents/main/sessions`, `credentials`) and applies strict config permissions.
+### 5. Health check false-negative for OpenClaw HTTP
 
 Root cause:
 - Health script used HTTP root probe (`curl /`) for a WS gateway path and marked healthy gateway as failed.
 
 Fix:
 - `infrastructure/health-check.sh` now checks Docker container health status instead of raw HTTP root code.
+- `sentinel/tools.py` (`check_openclaw_health`) now reports Docker health and no longer relies on root HTTP status.
 
 ---
 
@@ -99,8 +113,9 @@ docker exec -it openclaw-openclaw-gateway-1 \
 - `infrastructure/deploy.sh`
 - `infrastructure/env.template`
 - `docs/DEPLOYMENT.md`
-- `openclaw/openclaw-config.json` (still needs full schema modernization in-repo)
+- `openclaw/openclaw-config.json`
 - `sentinel/config.py`
+- `sentinel/tools.py`
 - `README.md`
 
 ---
@@ -114,15 +129,11 @@ docker exec -it openclaw-openclaw-gateway-1 \
    - OpenClaw gateway token
    - GOG keyring password
 
-2. **Modernize `openclaw/openclaw-config.json` in repo**
-   - It still carries legacy schema and can re-introduce crash loops on redeploy.
-   - Should be migrated to current OpenClaw schema to match pinned ref.
-
-3. **Stabilize SSH access**
+2. **Stabilize SSH access**
    - Ensure root key auth is correctly configured in `/root/.ssh/authorized_keys`.
    - Keep `ServerAliveInterval` and `ServerAliveCountMax` client options.
 
-4. **Optional hardening cleanup**
+3. **Optional hardening cleanup**
    - Validate no duplicated keys in `.env`.
    - Add CI smoke checks for config schema + health-check behavior.
 

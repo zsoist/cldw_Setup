@@ -446,23 +446,17 @@ def execute_check_openclaw_health() -> dict[str, Any]:
     try:
         client = docker.from_env()
         container = client.containers.get("openclaw-openclaw-gateway-1")
+        state = container.attrs.get("State", {})
+        docker_health = state.get("Health", {}).get("Status", "unknown")
         health["status"] = container.status
-        health["uptime"] = str(container.attrs.get("State", {}).get("StartedAt", "unknown"))[:19]
+        health["docker_health"] = docker_health
+        health["uptime"] = str(state.get("StartedAt", "unknown"))[:19]
+        health["gateway_ready"] = container.status == "running" and docker_health == "healthy"
 
         # Check recent logs for errors
         logs = container.logs(tail=20).decode("utf-8", errors="replace")
         error_lines = [line for line in logs.split("\n") if "error" in line.lower() or "fatal" in line.lower()]
         health["recent_errors"] = error_lines[-5:] if error_lines else []
-
-        # Check gateway HTTP response
-        try:
-            result = subprocess.run(
-                ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:18789/"],
-                capture_output=True, text=True, timeout=5
-            )
-            health["http_status"] = result.stdout.strip()
-        except Exception:
-            health["http_status"] = "unreachable"
 
     except docker.errors.NotFound:
         health["status"] = "container not found"

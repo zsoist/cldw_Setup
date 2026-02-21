@@ -105,6 +105,25 @@ class TestDockerTools:
         assert result["status"] == "restarted"
         mock_container.restart.assert_called_once_with(timeout=30)
 
+    @patch("tools.docker.from_env")
+    def test_openclaw_health_uses_docker_health(self, mock_docker):
+        mock_container = MagicMock()
+        mock_container.status = "running"
+        mock_container.attrs = {
+            "State": {
+                "StartedAt": "2026-02-21T21:08:56.392Z",
+                "Health": {"Status": "healthy"},
+            }
+        }
+        mock_container.logs.return_value = b"gateway started\nno errors"
+        mock_docker.return_value.containers.get.return_value = mock_container
+
+        result = execute_tool("check_openclaw_health", {})
+        assert result["status"] == "running"
+        assert result["docker_health"] == "healthy"
+        assert result["gateway_ready"] is True
+        assert "http_status" not in result
+
 
 class TestRunCommand:
     """Test the run_command tool with whitelist enforcement."""

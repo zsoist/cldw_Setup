@@ -39,9 +39,10 @@ mkdir -p "$OPENCLAW_CONFIG/workspace/outputs/exports"
 mkdir -p "$OPENCLAW_CONFIG/workspace/logs"
 mkdir -p "$OPENCLAW_CONFIG/skills"
 mkdir -p "$OPENCLAW_CONFIG/agents/work"
+mkdir -p "$OPENCLAW_CONFIG/agents/main/sessions"
+mkdir -p "$OPENCLAW_CONFIG/credentials"
 mkdir -p "$OPENCLAW_CONFIG/memory/weekly"
 mkdir -p /root/backups
-chown -R 1000:1000 "$OPENCLAW_CONFIG"
 
 echo "=== [4/9] Copy OpenClaw config files (main agent) ==="
 for f in SOUL.md USER.md AGENTS.md TOOLS.md HEARTBEAT.md MEMORY.md \
@@ -92,6 +93,20 @@ if ! grep -q '^OPENCLAW_REF=' .env; then
     echo "OPENCLAW_REF=$OPENCLAW_REF" >> .env
 fi
 docker compose build
+
+echo "Aligning OpenClaw state directory ownership with container runtime user..."
+OPENCLAW_IMAGE_ID=$(docker compose images -q openclaw-gateway | head -n 1)
+if [ -z "$OPENCLAW_IMAGE_ID" ]; then
+    echo "Error: could not resolve openclaw-gateway image after build."
+    exit 1
+fi
+
+OPENCLAW_UID=$(docker run --rm --entrypoint sh "$OPENCLAW_IMAGE_ID" -c 'id -u openclaw')
+OPENCLAW_GID=$(docker run --rm --entrypoint sh "$OPENCLAW_IMAGE_ID" -c 'id -g openclaw')
+
+chown -R "${OPENCLAW_UID}:${OPENCLAW_GID}" "$OPENCLAW_CONFIG"
+chmod 700 "$OPENCLAW_CONFIG"
+chmod 600 "$OPENCLAW_CONFIG/openclaw.json" "$OPENCLAW_CONFIG/openclaw-config.json"
 
 echo "=== [9/9] Enable Sentinel service ==="
 systemctl daemon-reload
