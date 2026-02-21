@@ -154,14 +154,12 @@ fi
 docker compose build
 
 echo "Aligning OpenClaw state directory ownership with container runtime user..."
-OPENCLAW_IMAGE_ID=$(docker compose images -q openclaw-gateway | head -n 1)
-if [ -z "$OPENCLAW_IMAGE_ID" ]; then
-    echo "Error: could not resolve openclaw-gateway image after build."
+OPENCLAW_UID="$(docker compose run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -u openclaw' | tr -d '\r' | tail -n 1)"
+OPENCLAW_GID="$(docker compose run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -g openclaw' | tr -d '\r' | tail -n 1)"
+if ! [[ "$OPENCLAW_UID" =~ ^[0-9]+$ ]] || ! [[ "$OPENCLAW_GID" =~ ^[0-9]+$ ]]; then
+    echo "Error: failed to resolve OpenClaw runtime UID/GID (got uid='$OPENCLAW_UID', gid='$OPENCLAW_GID')."
     exit 1
 fi
-
-OPENCLAW_UID=$(docker run --rm --entrypoint sh "$OPENCLAW_IMAGE_ID" -c 'id -u openclaw')
-OPENCLAW_GID=$(docker run --rm --entrypoint sh "$OPENCLAW_IMAGE_ID" -c 'id -g openclaw')
 
 chown -R "${OPENCLAW_UID}:${OPENCLAW_GID}" "$OPENCLAW_CONFIG"
 chmod 700 "$OPENCLAW_CONFIG"
