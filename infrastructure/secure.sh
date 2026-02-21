@@ -36,7 +36,23 @@ echo "=== [5/6] SSH hardening ==="
 sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 sed -i 's/#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-systemctl restart sshd
+
+SSH_SERVICE=""
+if systemctl list-unit-files | grep -q '^ssh\.service'; then
+    SSH_SERVICE="ssh"
+elif systemctl list-unit-files | grep -q '^sshd\.service'; then
+    SSH_SERVICE="sshd"
+else
+    echo "Error: could not find ssh.service or sshd.service"
+    exit 1
+fi
+
+if ! sshd -t; then
+    echo "Error: sshd configuration validation failed. Aborting restart."
+    exit 1
+fi
+
+systemctl restart "$SSH_SERVICE"
 
 echo "=== [6/6] Enable automatic security updates ==="
 dpkg-reconfigure -plow unattended-upgrades
