@@ -4,7 +4,7 @@
 >
 > Last updated: 2026-02-21  
 > Branch: `main`  
-> Current commit: `12d2595`  
+> Current commit: `c8e7648`  
 > Source branch merged into main: `claude/openclaw-optimization-readme-f9ha4`
 
 ---
