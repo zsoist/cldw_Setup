@@ -176,7 +176,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 ```
 .
 ├── README.md                              # This file
-├── CLAUDE-CODE-HANDOFF.md                 # Original project specification
+├── CLAUDE-CODE-HANDOFF.md                 # Project state + handoff for next session
 ├── openclaw/                              # OpenClaw Gateway configuration
 │   ├── config/                            # Main agent ("Claw") workspace files
 │   │   ├── SOUL.md                        # Orchestrator identity + delegation protocol
@@ -206,7 +206,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │   ├── business/                      # Professional context (work agent)
 │   │   │   ├── goals-okrs.md              # Business objectives + key results
 │   │   │   ├── operating-rules.md         # Work boundaries + quality standards
-│   │   │   └── projects/active|archived/  # Business project files
+│   │   │   └── projects/                  # active/ and archived/ subdirs
 │   │   ├── outputs/                       # Generated deliverables
 │   │   │   ├── summaries/                 # Daily briefs, meeting prep, knowledge capture
 │   │   │   ├── reports/                   # Weekly digests, security hygiene, stale items
@@ -353,13 +353,20 @@ python3 -c "import json; json.load(open('openclaw/openclaw-config.json'))"
 # 3. Check SOUL.md word count (must be < 500)
 wc -w openclaw/config/SOUL.md
 
-# 4. Run Sentinel tests (no API key needed)
+# 4. Verify all config files exist
+ls openclaw/config/*.md | wc -l          # Should be 12
+ls openclaw/agents/work/*.md | wc -l     # Should be 5
+
+# 5. Verify workspace content
+ls openclaw/workspace/personal/goals.md openclaw/workspace/business/goals-okrs.md
+
+# 6. Run Sentinel tests (no API key needed)
 cd sentinel
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 pytest tests/ -v
 
-# 5. When ready to deploy, see docs/DEPLOYMENT.md
+# 7. When ready to deploy, see docs/DEPLOYMENT.md
 ```
 
 ## Key Optimization Decisions Explained
