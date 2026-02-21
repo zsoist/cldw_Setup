@@ -54,7 +54,7 @@ fi
 
 # 3b. HTTP fallback endpoint (for non-Telegram checks)
 HTTP_FALLBACK_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18789/__openclaw__/canvas/ 2>/dev/null || true)
-if [ "$HTTP_FALLBACK_CODE" = "200" ] || [ "$HTTP_FALLBACK_CODE" = "301" ] || [ "$HTTP_FALLBACK_CODE" = "302" ]; then
+if [ "$HTTP_FALLBACK_CODE" = "200" ] || [ "$HTTP_FALLBACK_CODE" = "301" ] || [ "$HTTP_FALLBACK_CODE" = "302" ] || [ "$HTTP_FALLBACK_CODE" = "401" ]; then
     check "OpenClaw HTTP fallback endpoint reachable (status: $HTTP_FALLBACK_CODE)" 0
 else
     warn "OpenClaw HTTP fallback endpoint not reachable (status: ${HTTP_FALLBACK_CODE:-000})"
