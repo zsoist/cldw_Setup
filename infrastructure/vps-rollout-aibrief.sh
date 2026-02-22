@@ -75,8 +75,20 @@ chown -R "${OC_UID}:${OC_GID}" "$OPENCLAW_CFG"
 chmod 600 "$OPENCLAW_CFG/openclaw.json" "$OPENCLAW_CFG/openclaw-config.json"
 
 log "Syncing runtime envs"
-/usr/local/sbin/sync-sentinel-env.sh
-/usr/local/sbin/sync-openclaw-config.sh
+if [ -x /usr/local/sbin/sync-sentinel-env.sh ]; then
+  /usr/local/sbin/sync-sentinel-env.sh
+else
+  log "WARN: /usr/local/sbin/sync-sentinel-env.sh missing; skipping Sentinel env sync"
+fi
+
+if [ -x /usr/local/sbin/sync-openclaw-config.sh ]; then
+  /usr/local/sbin/sync-openclaw-config.sh
+else
+  log "WARN: /usr/local/sbin/sync-openclaw-config.sh missing; using project-local fallback"
+  bash "$PROJECT_DIR/infrastructure/sync-openclaw-config.sh" \
+    "/root/openclaw/.env" \
+    "$PROJECT_DIR/openclaw/openclaw-config.json"
+fi
 
 log "Restarting services"
 cd "$OPENCLAW_DIR"
