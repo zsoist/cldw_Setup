@@ -14,7 +14,7 @@ cost_tier: cheap
 
 ## Routing Guard
 - This skill handles generic personal daily planning.
-- If input starts with `/aibrief`, immediately route to `ai-daily-brief`.
+- If input starts with `/ai_daily_brief`, immediately route to `ai-daily-brief`.
 - Do not execute AI news synthesis here.
 
 ## Role

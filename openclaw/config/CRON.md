@@ -33,7 +33,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Notify:** Always if >=1 credible story; otherwise send "No high-confidence AI updates in this window."
 - **Model:** Sonnet (escalate only for synthesis; keep retrieval lightweight)
 - **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Confidence & Gaps
-- **Notes:** command alias `/aibrief_morning`; enforce anti-hype penalties before ranking
+- **Notes:** manual trigger: `/ai_daily_brief morning`; enforce anti-hype penalties before ranking
 
 ### 3. AI Daily Brief (Evening)
 - **Schedule:** Daily 19:00 COT
@@ -43,7 +43,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Notify:** Always if >=1 credible story; suppress unchanged repeats
 - **Model:** Sonnet
 - **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Updates vs Morning | Confidence & Gaps
-- **Notes:** command alias `/aibrief_evening`; mark updates to prior stories explicitly
+- **Notes:** manual trigger: `/ai_daily_brief evening`; mark updates to prior stories explicitly
 
 ### 4. EOD Review
 - **Schedule:** Daily 20:00 COT

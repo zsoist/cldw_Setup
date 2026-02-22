@@ -15,7 +15,7 @@
 5. If evening (19:00-20:00) and no evening AI brief sent today: trigger `ai-daily-brief` (evening slot)
 6. If evening (20:00-21:00): run end-of-day log
 7. If Sunday evening (20:00-21:00): run weekly review
-8. If AI brief repeatedly fails, emit one concise `/aibrief_status` style diagnostic (no spam)
+8. If AI brief repeatedly fails, emit one concise `/ai_daily_brief status` style diagnostic (no spam)
 
 ## Rules
 - Heartbeat should complete in <45 seconds

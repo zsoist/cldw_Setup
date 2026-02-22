@@ -45,6 +45,18 @@ if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
     cp "$skill_file" "$OPENCLAW_CFG/skills/$rel_path"
   done < <(find "$PROJECT_DIR/openclaw/skills" -type f -print0)
 fi
+
+# Remove deprecated alias skill folders to avoid confusing/duplicate command surfaces.
+for deprecated in \
+  aibrief \
+  aibrief_morning \
+  aibrief_evening \
+  aibrief_top5 \
+  aibrief_builder \
+  aibrief_watchlist \
+  aibrief_status; do
+  rm -rf "$OPENCLAW_CFG/skills/$deprecated"
+done
 cp "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
 
 require_file "$OPENCLAW_CFG/openclaw.json"
@@ -84,5 +96,5 @@ log "Final health check"
 "$PROJECT_DIR/infrastructure/health-check.sh"
 
 log "Rollout complete for ref ${CURRENT_REF}."
-log "Telegram smoke test: send /aibrief_status then /aibrief_top5 to your OpenClaw bot."
+log "Telegram smoke test: send /ai_daily_brief status then /ai_daily_brief top5."
 log "Optional local test: $PROJECT_DIR/infrastructure/aibrief-smoke-test.sh"

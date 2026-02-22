@@ -139,7 +139,7 @@ In another terminal:
 # Browser: open http://127.0.0.1:18789/
 # Telegram: send /start to your OpenClaw bot
 # Telegram: send /status to your Sentinel bot
-# Telegram: send /aibrief_status and /aibrief_top5 to validate AI brief routing
+# Telegram: send /ai_daily_brief status and /ai_daily_brief top5 to validate AI brief routing
 ```
 
 ## Step 8: Post-deployment

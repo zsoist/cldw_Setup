@@ -1,16 +1,10 @@
 ---
 name: ai-daily-brief
-description: Produce a source-grounded, stateful AI news briefing for Telegram using the dedicated /aibrief command namespace
+description: Produce a source-grounded, stateful AI news briefing for Telegram
 triggers:
   - "ai daily brief"
   - "ai news brief"
-  - "/aibrief"
-  - "/aibrief_morning"
-  - "/aibrief_evening"
-  - "/aibrief_top5"
-  - "/aibrief_builder"
-  - "/aibrief_watchlist"
-  - "/aibrief_status"
+  - "/ai_daily_brief"
 schedule: "10 7,19 * * *"
 model: sonnet
 cost_tier: standard
@@ -18,22 +12,20 @@ cost_tier: standard
 
 # AI Daily Brief Skill
 
-## Non-Negotiable Routing Guard
-- This skill owns the `/aibrief*` namespace.
-- If input starts with `/aibrief`, do **not** route to `daily-briefing` or generic personal briefing templates.
-- Keep generic `/brief` behavior unchanged for non-AI personal planning workflows.
+## Command Contract (canonical)
+Use a single stable command to avoid routing ambiguity:
+- `/ai_daily_brief`
+
+Optional mode argument (same command):
+- `/ai_daily_brief morning`
+- `/ai_daily_brief evening`
+- `/ai_daily_brief top5`
+- `/ai_daily_brief builder`
+- `/ai_daily_brief watchlist [topics]`
+- `/ai_daily_brief status`
 
 ## Role
-Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimized for fast Telegram reading and operational decision value.
-
-## Supported Commands
-- `/aibrief`: full brief, auto slot detect (`<13:00 COT` => morning, else evening)
-- `/aibrief_morning`: force morning slot
-- `/aibrief_evening`: force evening slot
-- `/aibrief_top5`: compact top 5
-- `/aibrief_builder`: builder/agent corner only
-- `/aibrief_watchlist [topics]`: watchlist-first brief (optionally updates watchlist)
-- `/aibrief_status`: operational status only (no news synthesis)
+Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimized for Telegram readability and operational decision value.
 
 ## Inputs
 - Local timezone: `America/Bogota`
@@ -75,7 +67,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 10. **Persist**: run metadata + story fingerprints + suppression state.
 
 ## Output Structure
-### Full mode (`/aibrief`, `/aibrief_morning`, `/aibrief_evening`)
+### Full mode (default, `morning`, `evening`)
 1. Title line with slot + COT timestamp
 2. Executive Snapshot (2-4 bullets)
 3. Ranked Top Stories:
@@ -90,16 +82,16 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 7. Tomorrow Watchlist
 8. Confidence & Gaps
 
-### Top5 mode (`/aibrief_top5`)
+### `top5`
 - Title + Top 5 + concise sources + watch-next mini-list
 
-### Builder mode (`/aibrief_builder`)
+### `builder`
 - Builder/agent tooling changes, APIs, evals, infra implications, experiments
 
-### Watchlist mode (`/aibrief_watchlist`)
+### `watchlist`
 - Watchlist deltas + priority signals + unresolved unknowns
 
-### Status mode (`/aibrief_status`)
+### `status`
 Return:
 - last run + last success (morning/evening)
 - candidate/cluster counts from last completed run

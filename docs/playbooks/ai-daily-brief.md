@@ -8,15 +8,16 @@ This playbook defines the production behavior for `ai_daily_brief` in OpenClaw s
 - Keep runs stateful, auditable, and Telegram-friendly.
 
 ## Command Namespace
-- `/aibrief` (auto slot)
-- `/aibrief_morning`
-- `/aibrief_evening`
-- `/aibrief_top5`
-- `/aibrief_builder`
-- `/aibrief_watchlist [topics]`
-- `/aibrief_status`
+- Canonical command: `/ai_daily_brief`
+- Mode variants via args:
+  - `/ai_daily_brief morning`
+  - `/ai_daily_brief evening`
+  - `/ai_daily_brief top5`
+  - `/ai_daily_brief builder`
+  - `/ai_daily_brief watchlist [topics]`
+  - `/ai_daily_brief status`
 
-Rule: `/aibrief*` must never be handled by the generic personal daily briefing flow.
+Rule: use one canonical command path to avoid command alias drift.
 
 ## Slot Rules
 - Timezone: `America/Bogota`

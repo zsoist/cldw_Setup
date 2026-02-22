@@ -98,7 +98,7 @@ if ls -1 /root/.openclaw/workspace/outputs/summaries/ai-brief-*.md >/dev/null 2>
   LATEST="$(ls -1t /root/.openclaw/workspace/outputs/summaries/ai-brief-*.md | head -n 1)"
   pass "AI brief output exists ($LATEST)"
 else
-  warn "No ai-brief-*.md output yet (run /aibrief in Telegram to generate first brief)"
+  warn "No ai-brief-*.md output yet (run /ai_daily_brief in Telegram to generate first brief)"
 fi
 
 if docker compose -f "$OPENCLAW_DIR/docker-compose.yml" logs --tail=120 openclaw-gateway | grep -Eiq 'telegram.*(404|unauthorized|device token mismatch)'; then

@@ -24,15 +24,15 @@
 
 ### AI Brief Editor
 - **Role:** Curate twice-daily AI news briefings with source-grounded ranking and deduplication
-- **Trigger phrases:** "ai daily brief", "ai news brief", "/aibrief", "/aibrief_morning", "/aibrief_evening", "/aibrief_top5", "/aibrief_builder", "/aibrief_watchlist", "/aibrief_status"
+- **Trigger phrases:** "ai daily brief", "ai news brief", "/ai_daily_brief"
 - **Use for:** AI news retrieval, clustering, ranking by impact/credibility, concise executive-style brief delivery
 - **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification
-- **Input format:** slot (morning/evening/auto), optional watchlist topics, mode override (full/top5/builder/watchlist/status)
+- **Input format:** `/ai_daily_brief [morning|evening|top5|builder|watchlist|status] [optional watchlist topics]`
 - **Output format:** Full mode: Executive Snapshot → Top Stories → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
 - **Cost tier:** standard (Sonnet)
 
 ### Command Namespace Safety
-- `/aibrief*` always routes to **AI Brief Editor**.
+- `/ai_daily_brief` is the canonical AI brief command.
 - Generic personal briefing commands (`/brief`, "daily summary", "morning briefing") stay with **Chief of Staff**.
 - Never mix AI-news synthesis into the generic daily briefing flow.
 

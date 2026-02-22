@@ -28,7 +28,7 @@ docker compose logs openclaw-gateway | grep -i telegram
 docker compose restart openclaw-gateway
 ```
 
-### `/aibrief*` returns generic daily briefing content
+### `/ai_daily_brief` returns generic daily briefing content
 This indicates command routing collision between AI brief and generic daily briefing.
 
 ```bash
@@ -41,9 +41,9 @@ cd /root/openclaw-project
 ```
 
 Then test in Telegram:
-- `/aibrief_status`
-- `/aibrief_top5`
-- `/commands` (confirm `/aibrief*` appears in listed commands)
+- `/ai_daily_brief status`
+- `/ai_daily_brief top5`
+- `/commands` (confirm `/ai_daily_brief` appears in listed commands)
 
 If still wrong, inspect:
 - `/root/.openclaw/AGENTS.md`
@@ -60,7 +60,7 @@ python3 -m json.tool /root/.openclaw/workspace/logs/ai-brief-state.json | sed -n
 ```
 
 Run manually from Telegram:
-- `/aibrief_morning` or `/aibrief_evening`
+- `/ai_daily_brief morning` or `/ai_daily_brief evening`
 
 ### High token usage
 1. Check console.anthropic.com -> Usage for daily breakdown

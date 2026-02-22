@@ -20,7 +20,7 @@
   - Sentinel runtime env: `/etc/sentinel/sentinel.env` (synced via script)
 - Backup/restore workflows hardened.
 - AI Daily Brief capability now runs twice daily with stateful duplicate suppression.
-- AI Daily Brief now has dedicated `/aibrief*` namespace safeguards, expanded modes, and VPS rollout/smoke-test scripts.
+- AI Daily Brief now uses canonical `/ai_daily_brief` command arguments, plus VPS rollout/smoke-test scripts.
 
 ---
 
@@ -115,20 +115,12 @@ Marker:
 
 - Added new skill:
   - `openclaw/skills/ai-daily-brief/SKILL.md`
-- Added explicit slash-command alias skills:
-  - `openclaw/skills/aibrief/SKILL.md`
-  - `openclaw/skills/aibrief_morning/SKILL.md`
-  - `openclaw/skills/aibrief_evening/SKILL.md`
-  - `openclaw/skills/aibrief_top5/SKILL.md`
-  - `openclaw/skills/aibrief_builder/SKILL.md`
-  - `openclaw/skills/aibrief_watchlist/SKILL.md`
-  - `openclaw/skills/aibrief_status/SKILL.md`
 - Updated existing skill:
   - `openclaw/skills/daily-briefing/SKILL.md` (now daily planning-first; no duplicate AI headline synthesis)
 - Added stateful AI brief tracking:
   - `openclaw/workspace/logs/ai-brief-state.json`
 - Updated orchestration and schedules:
-  - `openclaw/config/AGENTS.md` (explicit `/aibrief*` namespace ownership + collision guard)
+  - `openclaw/config/AGENTS.md` (canonical `/ai_daily_brief` routing + collision guard)
   - `openclaw/config/CRON.md` (idempotent slot behavior + richer AI brief format targets)
   - `openclaw/config/HEARTBEAT.md` (partial-run logic + status diagnostic guidance)
 - Added playbook/template:
@@ -171,7 +163,10 @@ Marker:
 3. Validate real VPS migration path for non-root Sentinel (`sync-sentinel-env.sh` + systemd restart).
 4. Consider adding signed release artifacts if repo integrity is part of threat model.
 5. Validate AI brief command flow in Telegram:
-   - `/aibrief`, `/aibrief_morning`, `/aibrief_evening`, `/aibrief_top5`, `/aibrief_builder`, `/aibrief_watchlist`, `/aibrief_status`
+   - `/ai_daily_brief`
+   - `/ai_daily_brief top5`
+   - `/ai_daily_brief builder`
+   - `/ai_daily_brief status`
 
 ---
 
