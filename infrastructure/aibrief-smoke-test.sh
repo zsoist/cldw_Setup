@@ -132,9 +132,9 @@ try:
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     tg = ((data.get('channels') or {}).get('telegram') or {})
-    token = (tg.get('botToken') or tg.get('token') or '').strip()
+    token = (tg.get('botToken') or '').strip()
     acct = ((tg.get('accounts') or {}).get('default') or {})
-    acct_token = (acct.get('botToken') or acct.get('token') or '').strip()
+    acct_token = (acct.get('botToken') or '').strip()
     ok = bool(token or acct_token)
     print('yes' if ok else 'no')
 except Exception:
@@ -142,9 +142,9 @@ except Exception:
 PY
 )"
   if [ "$TG_CFG_PRESENT" = "yes" ]; then
-    pass "Runtime config has Telegram token at channels.telegram(.accounts.default).{botToken|token}"
+    pass "Runtime config has Telegram token at channels.telegram(.accounts.default).botToken"
   else
-    fail "Runtime config missing Telegram token (openclaw.json channel config)"
+    fail "Runtime config missing Telegram bot token (openclaw.json channel config)"
   fi
 
   TG_DM_RUNTIME="$(python3 - <<'PY'

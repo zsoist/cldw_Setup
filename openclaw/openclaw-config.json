@@ -23,7 +23,6 @@
     "telegram": {
       "enabled": true,
       "botToken": "REPLACE_WITH_TELEGRAM_BOT_TOKEN",
-      "token": "REPLACE_WITH_TELEGRAM_BOT_TOKEN",
       "commands": {
         "native": true,
         "nativeSkills": true

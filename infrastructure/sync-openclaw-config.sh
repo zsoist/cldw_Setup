@@ -88,16 +88,12 @@ data["gateway"]["auth"]["token"] = os.environ["OPENCLAW_GATEWAY_TOKEN"]
 data.setdefault("channels", {}).setdefault("telegram", {})
 data["channels"]["telegram"]["enabled"] = True
 data["channels"]["telegram"]["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
-# Compatibility: some OpenClaw builds/readers expect `token` instead of
-# `botToken`. Keep both in sync to avoid tokenSource=none drift.
-data["channels"]["telegram"]["token"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
 accounts = data["channels"]["telegram"].setdefault("accounts", {})
 default_account = accounts.get("default")
 if not isinstance(default_account, dict):
     default_account = {}
 default_account["enabled"] = True
 default_account["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
-default_account["token"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
 
 allow_from_raw = (os.environ.get("OPENCLAW_TELEGRAM_ALLOW_FROM") or "").strip()
 allow_from = []
