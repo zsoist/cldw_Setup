@@ -20,6 +20,9 @@ Optional mode argument (same command):
 - `/ai_daily_brief morning`
 - `/ai_daily_brief evening`
 - `/ai_daily_brief top5`
+- `/ai_daily_brief top5 week`
+- `/ai_daily_brief top5 month`
+- `/ai_daily_brief top5 month YYYY-MM`
 - `/ai_daily_brief builder`
 - `/ai_daily_brief watchlist [topics]`
 - `/ai_daily_brief status`
@@ -49,6 +52,8 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 - Coverage window:
   - Morning: previous evening run or last 12-16h
   - Evening: previous morning run or last 10-14h
+  - Top5 default: **current calendar week in COT** (Monday 00:00 through Sunday 23:59 containing execution date)
+  - Top5 monthly: calendar month in COT (from day 1 00:00 to month-end 23:59)
 - Trusted source tiers:
   - Tier 1: official labs/vendors/model cards/regulators
   - Tier 2: Reuters/Bloomberg/FT/WSJ/The Information
@@ -83,6 +88,19 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 - `builder` mode: bias to tooling queries, `count=15`, `maximum_number_of_tokens=6144`
 - `watchlist` mode: narrow watchlist terms, `count=10`, `maximum_number_of_tokens=3072`
 
+### Top5 Time-Scope Contract (mandatory)
+- Default scope for `/ai_daily_brief top5` is the **current week** in `America/Bogota`:
+  - Monday 00:00:00 COT to Sunday 23:59:59 COT.
+- If user asks monthly intent (examples: "top stories of the month", "this month", `/ai_daily_brief top5 month`), use calendar month scope.
+- If user provides explicit month token (`YYYY-MM`), use that exact month.
+- Never mix out-of-scope stories into scoped `top5` output.
+- If fewer than 5 credible stories exist in the requested scope, report fewer and add: `Coverage limited by requested time scope.`
+
+### Natural-Language Scope Mapping
+- "top stories this week" -> `/ai_daily_brief top5 week`
+- "top stories this month" / "top stories of the month" -> `/ai_daily_brief top5 month`
+- "top stories of February 2026" -> `/ai_daily_brief top5 month 2026-02`
+
 ## Pipeline (deterministic first, then synthesis)
 0. **State bootstrap (mandatory, first action)**:
    - load `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
@@ -109,6 +127,8 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
    - benchmark claims without method context
    - uncorroborated viral/social claims
 7. **Draft**: story-level synthesis with explicit source attribution.
+   - For each top story, include the concrete model/product name in headline or first bullet when available.
+   - If source confirms release but does not disclose model/product name, explicitly say `model name not publicly disclosed`.
 8. **Validate**:
    - required sections present by mode
    - no duplicate stories in same run
@@ -162,6 +182,10 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 
 ### `top5`
 - Title + Top 5 + concise sources + watch-next mini-list
+- Title must include explicit scope label and bounds in COT, e.g.:
+  - `AI Daily Brief — Top 5 | Week of 2026-02-16 to 2026-02-22 (COT)`
+  - `AI Daily Brief — Top 5 | Month 2026-02 (COT)`
+- Each story line must include event date and concrete model/product identifier when known.
 
 ### `builder`
 - Builder/agent tooling changes, APIs, evals, infra implications, experiments
@@ -204,6 +228,8 @@ Status truth rules:
 - Do not present rumors as facts.
 - Mark conflicting reports explicitly.
 - If no credible stories: `No high-confidence AI updates in this window.`
+- In `top5` mode, reject any story outside requested scope.
+- In `top5` mode, reject generic model claims lacking named model/product unless explicitly marked as undisclosed by sources.
 - If retrieval degraded: send partial brief and list missing coverage.
 - If `BRAVE_API_KEY` is missing: report provider as unconfigured and return setup command.
 - If target channel is configured but unreachable (forbidden/not admin):

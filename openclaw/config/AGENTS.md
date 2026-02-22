@@ -27,7 +27,8 @@
 - **Trigger phrases:** "ai daily brief", "ai news brief", "/ai_daily_brief"
 - **Use for:** AI news retrieval, clustering, ranking by impact/credibility, concise executive-style brief delivery
 - **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification
-- **Input format:** canonical `/ai_daily_brief [morning|evening|top5|builder|watchlist|status] [optional watchlist topics]`
+- **Input format:** canonical `/ai_daily_brief [morning|evening|top5|builder|watchlist|status] [scope args]`
+- **Top5 scope args:** `week` (default) | `month` | `month YYYY-MM`
 - **Compatibility aliases:** `/ai_daily_brief_morning`, `/ai_daily_brief_evening`, `/ai_daily_brief_top5`, `/ai_daily_brief_builder`, `/ai_daily_brief_watchlist`, `/ai_daily_brief_status`
 - **Execution mode:** direct skill execution in the current lane; do not require sub-agent spawning for `/ai_daily_brief*` slash commands
 - **Output format:** Full mode: Executive Snapshot → Top Stories → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps

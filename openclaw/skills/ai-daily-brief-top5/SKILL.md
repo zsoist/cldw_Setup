@@ -15,6 +15,8 @@ Compatibility command shim for users invoking `/ai_daily_brief_top5`.
 ## Behavior
 - Force mode `top5` and execute full `ai-daily-brief` behavior immediately.
 - Do not ask clarifying questions for mode/slot selection.
+- Default time scope is current COT week (Monday-Sunday) unless user explicitly requests month scope.
+- If user asks "top stories of the month" (or similar), force monthly scope.
 - Persist state for this invocation:
   - set `last_run.started_at` + `status=running` at start
   - set `last_run.finished_at` + final `status` (`success|partial|failed`) at end
@@ -24,3 +26,4 @@ Compatibility command shim for users invoking `/ai_daily_brief_top5`.
 
 ## Output
 - Same output contract as `ai-daily-brief` in `top5` mode.
+- Each story must include explicit model/product name when known, or explicitly mark `model name not publicly disclosed`.
