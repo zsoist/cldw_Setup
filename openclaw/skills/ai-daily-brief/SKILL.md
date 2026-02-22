@@ -181,9 +181,24 @@ Return:
   - threshold mode
   - token budget for current mode
 - Telegram delivery state (last send path/result)
+- Telegram runtime snapshot when available:
+  - `running`
+  - `tokenSource`
+  - `lastError`
+  - `dmPolicy`
+  - `allowFrom` count
 - active output channel target
 - state file path + loaded status
 - expected schedule (`07:10` and `19:00` COT)
+
+Status truth rules:
+- Do not claim "pairing blocked", "sub-agent blocked", or "gateway not paired" unless you have explicit current-run evidence.
+- Explicit evidence must be one of:
+  - runtime reports `running=false`, or
+  - runtime `dmPolicy=pairing` with empty `allowFrom`, or
+  - current-run error text explicitly contains pairing/sub-agent spawn failure.
+- If explicit evidence is absent, state: `No pairing/sub-agent blocking indicator detected in current runtime signals.`
+- Never infer pairing blockage purely from `last_run` being null.
 
 ## Quality Gates
 - Do not present rumors as facts.

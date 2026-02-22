@@ -56,6 +56,9 @@
   - warns when Telegram has no inbound activity and update-offset state may be silently blocking command ingest.
   - now validates that `/ai_daily_brief*` slash triggers have unique single-skill ownership (detects ambiguous duplicate trigger mappings).
   - now **fails hard** on `dmPolicy=pairing` with empty `allowFrom` (previously warning-only), because this silently blocks DM command invocation.
+  - now validates runtime SOUL/AGENTS policy contains direct in-lane `/ai_daily_brief*` execution rules (catches stale sub-agent-only policy drift).
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - status mode now has strict truth rules: pairing/sub-agent blockage can only be reported with explicit current runtime evidence.
 - `infrastructure/reset-telegram-offset.sh`
   - new recovery script: backs up and removes `/root/.openclaw/telegram/update-offset-<account>.json`, restarts gateway, and tails Telegram startup logs.
 - `openclaw/skills/ai-daily-brief/SKILL.md`

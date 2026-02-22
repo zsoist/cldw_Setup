@@ -271,6 +271,11 @@ cd /root/openclaw
 docker compose restart openclaw-gateway
 ```
 
+Validation after rollout:
+- `aibrief-smoke-test.sh` must pass:
+  - `SOUL policy enforces direct in-lane execution for /ai_daily_brief*`
+  - `AGENTS policy confirms /ai_daily_brief* does not require sub-agent spawn`
+
 ### AI Daily Brief has no outputs yet
 No files under `/root/.openclaw/workspace/outputs/summaries/ai-brief-*.md` means no successful run yet.
 

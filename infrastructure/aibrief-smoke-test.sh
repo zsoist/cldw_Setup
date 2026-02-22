@@ -36,6 +36,22 @@ else
   pass "Workspace bootstrap files present (/root/.openclaw/workspace/{AGENTS,SOUL,TOOLS,HEARTBEAT}.md)"
 fi
 
+if [ -f "/root/.openclaw/workspace/SOUL.md" ]; then
+  if grep -Fq 'Execute `/ai_daily_brief*` commands directly in the current lane using the `ai-daily-brief*` skills.' /root/.openclaw/workspace/SOUL.md; then
+    pass "SOUL policy enforces direct in-lane execution for /ai_daily_brief*"
+  else
+    fail "SOUL policy missing direct in-lane /ai_daily_brief* execution rule (runtime may still force sub-agent path)"
+  fi
+fi
+
+if [ -f "/root/.openclaw/workspace/AGENTS.md" ]; then
+  if grep -Fq 'do not require sub-agent spawning for `/ai_daily_brief*` slash commands' /root/.openclaw/workspace/AGENTS.md; then
+    pass "AGENTS policy confirms /ai_daily_brief* does not require sub-agent spawn"
+  else
+    fail "AGENTS policy missing non-sub-agent /ai_daily_brief* execution mode"
+  fi
+fi
+
 STALE_SKILLS=()
 for legacy in \
   aibrief \

@@ -17,3 +17,4 @@ Compatibility command shim for users invoking `/ai_daily_brief_status`.
 - Status must read and report from `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
 - If no run exists yet, report explicitly and do not fail.
 - Preserve canonical provider/delivery diagnostics behavior.
+- Do not attribute failures to pairing/sub-agent issues unless current runtime evidence explicitly shows that condition.
