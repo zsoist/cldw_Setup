@@ -29,6 +29,7 @@
 - **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification
 - **Input format:** canonical `/ai_daily_brief [morning|evening|top5|builder|watchlist|status] [optional watchlist topics]`
 - **Compatibility aliases:** `/ai_daily_brief_morning`, `/ai_daily_brief_evening`, `/ai_daily_brief_top5`, `/ai_daily_brief_builder`, `/ai_daily_brief_watchlist`, `/ai_daily_brief_status`
+- **Execution mode:** direct skill execution in the current lane; do not require sub-agent spawning for `/ai_daily_brief*` slash commands
 - **Output format:** Full mode: Executive Snapshot → Top Stories → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
 - **Provider preference:** use Brave LLM Context (`/res/v1/llm/context`) for grounding with state-configured token budgets before generic web search fallback
 - **Delivery routing:** read `/home/node/.openclaw/workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat

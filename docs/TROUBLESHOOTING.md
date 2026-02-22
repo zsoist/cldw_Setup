@@ -248,6 +248,29 @@ cd /root/openclaw-project
 ./infrastructure/aibrief-smoke-test.sh
 ```
 
+### `/ai_daily_brief*` reports sub-agent/pairing block despite healthy Telegram ingest
+Symptom:
+- Telegram command is received and bot replies, but message says sub-agent spawn is blocked by pairing.
+- `channels.status` still shows Telegram account `running=true`.
+
+Cause:
+- AI brief command flow was being treated as a strict sub-agent delegation path.
+- If sub-agent spawn is unavailable, command can fail before skill execution even though channel ingest is healthy.
+
+Fix:
+- Ensure runtime SOUL/AGENTS config includes direct in-lane execution for `/ai_daily_brief*` commands.
+- Roll out latest config, then restart gateway:
+
+```bash
+cd /root/openclaw-project
+git fetch origin
+git checkout main
+git reset --hard origin/main
+./infrastructure/vps-rollout-aibrief.sh
+cd /root/openclaw
+docker compose restart openclaw-gateway
+```
+
 ### AI Daily Brief has no outputs yet
 No files under `/root/.openclaw/workspace/outputs/summaries/ai-brief-*.md` means no successful run yet.
 
