@@ -5,12 +5,6 @@ triggers:
   - "ai daily brief"
   - "ai news brief"
   - "/ai_daily_brief"
-  - "/ai_daily_brief_morning"
-  - "/ai_daily_brief_evening"
-  - "/ai_daily_brief_top5"
-  - "/ai_daily_brief_builder"
-  - "/ai_daily_brief_watchlist"
-  - "/ai_daily_brief_status"
 schedule: "10 7,19 * * *"
 model: sonnet
 cost_tier: standard

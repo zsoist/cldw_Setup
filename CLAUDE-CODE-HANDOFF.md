@@ -54,8 +54,15 @@
   - improved Brave failure diagnostics (`key_len=...` when both probes fail).
   - Telegram runtime assertions now come from `channels.status` account snapshots (not `health` channel summary defaults).
   - warns when Telegram has no inbound activity and update-offset state may be silently blocking command ingest.
+  - now validates that `/ai_daily_brief*` slash triggers have unique single-skill ownership (detects ambiguous duplicate trigger mappings).
 - `infrastructure/reset-telegram-offset.sh`
   - new recovery script: backs up and removes `/root/.openclaw/telegram/update-offset-<account>.json`, restarts gateway, and tails Telegram startup logs.
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - canonical skill now owns only `/ai_daily_brief` trigger (aliases removed to avoid non-deterministic native command routing).
+- `openclaw/skills/ai-daily-brief-top5/SKILL.md`
+  - alias model switched to `haiku` for lower-latency/manual diagnostics and reduced Sonnet rate-limit exposure.
+- `openclaw/skills/ai-daily-brief-status/SKILL.md`
+  - alias model switched to `haiku` so status diagnostics remain available when Sonnet is throttled.
 
 ### Production outcome target
 - OpenClaw gateway should run healthy via Docker health checks.

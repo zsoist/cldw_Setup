@@ -225,6 +225,27 @@ cd /root/openclaw-project
 
 The config sync also accepts fallback from `SENTINEL_ALLOWED_USERS` when `OPENCLAW_TELEGRAM_ALLOW_FROM` is not set.
 
+### Commands are registered, inbound is healthy, but mode routes wrong
+If Telegram ingest is healthy (`running=true`, `tokenSource!=none`) but command behavior is inconsistent (for example, `/ai_daily_brief_status` behaving like canonical `/ai_daily_brief`), check for duplicate trigger ownership across skills.
+
+Why this matters:
+- Native command routing should map each `/ai_daily_brief*` command to exactly one skill.
+- If multiple skills declare the same trigger, runtime selection can become non-deterministic and force the wrong model/path.
+
+Validate with smoke test:
+- `AI brief slash triggers are uniquely mapped (no ambiguous duplicate trigger owners)`
+
+If this line fails, align trigger ownership so each command has one owner:
+- canonical skill owns only `/ai_daily_brief`
+- alias skills own `/ai_daily_brief_morning|evening|top5|builder|watchlist|status`
+
+Then rerun:
+```bash
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
 ### AI Daily Brief has no outputs yet
 No files under `/root/.openclaw/workspace/outputs/summaries/ai-brief-*.md` means no successful run yet.
 

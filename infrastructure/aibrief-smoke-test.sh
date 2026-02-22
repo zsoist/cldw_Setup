@@ -413,6 +413,72 @@ print((data.get("result") or {}).get("pending_update_count") or 0)
     fi
   fi
 
+  DUP_TRIGGER_ISSUES="$(python3 - <<'PY'
+import glob
+import os
+import re
+
+skills_root = "/root/openclaw-project/openclaw/skills"
+targets = [
+    "/ai_daily_brief",
+    "/ai_daily_brief_morning",
+    "/ai_daily_brief_evening",
+    "/ai_daily_brief_top5",
+    "/ai_daily_brief_builder",
+    "/ai_daily_brief_watchlist",
+    "/ai_daily_brief_status",
+]
+seen = {target: [] for target in targets}
+
+for skill_path in sorted(glob.glob(os.path.join(skills_root, "*", "SKILL.md"))):
+    skill_name = os.path.basename(os.path.dirname(skill_path))
+    try:
+        with open(skill_path, "r", encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except Exception:
+        continue
+
+    in_frontmatter = False
+    fence_count = 0
+    for raw in lines:
+        line = raw.rstrip()
+        if line.strip() == "---":
+            fence_count += 1
+            if fence_count == 1:
+                in_frontmatter = True
+                continue
+            if fence_count == 2:
+                break
+        if not in_frontmatter:
+            continue
+
+        match = re.match(r'^\s*-\s*"(\/ai_daily_brief[^"]*)"\s*$', line)
+        if not match:
+            match = re.match(r"^\s*-\s*'(\/ai_daily_brief[^']*)'\s*$", line)
+        if not match:
+            match = re.match(r'^\s*-\s*(/ai_daily_brief\S*)\s*$', line)
+        if not match:
+            continue
+
+        trigger = match.group(1).strip()
+        if trigger in seen:
+            seen[trigger].append(skill_name)
+
+issues = []
+for trigger in targets:
+    owners = sorted(set(seen[trigger]))
+    if len(owners) != 1:
+        issues.append(f"{trigger}:{','.join(owners) if owners else 'none'}")
+
+print("; ".join(issues))
+PY
+)"
+  if [ -z "$DUP_TRIGGER_ISSUES" ]; then
+    pass "AI brief slash triggers are uniquely mapped (no ambiguous duplicate trigger owners)"
+  else
+    fail "AI brief trigger mapping is ambiguous: ${DUP_TRIGGER_ISSUES}"
+  fi
+
   if [ -n "$SENTINEL_TG_TOKEN" ]; then
     STG_META="$(curl -s "https://api.telegram.org/bot${SENTINEL_TG_TOKEN}/getMe" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ok:"+str((d.get("result") or {}).get("username","?")) if d.get("ok") else "bad")' 2>/dev/null || true)"
     if [[ "$STG_META" == ok:* ]]; then
