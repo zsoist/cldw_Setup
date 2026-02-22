@@ -7,6 +7,8 @@ TEMPLATE_JSON="${2:-/root/openclaw-project/openclaw/openclaw-config.json}"
 RUNTIME_JSON="/root/.openclaw/openclaw.json"
 RUNTIME_COPY_JSON="/root/.openclaw/openclaw-config.json"
 IMAGE_COPY_JSON="/root/openclaw/openclaw-config.json"
+TELEGRAM_TOKEN_FILE_HOST="/root/.openclaw/secrets/telegram-default.token"
+TELEGRAM_TOKEN_FILE_RUNTIME="/home/node/.openclaw/secrets/telegram-default.token"
 
 if [ ! -f "$SOURCE_ENV" ]; then
     echo "Env file not found: $SOURCE_ENV" >&2
@@ -63,9 +65,13 @@ if ! [[ "$OPENCLAW_GATEWAY_PORT" =~ ^[0-9]+$ ]] || [ "$OPENCLAW_GATEWAY_PORT" -l
 fi
 
 mkdir -p /root/.openclaw
+mkdir -p /root/.openclaw/secrets
+printf '%s' "$OPENCLAW_TELEGRAM_TOKEN" > "$TELEGRAM_TOKEN_FILE_HOST"
+chmod 600 "$TELEGRAM_TOKEN_FILE_HOST"
 export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
 export OPENCLAW_TELEGRAM_ALLOW_FROM OPENCLAW_TELEGRAM_DM_POLICY
 export TELEGRAM_BOT_TOKEN="$OPENCLAW_TELEGRAM_TOKEN"
+export OPENCLAW_TELEGRAM_TOKEN_FILE="$TELEGRAM_TOKEN_FILE_RUNTIME"
 
 python3 - "$TEMPLATE_JSON" "$RUNTIME_JSON" <<'PY'
 import json
@@ -88,12 +94,14 @@ data["gateway"]["auth"]["token"] = os.environ["OPENCLAW_GATEWAY_TOKEN"]
 data.setdefault("channels", {}).setdefault("telegram", {})
 data["channels"]["telegram"]["enabled"] = True
 data["channels"]["telegram"]["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
+data["channels"]["telegram"]["tokenFile"] = os.environ["OPENCLAW_TELEGRAM_TOKEN_FILE"]
 accounts = data["channels"]["telegram"].setdefault("accounts", {})
 default_account = accounts.get("default")
 if not isinstance(default_account, dict):
     default_account = {}
 default_account["enabled"] = True
 default_account["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
+default_account["tokenFile"] = os.environ["OPENCLAW_TELEGRAM_TOKEN_FILE"]
 
 allow_from_raw = (os.environ.get("OPENCLAW_TELEGRAM_ALLOW_FROM") or "").strip()
 allow_from = []
@@ -139,7 +147,7 @@ PY
 cp "$RUNTIME_JSON" "$RUNTIME_COPY_JSON"
 cp "$RUNTIME_JSON" "$IMAGE_COPY_JSON"
 
-chmod 600 "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON"
+chmod 600 "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON" "$TELEGRAM_TOKEN_FILE_HOST"
 
 resolve_owner() {
     local owner=""
@@ -154,22 +162,19 @@ resolve_owner() {
         owner="${OPENCLAW_CONFIG_UID}:${OPENCLAW_CONFIG_GID}"
     elif [ -n "${OPENCLAW_RUNTIME_OWNER:-}" ]; then
         owner="${OPENCLAW_RUNTIME_OWNER}"
-    elif [ -f "$RUNTIME_JSON" ]; then
-        owner="$(stat_owner "$RUNTIME_JSON")"
-    elif [ -d /root/.openclaw ]; then
-        owner="$(stat_owner /root/.openclaw)"
-    fi
-
-    if [ -z "$owner" ] && command -v docker >/dev/null 2>&1 && [ -f /root/openclaw/docker-compose.yml ]; then
+    elif command -v docker >/dev/null 2>&1 && [ -f /root/openclaw/docker-compose.yml ]; then
         uid="$(docker compose -f /root/openclaw/docker-compose.yml run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -u openclaw' 2>/dev/null | tr -d '\r' | tail -n 1 || true)"
         gid="$(docker compose -f /root/openclaw/docker-compose.yml run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -g openclaw' 2>/dev/null | tr -d '\r' | tail -n 1 || true)"
         if [[ "$uid" =~ ^[0-9]+$ ]] && [[ "$gid" =~ ^[0-9]+$ ]]; then
             owner="${uid}:${gid}"
         fi
     fi
+    if [ -z "$owner" ] && [ -d /root/.openclaw ]; then
+        owner="$(stat_owner /root/.openclaw)"
+    fi
 
     if [ -n "$owner" ]; then
-        chown "$owner" "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON"
+        chown "$owner" "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON" "$TELEGRAM_TOKEN_FILE_HOST"
     fi
 }
 

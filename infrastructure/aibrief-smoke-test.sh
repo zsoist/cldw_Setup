@@ -120,12 +120,39 @@ else
 fi
 
 if [ -f "$ENV_FILE" ]; then
-  GW_TOKEN="$(grep '^OPENCLAW_GATEWAY_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
+  GW_TOKEN_LINES="$(grep -c '^OPENCLAW_GATEWAY_TOKEN=' "$ENV_FILE" || true)"
+  if [ "${GW_TOKEN_LINES}" -gt 1 ]; then
+    warn "Multiple OPENCLAW_GATEWAY_TOKEN entries found in $ENV_FILE (using last line)"
+  fi
+  GW_TOKEN_ENV="$(grep '^OPENCLAW_GATEWAY_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
+  GW_TOKEN_CFG="$(python3 - <<'PY'
+import json
+path='/root/.openclaw/openclaw.json'
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    token = (((data.get('gateway') or {}).get('auth') or {}).get('token') or '').strip()
+    print(token)
+except Exception:
+    print('')
+PY
+)"
+  if [ -n "$GW_TOKEN_CFG" ] && [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_CFG" != "$GW_TOKEN_ENV" ]; then
+    warn "Gateway auth token mismatch between /root/.openclaw/openclaw.json and $ENV_FILE (preferring runtime config token)"
+  fi
+  GW_TOKEN="$GW_TOKEN_CFG"
+  if [ -z "$GW_TOKEN" ]; then
+    GW_TOKEN="$GW_TOKEN_ENV"
+  fi
+
   TG_TOKEN="$(grep '^OPENCLAW_TELEGRAM_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
+  if [ -z "$TG_TOKEN" ]; then
+    TG_TOKEN="$(grep '^TELEGRAM_BOT_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
+  fi
   SENTINEL_TG_TOKEN="$(grep '^SENTINEL_TELEGRAM_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
   BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
 
-  TG_CFG_PRESENT="$(python3 - <<'PY'
+  TG_CFG_RUNTIME="$(python3 - <<'PY'
 import json
 path='/root/.openclaw/openclaw.json'
 try:
@@ -133,18 +160,50 @@ try:
         data = json.load(f)
     tg = ((data.get('channels') or {}).get('telegram') or {})
     token = (tg.get('botToken') or '').strip()
+    token_file = (tg.get('tokenFile') or '').strip()
     acct = ((tg.get('accounts') or {}).get('default') or {})
     acct_token = (acct.get('botToken') or '').strip()
-    ok = bool(token or acct_token)
+    acct_token_file = (acct.get('tokenFile') or '').strip()
+    ok = bool(token or acct_token or token_file or acct_token_file)
     print('yes' if ok else 'no')
+    print(token_file)
+    print(acct_token_file)
 except Exception:
     print('no')
+    print('')
+    print('')
 PY
 )"
+  TG_CFG_PRESENT="$(echo "$TG_CFG_RUNTIME" | sed -n '1p')"
+  TG_CFG_TOKEN_FILE="$(echo "$TG_CFG_RUNTIME" | sed -n '2p')"
+  TG_CFG_ACCOUNT_TOKEN_FILE="$(echo "$TG_CFG_RUNTIME" | sed -n '3p')"
   if [ "$TG_CFG_PRESENT" = "yes" ]; then
-    pass "Runtime config has Telegram token at channels.telegram(.accounts.default).botToken"
+    pass "Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)"
   else
-    fail "Runtime config missing Telegram bot token (openclaw.json channel config)"
+    fail "Runtime config missing Telegram auth material (botToken/tokenFile) in openclaw.json"
+  fi
+
+  CHECKED_TOKEN_FILE=""
+  check_token_file() {
+    local token_file_path="$1"
+    if [ -z "$token_file_path" ]; then
+      return
+    fi
+    if [ "$token_file_path" = "$CHECKED_TOKEN_FILE" ]; then
+      return
+    fi
+    CHECKED_TOKEN_FILE="$token_file_path"
+    if docker exec -e TOKEN_FILE_PATH="$token_file_path" openclaw-openclaw-gateway-1 sh -lc 'test -r "$TOKEN_FILE_PATH"'; then
+      pass "Gateway runtime user can read Telegram tokenFile (${token_file_path})"
+    else
+      fail "Gateway runtime user cannot read Telegram tokenFile (${token_file_path})"
+    fi
+  }
+  check_token_file "$TG_CFG_TOKEN_FILE"
+  check_token_file "$TG_CFG_ACCOUNT_TOKEN_FILE"
+
+  if [ "$TG_CFG_PRESENT" = "yes" ] && [ -z "$TG_CFG_TOKEN_FILE" ] && [ -z "$TG_CFG_ACCOUNT_TOKEN_FILE" ]; then
+    warn "Runtime Telegram config uses botToken only; tokenFile fallback is not configured"
   fi
 
   TG_DM_RUNTIME="$(python3 - <<'PY'
@@ -198,8 +257,25 @@ PY
   fi
 
   if [ -n "$GW_TOKEN" ]; then
-    if docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$GW_TOKEN" --json >/tmp/aibrief-health.json 2>/tmp/aibrief-health.err; then
-      pass "Gateway health call authenticated"
+    HEALTH_AUTH_SOURCE=""
+    health_call() {
+      local token="$1"
+      docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$token" --json >/tmp/aibrief-health.json 2>/tmp/aibrief-health.err
+    }
+
+    if health_call "$GW_TOKEN"; then
+      HEALTH_AUTH_SOURCE="runtime-config"
+    elif [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_ENV" != "$GW_TOKEN" ] && health_call "$GW_TOKEN_ENV"; then
+      HEALTH_AUTH_SOURCE="env-fallback"
+    fi
+
+    if [ -n "$HEALTH_AUTH_SOURCE" ]; then
+      if [ "$HEALTH_AUTH_SOURCE" = "env-fallback" ]; then
+        pass "Gateway health call authenticated (env fallback token)"
+        warn "Gateway health auth required env fallback token; runtime config gateway.auth.token may be stale"
+      else
+        pass "Gateway health call authenticated"
+      fi
       python3 - <<'PY'
 import json
 with open('/tmp/aibrief-health.json', 'r', encoding='utf-8') as f:
@@ -235,6 +311,10 @@ PY
       fi
       if [ "$TELEGRAM_TOKEN_SOURCE" = "none" ]; then
         fail "Gateway Telegram tokenSource=none (runtime did not load bot token from config)"
+        TG_RUNTIME_DEBUG="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require(\"fs\");const p=\"/home/node/.openclaw/openclaw.json\";const trim=(v)=>typeof v===\"string\"?v.trim():\"\";try{const d=JSON.parse(fs.readFileSync(p,\"utf8\"));const tg=(d.channels&&d.channels.telegram)||{};const acct=(tg.accounts&&tg.accounts.default)||{};console.log(\"runtime.top.botToken.len=\"+trim(tg.botToken).length);console.log(\"runtime.top.tokenFile=\"+trim(tg.tokenFile));console.log(\"runtime.account.default.botToken.len=\"+trim(acct.botToken).length);console.log(\"runtime.account.default.tokenFile=\"+trim(acct.tokenFile));}catch(err){console.log(\"runtime.config.read.error=\"+String(err));}')" || true
+        if [ -n "$TG_RUNTIME_DEBUG" ]; then
+          echo "$TG_RUNTIME_DEBUG" | sed 's/^/[INFO] /'
+        fi
       else
         pass "Gateway Telegram token source is ${TELEGRAM_TOKEN_SOURCE}"
       fi
@@ -242,7 +322,7 @@ PY
       fail "Gateway health call failed: $(tail -n 1 /tmp/aibrief-health.err)"
     fi
   else
-    fail "OPENCLAW_GATEWAY_TOKEN missing"
+    fail "OPENCLAW_GATEWAY_TOKEN missing (both runtime config and env)"
   fi
 
   if [ -n "$TG_TOKEN" ]; then

@@ -137,9 +137,47 @@ log "Final health check"
 "$PROJECT_DIR/infrastructure/health-check.sh"
 
 if [ -f "/root/openclaw/.env" ]; then
-  GW_TOKEN="$(grep '^OPENCLAW_GATEWAY_TOKEN=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+  GW_TOKEN_LINES="$(grep -c '^OPENCLAW_GATEWAY_TOKEN=' /root/openclaw/.env || true)"
+  if [ "${GW_TOKEN_LINES}" -gt 1 ]; then
+    log "WARN: multiple OPENCLAW_GATEWAY_TOKEN entries in /root/openclaw/.env (using last line)"
+  fi
+  GW_TOKEN_ENV="$(grep '^OPENCLAW_GATEWAY_TOKEN=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+  GW_TOKEN_CFG="$(python3 - <<'PY'
+import json
+path='/root/.openclaw/openclaw.json'
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    print((((data.get('gateway') or {}).get('auth') or {}).get('token') or '').strip())
+except Exception:
+    print('')
+PY
+)"
+  if [ -n "$GW_TOKEN_CFG" ] && [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_CFG" != "$GW_TOKEN_ENV" ]; then
+    log "WARN: gateway.auth.token mismatch between runtime config and env; preferring runtime config token"
+  fi
+  GW_TOKEN="$GW_TOKEN_CFG"
+  if [ -z "$GW_TOKEN" ]; then
+    GW_TOKEN="$GW_TOKEN_ENV"
+  fi
+
   if [ -n "$GW_TOKEN" ]; then
-    if docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$GW_TOKEN" --json >/tmp/aibrief-post-health.json 2>/tmp/aibrief-post-health.err; then
+    HEALTH_AUTH_SOURCE=""
+    health_call() {
+      local token="$1"
+      docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$token" --json >/tmp/aibrief-post-health.json 2>/tmp/aibrief-post-health.err
+    }
+
+    if health_call "$GW_TOKEN"; then
+      HEALTH_AUTH_SOURCE="runtime-config"
+    elif [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_ENV" != "$GW_TOKEN" ] && health_call "$GW_TOKEN_ENV"; then
+      HEALTH_AUTH_SOURCE="env-fallback"
+    fi
+
+    if [ -n "$HEALTH_AUTH_SOURCE" ]; then
+      if [ "$HEALTH_AUTH_SOURCE" = "env-fallback" ]; then
+        log "WARN: post-rollout health RPC required env fallback token; runtime config token may be stale"
+      fi
       TG_STATUS="$(python3 - <<'PY'
 import json
 with open('/tmp/aibrief-post-health.json', 'r', encoding='utf-8') as f:
@@ -161,10 +199,19 @@ PY
           log "WARN: Telegram token not loaded by gateway config. Re-sync with infrastructure/sync-openclaw-config.sh and recreate container."
         fi
       fi
+      if [ "$TG_TOKEN_SOURCE" = "none" ]; then
+        TG_RUNTIME_DEBUG="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require(\"fs\");const p=\"/home/node/.openclaw/openclaw.json\";const trim=(v)=>typeof v===\"string\"?v.trim():\"\";try{const d=JSON.parse(fs.readFileSync(p,\"utf8\"));const tg=(d.channels&&d.channels.telegram)||{};const acct=(tg.accounts&&tg.accounts.default)||{};console.log(\"top.botToken.len=\"+trim(tg.botToken).length);console.log(\"top.tokenFile=\"+trim(tg.tokenFile));console.log(\"account.default.botToken.len=\"+trim(acct.botToken).length);console.log(\"account.default.tokenFile=\"+trim(acct.tokenFile));}catch(err){console.log(\"runtime.config.read.error=\"+String(err));}')" || true
+        if [ -n "$TG_RUNTIME_DEBUG" ]; then
+          log "Telegram runtime token diagnostics:"
+          printf '%s\n' "$TG_RUNTIME_DEBUG" | sed 's/^/[aibrief-rollout]   /'
+        fi
+      fi
     else
       log "WARN: unable to perform post-rollout gateway health call"
       tail -n 5 /tmp/aibrief-post-health.err || true
     fi
+  else
+    log "WARN: OPENCLAW_GATEWAY_TOKEN missing in both runtime config and env; skipping gateway health RPC"
   fi
 fi
 

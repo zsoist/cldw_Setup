@@ -16,12 +16,16 @@
 - `infrastructure/sync-openclaw-config.sh`
   - now accepts fallback token source `TELEGRAM_BOT_TOKEN` when `OPENCLAW_TELEGRAM_TOKEN` is absent.
   - exports `TELEGRAM_BOT_TOKEN` for runtime parity.
+  - now writes `/root/.openclaw/secrets/telegram-default.token` and sets both:
+    - `channels.telegram.tokenFile`
+    - `channels.telegram.accounts.default.tokenFile`
+  - token file is written without trailing newline and permissioned/chowned with runtime config files.
   - now maps Telegram DM authorization from `OPENCLAW_TELEGRAM_ALLOW_FROM` (fallback: `OPENCLAW_ALLOWED_USERS`, then `SENTINEL_ALLOWED_USERS`).
   - now derives `channels.telegram.dmPolicy`:
     - explicit `OPENCLAW_TELEGRAM_DM_POLICY` if set
     - otherwise `allowlist` when allowFrom IDs exist
     - otherwise `pairing`
-  - now restores config file ownership after writing (`OPENCLAW_CONFIG_UID/GID` aware) to prevent root-owned unreadable config drift.
+  - owner resolution now prioritizes explicit uid/gid or runtime container uid/gid (instead of inheriting root from freshly-written files), preventing drift when script runs outside full deploy.
 - `infrastructure/docker-compose.yml`
   - now injects `TELEGRAM_BOT_TOKEN` / `OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` (plus AIDB Brave tuning vars) into the gateway container env.
   - AIDB Brave tuning vars now have safe defaults to avoid noisy compose warnings when optional keys are omitted.
@@ -31,13 +35,16 @@
   - now validates Brave key shape (`len < 20` warning) before claiming provider readiness.
   - reapplies ownership/chmod after sync to keep config readable by the gateway runtime user.
   - now syncs updated `infrastructure/docker-compose.yml` into `/root/openclaw/docker-compose.yml` during config-only rollout.
+  - post-rollout gateway health RPC now prefers `gateway.auth.token` from `/root/.openclaw/openclaw.json` and only falls back to `.env` (with explicit mismatch warning).
+  - post-rollout diagnostics now include Telegram token field lengths/paths when `tokenSource=none`.
 - `infrastructure/deploy.sh`
   - same post-sync ownership fix during full deploy.
 - `infrastructure/aibrief-smoke-test.sh`
   - now checks runtime readability of `/home/node/.openclaw/openclaw.json`.
-  - now checks whether Telegram token exists in runtime config (`channels.telegram.botToken` or `accounts.default.botToken`).
+  - now checks whether Telegram auth material exists in runtime config (`botToken` and/or `tokenFile`) and validates tokenFile readability inside the container.
   - now checks Telegram DM auth posture (`dmPolicy` + `allowFrom`) to catch non-invoking command setups.
   - now checks container-visible Telegram token env and Brave env.
+  - now prefers gateway auth token from runtime config for `gateway call health`; `.env` token is fallback only (with mismatch diagnostics).
   - now fails fast for invalid/truncated Brave keys (`len < 20`).
   - improved Brave failure diagnostics (`key_len=...` when both probes fail).
 
@@ -216,10 +223,12 @@ Marker:
    - confirm Brave LLM Context probe passes
 8. Validate Telegram ingest runtime:
    - smoke test must pass `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
+   - smoke test must pass `Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)`
    - smoke test must pass `Telegram ingest runtime is running`
    - if smoke test shows `tokenSource=none`, re-run:
      - `bash /root/openclaw-project/infrastructure/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw-project/openclaw/openclaw-config.json`
      - then recreate gateway container
+   - if smoke test logs a gateway token mismatch, remove duplicate `OPENCLAW_GATEWAY_TOKEN=` lines from `/root/openclaw/.env` and rerun rollout.
    - avoid using `openclaw doctor --fix` in rollout flow for AI brief routing
 
 ---

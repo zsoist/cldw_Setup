@@ -152,9 +152,14 @@ cd /root/openclaw-project
 
 Required smoke-test lines:
 - `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
+- `Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)`
 - `Gateway container has Telegram bot token in environment` (warning is acceptable only if tokenSource is `config` and running is true)
 - `Telegram ingest runtime is running`
 - `Gateway Telegram token source is ...` (not `none`)
+
+If smoke test reports a gateway token mismatch:
+- remove duplicate `OPENCLAW_GATEWAY_TOKEN=` lines from `/root/openclaw/.env` (keep one canonical value)
+- rerun rollout so runtime `gateway.auth.token` and `.env` are aligned
 
 Avoid `openclaw doctor --fix` as part of AI-brief rollout automation. It can rewrite config and interfere with explicit Telegram token wiring.
 

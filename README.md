@@ -150,10 +150,12 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - `infrastructure/set-aibrief-output-channel.sh`
 - Rollout hardening:
   - config sync preserves gateway runtime ownership for `/root/.openclaw/openclaw.json`
+  - config sync writes `/root/.openclaw/secrets/telegram-default.token` and wires `channels.telegram(.accounts.default).tokenFile` to avoid token drift after config rewrites
   - gateway container receives `TELEGRAM_BOT_TOKEN`/`OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` from `.env`
   - config sync maps DM authorization from `OPENCLAW_TELEGRAM_ALLOW_FROM` (or fallback `SENTINEL_ALLOWED_USERS`) and sets Telegram `dmPolicy=allowlist` automatically when IDs are present
   - config-only rollout now syncs `infrastructure/docker-compose.yml` into `/root/openclaw` before restart
-  - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`) and container-visible Brave key
+  - rollout/smoke diagnostics now read gateway auth token from `/root/.openclaw/openclaw.json` first (env fallback only), preventing false `device token mismatch` checks caused by stale `.env` duplicates
+  - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`), tokenFile readability inside the container, and container-visible Brave key
 - Runtime bootstrap files used by command routing are loaded from:
   - `/root/.openclaw/workspace/AGENTS.md`
   - `/root/.openclaw/workspace/SOUL.md`
@@ -176,6 +178,7 @@ EOF
 
 Smoke test must pass these lines before Telegram command validation:
 - `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
+- `Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)`
 - `Telegram DM allowFrom configured (...)` (or explicit pairing warning you intentionally accept)
 - `Telegram ingest runtime is running`
 - `Gateway Telegram token source is ...` (not `none`)
