@@ -131,11 +131,11 @@ PY
   fi
 
   if [ -n "$TG_TOKEN" ]; then
-    CMDS_OK="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds=[(c.get("command") or "") for c in (d.get("result") or [])]; print("ok" if "ai_daily_brief" in cmds else "missing")' 2>/dev/null || true)"
-    if [ "$CMDS_OK" = "ok" ]; then
-      pass "Telegram native command /ai_daily_brief is registered"
+    CMDS_MISSING="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds={(c.get("command") or "") for c in (d.get("result") or [])}; required=["ai_daily_brief","ai_daily_brief_morning","ai_daily_brief_evening","ai_daily_brief_top5","ai_daily_brief_builder","ai_daily_brief_watchlist","ai_daily_brief_status"]; missing=[c for c in required if c not in cmds]; print(",".join(missing))' 2>/dev/null || true)"
+    if [ -z "$CMDS_MISSING" ]; then
+      pass "Telegram native AI brief commands are registered (/ai_daily_brief + compatibility aliases)"
     else
-      fail "Telegram native command /ai_daily_brief not registered (check nativeSkills config + restart)"
+      fail "Telegram native AI brief commands missing: ${CMDS_MISSING} (check nativeSkills config + restart)"
     fi
   fi
 

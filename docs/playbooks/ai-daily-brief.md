@@ -16,8 +16,15 @@ This playbook defines the production behavior for `ai_daily_brief` in OpenClaw s
   - `/ai_daily_brief builder`
   - `/ai_daily_brief watchlist [topics]`
   - `/ai_daily_brief status`
+- Compatibility aliases:
+  - `/ai_daily_brief_morning`
+  - `/ai_daily_brief_evening`
+  - `/ai_daily_brief_top5`
+  - `/ai_daily_brief_builder`
+  - `/ai_daily_brief_watchlist`
+  - `/ai_daily_brief_status`
 
-Rule: use one canonical command path to avoid command alias drift.
+Rule: canonical command path is preferred; compatibility aliases must resolve to the same `ai-daily-brief` behavior.
 
 ## Slot Rules
 - Timezone: `America/Bogota`

@@ -131,7 +131,14 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
 - Canonical command: `/ai_daily_brief` (single stable command path).
 - Slot/mode selection via arguments:
   - `/ai_daily_brief morning|evening|top5|builder|watchlist|status`
-- This avoids alias-command drift and keeps command behavior deterministic.
+- Compatibility aliases are also supported:
+  - `/ai_daily_brief_morning`
+  - `/ai_daily_brief_evening`
+  - `/ai_daily_brief_top5`
+  - `/ai_daily_brief_builder`
+  - `/ai_daily_brief_watchlist`
+  - `/ai_daily_brief_status`
+- Canonical command remains preferred; aliases route to the same handler.
 - Deduplication and update suppression using `openclaw/workspace/logs/ai-brief-state.json`.
 - Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
 - Weighted anti-hype ranking (impact, credibility, novelty, relevance, freshness, confidence).
@@ -155,6 +162,7 @@ EOF
 Manual Telegram validation after rollout:
 - send `/ai_daily_brief status`
 - send `/ai_daily_brief top5`
+- send compatibility alias `/ai_daily_brief_top5` (must return equivalent output path)
 - run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
 
 Configure dedicated AI brief channel (optional):

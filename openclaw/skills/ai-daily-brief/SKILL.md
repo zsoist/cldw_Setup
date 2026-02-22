@@ -24,6 +24,14 @@ Optional mode argument (same command):
 - `/ai_daily_brief watchlist [topics]`
 - `/ai_daily_brief status`
 
+Compatibility aliases (accepted):
+- `/ai_daily_brief_morning`
+- `/ai_daily_brief_evening`
+- `/ai_daily_brief_top5`
+- `/ai_daily_brief_builder`
+- `/ai_daily_brief_watchlist`
+- `/ai_daily_brief_status`
+
 ## Role
 Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimized for Telegram readability and operational decision value.
 

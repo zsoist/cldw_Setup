@@ -30,9 +30,16 @@ docker compose restart openclaw-gateway
 
 ### Commands work sometimes and sometimes don't
 This usually means one of these:
-1. You're chatting with the wrong bot (Sentinel vs OpenClaw).
+1. You're chatting with the wrong bot (Sentinel vs OpenClaw) or wrong username typo.
 2. Deprecated alias skills (`/aibrief*`) still exist on runtime.
 3. OpenClaw and Sentinel tokens are accidentally the same.
+
+Verify OpenClaw bot identity:
+```bash
+grep '^OPENCLAW_TELEGRAM_TOKEN=' /root/openclaw/.env | cut -d= -f2- | \
+  xargs -I{} curl -s "https://api.telegram.org/bot{}/getMe"
+```
+Confirm the returned username matches the bot chat you are testing in Telegram.
 
 Validate quickly on VPS:
 ```bash
@@ -43,6 +50,7 @@ cd /root/openclaw-project
 
 Then in Telegram:
 - OpenClaw bot: `/ai_daily_brief status`
+- OpenClaw compatibility alias: `/ai_daily_brief_status`
 - Sentinel bot: `/status`
 
 If OpenClaw replies with pairing:
@@ -92,6 +100,7 @@ cd /root/openclaw-project
 Then test in Telegram:
 - `/ai_daily_brief status`
 - `/ai_daily_brief top5`
+- `/ai_daily_brief_top5` (compatibility alias)
 - `/commands` (confirm `/ai_daily_brief` appears in listed commands)
 
 If still wrong, inspect:

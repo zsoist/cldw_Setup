@@ -27,13 +27,15 @@
 - **Trigger phrases:** "ai daily brief", "ai news brief", "/ai_daily_brief"
 - **Use for:** AI news retrieval, clustering, ranking by impact/credibility, concise executive-style brief delivery
 - **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification
-- **Input format:** `/ai_daily_brief [morning|evening|top5|builder|watchlist|status] [optional watchlist topics]`
+- **Input format:** canonical `/ai_daily_brief [morning|evening|top5|builder|watchlist|status] [optional watchlist topics]`
+- **Compatibility aliases:** `/ai_daily_brief_morning`, `/ai_daily_brief_evening`, `/ai_daily_brief_top5`, `/ai_daily_brief_builder`, `/ai_daily_brief_watchlist`, `/ai_daily_brief_status`
 - **Output format:** Full mode: Executive Snapshot → Top Stories → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
 - **Delivery routing:** read `workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat
 - **Cost tier:** standard (Sonnet)
 
 ### Command Namespace Safety
 - `/ai_daily_brief` is the canonical AI brief command.
+- Compatibility alias commands (`/ai_daily_brief_top5` style) must route to the same AI Brief Editor path as the canonical command.
 - Generic personal briefing commands (`/brief`, "daily summary", "morning briefing") stay with **Chief of Staff**.
 - Never mix AI-news synthesis into the generic daily briefing flow.
 

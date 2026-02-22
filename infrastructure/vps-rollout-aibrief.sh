@@ -98,6 +98,6 @@ log "Final health check"
 "$PROJECT_DIR/infrastructure/health-check.sh"
 
 log "Rollout complete for ref ${CURRENT_REF}."
-log "Telegram smoke test: send /ai_daily_brief status then /ai_daily_brief top5."
+log "Telegram smoke test: send /ai_daily_brief status then /ai_daily_brief top5 (or /ai_daily_brief_top5 compatibility alias)."
 log "Set/update channel routing: $PROJECT_DIR/infrastructure/set-aibrief-output-channel.sh @dandailybriefAI"
 log "Optional local test: $PROJECT_DIR/infrastructure/aibrief-smoke-test.sh"
