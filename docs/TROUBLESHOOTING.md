@@ -43,6 +43,7 @@ cd /root/openclaw-project
 Then test in Telegram:
 - `/aibrief_status`
 - `/aibrief_top5`
+- `/commands` (confirm `/aibrief*` appears in listed commands)
 
 If still wrong, inspect:
 - `/root/.openclaw/AGENTS.md`

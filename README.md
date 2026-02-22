@@ -130,6 +130,7 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
 
 - Dedicated namespace routing (`/aibrief*`) so AI brief requests never collide with generic personal briefing handlers.
 - Slot-aware delivery (`morning` and `evening`) with command modes: `/aibrief`, `/aibrief_morning`, `/aibrief_evening`, `/aibrief_top5`, `/aibrief_builder`, `/aibrief_watchlist`, `/aibrief_status`.
+- Explicit slash-command alias skills are shipped so `/aibrief*` resolves reliably in OpenClaw command parsing.
 - Deduplication and update suppression using `openclaw/workspace/logs/ai-brief-state.json`.
 - Weighted anti-hype ranking (impact, credibility, novelty, relevance, freshness, confidence).
 - Mandatory citations, builder corner, strategic take, and explicit confidence/gaps section.
@@ -248,6 +249,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │       └── ai-brief-state.json        # Stateful dedupe + slot tracking for AI brief
 │   ├── skills/
 │   │   ├── ai-daily-brief/SKILL.md        # Twice-daily AI news brief (Sonnet, source-grounded)
+│   │   ├── aibrief*/SKILL.md              # Slash-command aliases (/aibrief, /aibrief_status, etc.)
 │   │   ├── daily-briefing/SKILL.md        # Morning planning briefing (Haiku, scheduled)
 │   │   ├── research-assistant/SKILL.md    # Deep research (Sonnet, on-demand)
 │   │   └── task-tracker/SKILL.md          # Task management (Haiku, triggered)

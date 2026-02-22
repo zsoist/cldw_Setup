@@ -187,12 +187,16 @@ systemctl enable sentinel
 echo ""
 echo "Deployment staged. NOT yet running."
 echo ""
+SKILL_COUNT=0
+if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
+    SKILL_COUNT="$(find "$PROJECT_DIR/openclaw/skills" -type f -name 'SKILL.md' | wc -l | tr -d ' ')"
+fi
 echo "Files deployed:"
 echo "   OpenClaw:  pinned to $OPENCLAW_REF"
 echo "   Config:    12 main agent files + openclaw-config.json"
 echo "   Work:      5 work agent files (sandbox enabled)"
 echo "   Workspace: personal/, business/, outputs/, logs/"
-echo "   Skills:    4 skills (ai-daily-brief, daily-briefing, research-assistant, task-tracker)"
+echo "   Skills:    ${SKILL_COUNT} skills (including /aibrief* aliases)"
 echo "   Sentinel:  Python bot + systemd service"
 echo ""
 echo "Next steps:"

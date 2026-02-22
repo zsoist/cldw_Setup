@@ -115,6 +115,14 @@ Marker:
 
 - Added new skill:
   - `openclaw/skills/ai-daily-brief/SKILL.md`
+- Added explicit slash-command alias skills:
+  - `openclaw/skills/aibrief/SKILL.md`
+  - `openclaw/skills/aibrief_morning/SKILL.md`
+  - `openclaw/skills/aibrief_evening/SKILL.md`
+  - `openclaw/skills/aibrief_top5/SKILL.md`
+  - `openclaw/skills/aibrief_builder/SKILL.md`
+  - `openclaw/skills/aibrief_watchlist/SKILL.md`
+  - `openclaw/skills/aibrief_status/SKILL.md`
 - Updated existing skill:
   - `openclaw/skills/daily-briefing/SKILL.md` (now daily planning-first; no duplicate AI headline synthesis)
 - Added stateful AI brief tracking:

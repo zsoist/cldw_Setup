@@ -31,16 +31,20 @@ log "Using project ref: ${CURRENT_REF}"
 
 log "Syncing AI Daily Brief config and skill assets"
 mkdir -p \
-  "$OPENCLAW_CFG/skills/ai-daily-brief" \
-  "$OPENCLAW_CFG/skills/daily-briefing" \
   "$OPENCLAW_CFG/workspace/logs"
 
 cp "$PROJECT_DIR/openclaw/config/AGENTS.md" "$OPENCLAW_CFG/AGENTS.md"
 cp "$PROJECT_DIR/openclaw/config/SOUL.md" "$OPENCLAW_CFG/SOUL.md"
 cp "$PROJECT_DIR/openclaw/config/CRON.md" "$OPENCLAW_CFG/CRON.md"
 cp "$PROJECT_DIR/openclaw/config/HEARTBEAT.md" "$OPENCLAW_CFG/HEARTBEAT.md"
-cp "$PROJECT_DIR/openclaw/skills/daily-briefing/SKILL.md" "$OPENCLAW_CFG/skills/daily-briefing/SKILL.md"
-cp "$PROJECT_DIR/openclaw/skills/ai-daily-brief/SKILL.md" "$OPENCLAW_CFG/skills/ai-daily-brief/SKILL.md"
+# Sync all skills recursively to keep alias commands current.
+if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
+  while IFS= read -r -d '' skill_file; do
+    rel_path="${skill_file#$PROJECT_DIR/openclaw/skills/}"
+    mkdir -p "$(dirname "$OPENCLAW_CFG/skills/$rel_path")"
+    cp "$skill_file" "$OPENCLAW_CFG/skills/$rel_path"
+  done < <(find "$PROJECT_DIR/openclaw/skills" -type f -print0)
+fi
 cp "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
 
 require_file "$OPENCLAW_CFG/openclaw.json"
