@@ -36,6 +36,13 @@ extract_key() {
 
 OPENCLAW_GATEWAY_TOKEN="$(extract_key OPENCLAW_GATEWAY_TOKEN || true)"
 OPENCLAW_TELEGRAM_TOKEN="$(extract_key OPENCLAW_TELEGRAM_TOKEN || extract_key TELEGRAM_BOT_TOKEN || true)"
+OPENCLAW_TELEGRAM_ALLOW_FROM="$(
+    extract_key OPENCLAW_TELEGRAM_ALLOW_FROM ||
+        extract_key OPENCLAW_ALLOWED_USERS ||
+        extract_key SENTINEL_ALLOWED_USERS ||
+        true
+)"
+OPENCLAW_TELEGRAM_DM_POLICY="$(extract_key OPENCLAW_TELEGRAM_DM_POLICY || true)"
 OPENCLAW_GATEWAY_BIND="$(extract_key OPENCLAW_GATEWAY_BIND || true)"
 OPENCLAW_GATEWAY_PORT="$(extract_key OPENCLAW_GATEWAY_PORT || true)"
 
@@ -57,11 +64,13 @@ fi
 
 mkdir -p /root/.openclaw
 export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
+export OPENCLAW_TELEGRAM_ALLOW_FROM OPENCLAW_TELEGRAM_DM_POLICY
 export TELEGRAM_BOT_TOKEN="$OPENCLAW_TELEGRAM_TOKEN"
 
 python3 - "$TEMPLATE_JSON" "$RUNTIME_JSON" <<'PY'
 import json
 import os
+import re
 import sys
 
 template_path, output_path = sys.argv[1], sys.argv[2]
@@ -85,6 +94,38 @@ if not isinstance(default_account, dict):
     default_account = {}
 default_account["enabled"] = True
 default_account["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
+
+allow_from_raw = (os.environ.get("OPENCLAW_TELEGRAM_ALLOW_FROM") or "").strip()
+allow_from = []
+if allow_from_raw:
+    for raw in re.split(r"[\s,]+", allow_from_raw):
+        value = raw.strip()
+        if not value:
+            continue
+        lowered = value.lower()
+        if lowered.startswith("telegram:") or lowered.startswith("tg:"):
+            value = value.split(":", 1)[1].strip()
+        if value == "*" or value.isdigit():
+            if value not in allow_from:
+                allow_from.append(value)
+
+dm_policy_raw = (os.environ.get("OPENCLAW_TELEGRAM_DM_POLICY") or "").strip().lower()
+if dm_policy_raw in {"pairing", "allowlist", "open", "disabled"}:
+    dm_policy = dm_policy_raw
+elif allow_from:
+    dm_policy = "allowlist"
+else:
+    dm_policy = "pairing"
+
+data["channels"]["telegram"]["dmPolicy"] = dm_policy
+default_account["dmPolicy"] = dm_policy
+if allow_from:
+    data["channels"]["telegram"]["allowFrom"] = allow_from
+    default_account["allowFrom"] = allow_from
+else:
+    data["channels"]["telegram"].pop("allowFrom", None)
+    default_account.pop("allowFrom", None)
+
 accounts["default"] = default_account
 data["channels"]["telegram"].setdefault("commands", {})
 data["channels"]["telegram"]["commands"]["native"] = True

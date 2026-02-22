@@ -16,11 +16,19 @@
 - `infrastructure/sync-openclaw-config.sh`
   - now accepts fallback token source `TELEGRAM_BOT_TOKEN` when `OPENCLAW_TELEGRAM_TOKEN` is absent.
   - exports `TELEGRAM_BOT_TOKEN` for runtime parity.
+  - now maps Telegram DM authorization from `OPENCLAW_TELEGRAM_ALLOW_FROM` (fallback: `OPENCLAW_ALLOWED_USERS`, then `SENTINEL_ALLOWED_USERS`).
+  - now derives `channels.telegram.dmPolicy`:
+    - explicit `OPENCLAW_TELEGRAM_DM_POLICY` if set
+    - otherwise `allowlist` when allowFrom IDs exist
+    - otherwise `pairing`
   - now restores config file ownership after writing (`OPENCLAW_CONFIG_UID/GID` aware) to prevent root-owned unreadable config drift.
 - `infrastructure/docker-compose.yml`
   - now injects `TELEGRAM_BOT_TOKEN` / `OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` (plus AIDB Brave tuning vars) into the gateway container env.
+  - AIDB Brave tuning vars now have safe defaults to avoid noisy compose warnings when optional keys are omitted.
 - `infrastructure/vps-rollout-aibrief.sh`
   - passes runtime UID/GID into config sync.
+  - now resolves docker compose runtime UID/GID from inside `/root/openclaw` (not via `-f` from another cwd), reducing env interpolation drift.
+  - now validates Brave key shape (`len < 20` warning) before claiming provider readiness.
   - reapplies ownership/chmod after sync to keep config readable by the gateway runtime user.
   - now syncs updated `infrastructure/docker-compose.yml` into `/root/openclaw/docker-compose.yml` during config-only rollout.
 - `infrastructure/deploy.sh`
@@ -28,7 +36,9 @@
 - `infrastructure/aibrief-smoke-test.sh`
   - now checks runtime readability of `/home/node/.openclaw/openclaw.json`.
   - now checks whether Telegram token exists in runtime config (`channels.telegram.botToken` or `accounts.default.botToken`).
+  - now checks Telegram DM auth posture (`dmPolicy` + `allowFrom`) to catch non-invoking command setups.
   - now checks container-visible Telegram token env and Brave env.
+  - now fails fast for invalid/truncated Brave keys (`len < 20`).
   - improved Brave failure diagnostics (`key_len=...` when both probes fail).
 
 ### Production outcome target

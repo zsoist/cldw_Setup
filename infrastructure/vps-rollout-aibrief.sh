@@ -74,8 +74,9 @@ require_file "$OPENCLAW_CFG/openclaw.json"
 require_file "$OPENCLAW_CFG/openclaw-config.json"
 
 log "Aligning ownership with container runtime user"
-OC_UID="$(docker compose -f "$OPENCLAW_DIR/docker-compose.yml" run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -u openclaw' | tr -d '\r' | tail -n 1)"
-OC_GID="$(docker compose -f "$OPENCLAW_DIR/docker-compose.yml" run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -g openclaw' | tr -d '\r' | tail -n 1)"
+cd "$OPENCLAW_DIR"
+OC_UID="$(docker compose run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -u openclaw' | tr -d '\r' | tail -n 1)"
+OC_GID="$(docker compose run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -g openclaw' | tr -d '\r' | tail -n 1)"
 if ! [[ "$OC_UID" =~ ^[0-9]+$ ]] || ! [[ "$OC_GID" =~ ^[0-9]+$ ]]; then
   echo "Failed to resolve openclaw uid/gid from image (uid='${OC_UID}' gid='${OC_GID}')." >&2
   exit 1
@@ -92,8 +93,11 @@ fi
 
 if [ -f "/root/openclaw/.env" ]; then
   BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+  BRAVE_KEY_LEN="${#BRAVE_API_KEY}"
   if [ -z "$BRAVE_API_KEY" ] || [[ "$BRAVE_API_KEY" == REPLACE_* ]]; then
     log "WARN: BRAVE_API_KEY missing/placeholder in /root/openclaw/.env (ai_daily_brief will report provider unconfigured)"
+  elif [ "$BRAVE_KEY_LEN" -lt 20 ]; then
+    log "WARN: BRAVE_API_KEY appears invalid (len=${BRAVE_KEY_LEN}); Brave API will fail until corrected"
   else
     log "Brave provider key detected for ai_daily_brief grounding"
   fi
@@ -115,7 +119,6 @@ chown -R "${OC_UID}:${OC_GID}" "$OPENCLAW_CFG"
 chmod 600 "$OPENCLAW_CFG/openclaw.json" "$OPENCLAW_CFG/openclaw-config.json"
 
 log "Restarting services"
-cd "$OPENCLAW_DIR"
 docker compose up -d --force-recreate
 systemctl daemon-reload
 systemctl restart sentinel

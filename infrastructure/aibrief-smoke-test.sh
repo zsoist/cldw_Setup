@@ -146,6 +146,43 @@ PY
     fail "Runtime config missing Telegram bot token (openclaw.json channel config)"
   fi
 
+  TG_DM_RUNTIME="$(python3 - <<'PY'
+import json
+path='/root/.openclaw/openclaw.json'
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    tg = ((data.get('channels') or {}).get('telegram') or {})
+    dm_policy = str(tg.get('dmPolicy') or '').strip().lower()
+    allow = tg.get('allowFrom')
+    normalized = []
+    if isinstance(allow, list):
+        for entry in allow:
+            value = str(entry).strip()
+            if not value:
+                continue
+            if value not in normalized:
+                normalized.append(value)
+    print(dm_policy)
+    print(",".join(normalized))
+    print(len(normalized))
+except Exception:
+    print('')
+    print('')
+    print('0')
+PY
+)"
+  TG_DM_POLICY="$(echo "$TG_DM_RUNTIME" | sed -n '1p')"
+  TG_ALLOW_FROM="$(echo "$TG_DM_RUNTIME" | sed -n '2p')"
+  TG_ALLOW_COUNT="$(echo "$TG_DM_RUNTIME" | sed -n '3p')"
+  if [ "${TG_DM_POLICY}" = "pairing" ] && [ "${TG_ALLOW_COUNT}" = "0" ]; then
+    warn "Telegram dmPolicy=pairing with empty allowFrom (DM commands require pairing approval before skills run)"
+  elif [ "${TG_ALLOW_COUNT}" != "0" ]; then
+    pass "Telegram DM allowFrom configured (${TG_ALLOW_FROM})"
+  else
+    warn "Telegram DM allowFrom is empty (native command authorization may block skill invocation)"
+  fi
+
   if docker exec openclaw-openclaw-gateway-1 sh -lc 'test -r /home/node/.openclaw/openclaw.json'; then
     pass "Gateway runtime user can read /home/node/.openclaw/openclaw.json"
   else
@@ -208,6 +245,10 @@ PY
   fi
 
   if [ -n "$TG_TOKEN" ]; then
+    TG_LEN="${#TG_TOKEN}"
+    if [ "$TG_LEN" -lt 30 ]; then
+      fail "OPENCLAW_TELEGRAM_TOKEN appears invalid (len=${TG_LEN})"
+    fi
     TG_META="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMe" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ok:"+str((d.get("result") or {}).get("username","?")) if d.get("ok") else "bad")' 2>/dev/null || true)"
     if [[ "$TG_META" == ok:* ]]; then
       pass "OpenClaw Telegram token validated via getMe (${TG_META#ok:})"
@@ -248,6 +289,8 @@ PY
 
   if [ -z "$BRAVE_API_KEY" ] || [[ "$BRAVE_API_KEY" == REPLACE_* ]]; then
     fail "BRAVE_API_KEY missing/placeholder (AI Daily Brief web grounding unavailable)"
+  elif [ "${#BRAVE_API_KEY}" -lt 20 ]; then
+    fail "BRAVE_API_KEY appears invalid (len=${#BRAVE_API_KEY}); update /root/openclaw/.env with a real Brave token"
   else
     BRAVE_ENV_VISIBLE="$(docker exec openclaw-openclaw-gateway-1 sh -lc 'if [ -n "${BRAVE_API_KEY:-}" ]; then echo yes; else echo no; fi' 2>/dev/null || echo no)"
     if [ "$BRAVE_ENV_VISIBLE" = "yes" ]; then

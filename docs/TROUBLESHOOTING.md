@@ -158,6 +158,28 @@ Required smoke-test lines:
 
 Avoid `openclaw doctor --fix` as part of AI-brief rollout automation. It can rewrite config and interfere with explicit Telegram token wiring.
 
+### Commands reach bot but AI brief never invokes (`last_run` stays null)
+If `/ai_daily_brief*` returns generic replies and `last_run.run_id/mode/status` remain null, verify DM authorization:
+
+`aibrief-smoke-test.sh` should show either:
+- `Telegram DM allowFrom configured (...)`, or
+- an intentional pairing setup you already approved.
+
+Fix with explicit allowlist (recommended):
+```bash
+cd /root/openclaw
+sed -i '/^OPENCLAW_TELEGRAM_ALLOW_FROM=/d' .env
+echo 'OPENCLAW_TELEGRAM_ALLOW_FROM=6182588021' >> .env   # replace with your Telegram user ID
+sed -i '/^OPENCLAW_TELEGRAM_DM_POLICY=/d' .env
+echo 'OPENCLAW_TELEGRAM_DM_POLICY=allowlist' >> .env
+
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+The config sync also accepts fallback from `SENTINEL_ALLOWED_USERS` when `OPENCLAW_TELEGRAM_ALLOW_FROM` is not set.
+
 ### AI Daily Brief has no outputs yet
 No files under `/root/.openclaw/workspace/outputs/summaries/ai-brief-*.md` means no successful run yet.
 
@@ -203,6 +225,8 @@ If smoke test shows both probes failing (LLM Context + Web Search):
 ```bash
 docker exec openclaw-openclaw-gateway-1 sh -lc 'echo ${#BRAVE_API_KEY}'
 ```
+
+If smoke test reports `BRAVE_API_KEY appears invalid (len=...)`, the key format itself is wrong (commonly a truncated value like length 4). Replace it before debugging anything else.
 
 ### High token usage
 1. Check console.anthropic.com -> Usage for daily breakdown
