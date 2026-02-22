@@ -187,7 +187,10 @@ Marker:
    - confirm Brave LLM Context probe passes
 8. Validate Telegram ingest runtime:
    - smoke test must pass `Telegram ingest runtime is running`
-   - if not, run `docker exec openclaw-openclaw-gateway-1 node openclaw.mjs doctor --fix` and recreate gateway
+   - if smoke test shows `tokenSource=none`, re-run:
+     - `bash /root/openclaw-project/infrastructure/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw-project/openclaw/openclaw-config.json`
+     - then recreate gateway container
+   - avoid using `openclaw doctor --fix` in rollout flow for AI brief routing
 
 ---
 

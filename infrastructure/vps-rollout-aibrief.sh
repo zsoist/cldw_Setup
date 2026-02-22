@@ -125,30 +125,30 @@ done
 log "Final health check"
 "$PROJECT_DIR/infrastructure/health-check.sh"
 
-log "Applying OpenClaw doctor fixes (if any)"
-if docker exec openclaw-openclaw-gateway-1 node openclaw.mjs doctor --fix >/tmp/aibrief-doctor.log 2>&1; then
-  log "openclaw doctor --fix completed"
-else
-  log "WARN: openclaw doctor --fix failed; continuing rollout"
-  tail -n 20 /tmp/aibrief-doctor.log || true
-fi
-
 if [ -f "/root/openclaw/.env" ]; then
   GW_TOKEN="$(grep '^OPENCLAW_GATEWAY_TOKEN=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
   if [ -n "$GW_TOKEN" ]; then
     if docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$GW_TOKEN" --json >/tmp/aibrief-post-health.json 2>/tmp/aibrief-post-health.err; then
-      TG_RUNNING="$(python3 - <<'PY'
+      TG_STATUS="$(python3 - <<'PY'
 import json
 with open('/tmp/aibrief-post-health.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 telegram = ((data.get('channels') or {}).get('telegram') or {})
-print(str(bool(telegram.get('running'))).lower())
+print("running=" + str(bool(telegram.get('running'))).lower())
+print("tokenSource=" + str(telegram.get('tokenSource')))
+print("lastError=" + str(telegram.get('lastError')))
 PY
 )"
+      TG_RUNNING="$(echo "$TG_STATUS" | sed -n 's/^running=//p' | tail -n1)"
+      TG_TOKEN_SOURCE="$(echo "$TG_STATUS" | sed -n 's/^tokenSource=//p' | tail -n1)"
+      TG_LAST_ERROR="$(echo "$TG_STATUS" | sed -n 's/^lastError=//p' | tail -n1)"
       if [ "$TG_RUNNING" = "true" ]; then
-        log "Telegram ingest runtime is running"
+        log "Telegram ingest runtime is running (tokenSource=${TG_TOKEN_SOURCE})"
       else
-        log "WARN: Telegram ingest runtime reports running=false (commands may not be consumed)"
+        log "WARN: Telegram ingest runtime reports running=false (tokenSource=${TG_TOKEN_SOURCE}; lastError=${TG_LAST_ERROR})"
+        if [ "$TG_TOKEN_SOURCE" = "none" ]; then
+          log "WARN: Telegram token not loaded by gateway config. Re-sync with infrastructure/sync-openclaw-config.sh and recreate container."
+        fi
       fi
     else
       log "WARN: unable to perform post-rollout gateway health call"

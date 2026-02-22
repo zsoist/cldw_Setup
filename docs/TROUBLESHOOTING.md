@@ -117,10 +117,18 @@ cd /root/openclaw-project
 ```
 
 ### Telegram configured but not consuming commands (`running=false`)
-If `aibrief-smoke-test.sh` reports Telegram configured but runtime not running, apply runtime doctor fixes:
+If `aibrief-smoke-test.sh` reports:
+- `Telegram running: False`
+- `Telegram tokenSource: none`
+
+then the gateway runtime did not load bot token from config.
+
+Do this in order:
 ```bash
 cd /root/openclaw
-docker exec openclaw-openclaw-gateway-1 node openclaw.mjs doctor --fix
+cd /root/openclaw-project
+bash ./infrastructure/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw-project/openclaw/openclaw-config.json
+cd /root/openclaw
 docker compose up -d --force-recreate
 ```
 Then re-run:
@@ -128,6 +136,8 @@ Then re-run:
 cd /root/openclaw-project
 ./infrastructure/aibrief-smoke-test.sh
 ```
+
+Avoid `openclaw doctor --fix` as part of AI-brief rollout automation. It can rewrite config and interfere with explicit Telegram token wiring.
 
 ### AI Daily Brief has no outputs yet
 No files under `/root/.openclaw/workspace/outputs/summaries/ai-brief-*.md` means no successful run yet.

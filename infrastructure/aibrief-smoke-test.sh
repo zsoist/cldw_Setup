@@ -137,6 +137,8 @@ print('Default agent:', data.get('defaultAgentId'))
 telegram = ((data.get('channels') or {}).get('telegram') or {})
 print('Telegram configured:', telegram.get('configured'))
 print('Telegram running:', telegram.get('running'))
+print('Telegram tokenSource:', telegram.get('tokenSource'))
+print('Telegram lastError:', telegram.get('lastError'))
 PY
       TELEGRAM_RUNNING="$(python3 - <<'PY'
 import json
@@ -146,10 +148,23 @@ telegram = ((data.get('channels') or {}).get('telegram') or {})
 print(str(bool(telegram.get('running'))).lower())
 PY
 )"
+      TELEGRAM_TOKEN_SOURCE="$(python3 - <<'PY'
+import json
+with open('/tmp/aibrief-health.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+telegram = ((data.get('channels') or {}).get('telegram') or {})
+print(str(telegram.get('tokenSource') or "none"))
+PY
+)"
       if [ "$TELEGRAM_RUNNING" = "true" ]; then
         pass "Telegram ingest runtime is running"
       else
         fail "Telegram ingest runtime is not running (configured but not consuming updates)"
+      fi
+      if [ "$TELEGRAM_TOKEN_SOURCE" = "none" ]; then
+        fail "Gateway Telegram tokenSource=none (runtime did not load bot token from config)"
+      else
+        pass "Gateway Telegram token source is ${TELEGRAM_TOKEN_SOURCE}"
       fi
     else
       fail "Gateway health call failed: $(tail -n 1 /tmp/aibrief-health.err)"
@@ -229,7 +244,11 @@ import json
 try:
     with open('/tmp/aibrief-brave-context.json', 'r', encoding='utf-8') as f:
         data = json.load(f)
-    print((data.get('error') or {}).get('message') or data.get('message') or 'unknown error')
+    msg = (data.get('error') or {}).get('message') or data.get('message')
+    if msg:
+        print(msg)
+    else:
+        print(str(data)[:220])
 except Exception:
     print('no-json-error-body')
 PY
@@ -247,7 +266,21 @@ PY
       if [ "$BRAVE_WEB_CODE" = "200" ]; then
         warn "Brave LLM Context probe failed (HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}) but Brave Web Search is reachable. Likely missing LLM Context entitlement; AI brief should run in fallback/partial mode."
       else
-        fail "Brave API probes failed (llm/context HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}; web/search HTTP ${BRAVE_WEB_CODE})"
+        BRAVE_WEB_ERROR="$(python3 - <<'PY'
+import json
+try:
+    with open('/tmp/aibrief-brave-web.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    msg = (data.get('error') or {}).get('message') or data.get('message')
+    if msg:
+        print(msg)
+    else:
+        print(str(data)[:220])
+except Exception:
+    print('no-json-error-body')
+PY
+)"
+        fail "Brave API probes failed (llm/context HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}; web/search HTTP ${BRAVE_WEB_CODE}: ${BRAVE_WEB_ERROR})"
       fi
     fi
   fi
