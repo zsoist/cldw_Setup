@@ -139,7 +139,7 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - `/ai_daily_brief_watchlist`
   - `/ai_daily_brief_status`
 - Canonical command remains preferred; aliases route to the same handler.
-- Deduplication and update suppression using `openclaw/workspace/logs/ai-brief-state.json`.
+- Deduplication and update suppression using `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
 - Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
 - Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
 - Weighted anti-hype ranking (impact, credibility, novelty, relevance, freshness, confidence).

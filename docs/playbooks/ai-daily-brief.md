@@ -37,7 +37,7 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
 - Auth: `X-Subscription-Token: ${BRAVE_API_KEY}`
 - Config source:
   - `.env`: `BRAVE_API_KEY`
-  - state: `config.brave_llm_context` in `openclaw/workspace/logs/ai-brief-state.json`
+  - state: `config.brave_llm_context` in `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
 - Default threshold mode: `balanced`
 - Fallback behavior: if Brave is unavailable, run partial brief with fallback web search and explicit confidence downgrade.
 
@@ -121,7 +121,7 @@ Return run-health metadata only:
 - expected cron schedule
 
 ## State and Duplicate Suppression
-State file: `openclaw/workspace/logs/ai-brief-state.json`
+State file: `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
 - Keep `last_successful_run` per slot
 - Track recent story fingerprints
 - Suppress unchanged stories for at least 48h (configurable)

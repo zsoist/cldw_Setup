@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v3 -->
+<!-- config-version: 2026.02.22-ai-brief-v4 -->
 
 # Heartbeat Configuration
 
@@ -24,7 +24,7 @@
 - Max 7 tool calls per heartbeat cycle
 
 ## AI Daily Brief State Rules
-- State file: `workspace/logs/ai-brief-state.json`
+- State file: `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
 - Before running AI brief:
   - verify last successful run timestamp for slot (`morning` or `evening`)
   - verify Brave provider is configured (`BRAVE_API_KEY` present) before full run

@@ -43,7 +43,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 
 ## Inputs
 - Local timezone: `America/Bogota`
-- State file: `workspace/logs/ai-brief-state.json`
+- State file: `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
 - Brave API key: `BRAVE_API_KEY` from runtime env
 - Provider config in state:
   - `config.provider` (expect `brave_llm_context`)
@@ -91,7 +91,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 
 ## Pipeline (deterministic first, then synthesis)
 0. **State bootstrap (mandatory, first action)**:
-   - load `workspace/logs/ai-brief-state.json`
+   - load `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
    - write `last_run` with `run_id`, `started_at`, inferred `slot`/`mode`, and `status=running`
    - if any subsequent step fails, update `last_run.status=failed` and `last_run.error=<reason>` before returning
 1. **Collect**:
@@ -129,6 +129,11 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
    - write `finished_at`
    - write final `status` (`success|partial|failed`)
    - write delivery metadata + `error` field (null on success, explicit string on failure)
+
+## Path Safety Rules (critical)
+- Treat slash commands as commands, never as file paths.
+- Never read paths like `/aibrief_status` or `workspace/aibrief_status`.
+- For AI brief state, always use absolute path: `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
 
 ## Delivery Routing Rules
 - Resolve `delivery_target` from state in this order:

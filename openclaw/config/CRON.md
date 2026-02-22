@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v3 -->
+<!-- config-version: 2026.02.22-ai-brief-v4 -->
 
 # Cron Job Registry
 
@@ -9,7 +9,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - Prefer cheap model unless complexity demands escalation
 - Log results to `workspace/logs/cron-job-results.md`
 - On failure: log error + notify, do NOT retry automatically
-- AI briefing jobs must consult `workspace/logs/ai-brief-state.json` to suppress duplicates
+- AI briefing jobs must consult `/home/node/.openclaw/workspace/logs/ai-brief-state.json` to suppress duplicates
 - AI briefing jobs must be idempotent per slot (skip if same slot already succeeded unless forced)
 
 ---
@@ -27,7 +27,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 
 ### 2. AI Daily Brief (Morning)
 - **Schedule:** Daily 07:10 COT
-- **Reads:** trusted AI sources from the last 12-16h, `workspace/logs/ai-brief-state.json`, optional watchlist topics
+- **Reads:** trusted AI sources from the last 12-16h, `/home/node/.openclaw/workspace/logs/ai-brief-state.json`, optional watchlist topics
 - **Action:** Retrieve, dedupe, cluster, rank, and summarize high-signal AI stories for morning consumption
 - **Output:** `workspace/outputs/summaries/ai-brief-morning-YYYY-MM-DD.md`
 - **Notify:** Deliver full brief to `config.output_channel` when configured; otherwise originating chat. Always ACK in originating chat.
@@ -37,7 +37,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 
 ### 3. AI Daily Brief (Evening)
 - **Schedule:** Daily 19:00 COT
-- **Reads:** trusted AI sources since morning run, `workspace/logs/ai-brief-state.json`, optional watchlist topics
+- **Reads:** trusted AI sources since morning run, `/home/node/.openclaw/workspace/logs/ai-brief-state.json`, optional watchlist topics
 - **Action:** Produce evening delta briefing focused on meaningful updates, launches, policy, and market moves
 - **Output:** `workspace/outputs/summaries/ai-brief-evening-YYYY-MM-DD.md`
 - **Notify:** Deliver full brief to `config.output_channel` when configured; otherwise originating chat. Always ACK in originating chat.

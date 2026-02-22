@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v3 -->
+<!-- config-version: 2026.02.22-ai-brief-v4 -->
 
 # Soul
 
@@ -24,7 +24,7 @@ Route tasks to the best sub-agent, provide only the necessary context, validate 
   - `/ai_daily_brief_watchlist` -> `/ai_daily_brief watchlist`
   - `/ai_daily_brief_morning` -> `/ai_daily_brief morning`
   - `/ai_daily_brief_evening` -> `/ai_daily_brief evening`
-- For `/ai_daily_brief` runs, honor `workspace/logs/ai-brief-state.json` routing target (`config.output_channel`) for final brief delivery.
+- For `/ai_daily_brief` runs, honor `/home/node/.openclaw/workspace/logs/ai-brief-state.json` routing target (`config.output_channel`) for final brief delivery.
 - On AI brief failure, persist `last_run.status=failed` and `last_run.error`; never leave `last_run` null after invocation.
 - When asked a question: answer directly, cite sources if from web.
 - When uncertain: say so plainly, suggest how to resolve.

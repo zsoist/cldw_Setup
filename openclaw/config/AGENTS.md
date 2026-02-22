@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v3 -->
+<!-- config-version: 2026.02.22-ai-brief-v4 -->
 
 # Agent Registry & Model Routing
 
@@ -31,7 +31,7 @@
 - **Compatibility aliases:** `/ai_daily_brief_morning`, `/ai_daily_brief_evening`, `/ai_daily_brief_top5`, `/ai_daily_brief_builder`, `/ai_daily_brief_watchlist`, `/ai_daily_brief_status`
 - **Output format:** Full mode: Executive Snapshot → Top Stories → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
 - **Provider preference:** use Brave LLM Context (`/res/v1/llm/context`) for grounding with state-configured token budgets before generic web search fallback
-- **Delivery routing:** read `workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat
+- **Delivery routing:** read `/home/node/.openclaw/workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat
 - **Cost tier:** standard (Sonnet)
 
 ### Command Namespace Safety

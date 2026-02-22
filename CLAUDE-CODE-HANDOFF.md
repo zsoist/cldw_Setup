@@ -23,6 +23,7 @@
 - AI Daily Brief now uses canonical `/ai_daily_brief` command arguments, plus VPS rollout/smoke-test scripts.
 - AI Daily Brief supports dedicated Telegram delivery target via `config.output_channel` in state.
 - AI Daily Brief now expects Brave LLM Context grounding (`BRAVE_API_KEY`) and reports provider diagnostics in smoke tests.
+- AI brief runtime state path is absolute: `/home/node/.openclaw/workspace/logs/ai-brief-state.json` (avoid relative-path drift).
 
 ---
 
