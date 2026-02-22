@@ -149,7 +149,7 @@ Job boards may rate-limit or block aggressive scraping. Mitigations:
 
 | File | Role in Job Search |
 |------|-------------------|
-| `openclaw/config/CRON.md` | Job #6 (Business Daily Snapshot) and #9 (Weekly KPI Digest) — extend these |
+| `openclaw/config/CRON.md` | Job #8 (Business Daily Snapshot) and #11 (Weekly KPI Digest) — extend these |
 | `openclaw/config/AGENTS.md` | Researcher sub-agent handles deep company research |
 | `openclaw/agents/work/SOUL.md` | Work agent scope includes job search |
 | `openclaw/agents/work/USER.md` | Professional profile for tailoring outreach |

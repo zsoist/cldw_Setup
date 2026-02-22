@@ -10,15 +10,28 @@
 ## Heartbeat tasks (in order)
 1. Check for unread Telegram messages that need follow-up
 2. Review pending reminders/tasks due within 2 hours
-3. If morning (07:00-08:00): trigger daily briefing skill
-4. If evening (20:00-21:00): run end-of-day log
-5. If Sunday evening (20:00-21:00): run weekly review
+3. If morning (07:00-08:00): trigger daily planning briefing
+4. If morning (07:00-08:00) and no morning AI brief sent today: trigger `ai-daily-brief` (morning slot)
+5. If evening (19:00-20:00) and no evening AI brief sent today: trigger `ai-daily-brief` (evening slot)
+6. If evening (20:00-21:00): run end-of-day log
+7. If Sunday evening (20:00-21:00): run weekly review
 
 ## Rules
-- Heartbeat should complete in <30 seconds
+- Heartbeat should complete in <45 seconds
 - If nothing actionable, do NOT send a message (stay silent)
 - Never wake Daniel during silent hours unless explicitly overridden
-- Max 5 tool calls per heartbeat cycle
+- Max 7 tool calls per heartbeat cycle
+
+## AI Daily Brief State Rules
+- State file: `workspace/logs/ai-brief-state.json`
+- Before running AI brief:
+  - verify last successful run timestamp for slot (`morning` or `evening`)
+  - suppress run if already completed for current slot unless manually forced
+  - suppress stories that were already sent without material updates
+- After successful run:
+  - update slot timestamp
+  - append story fingerprints and update flags
+  - write output path for traceability
 
 ## End-of-Day Log (20:00 COT)
 Persist the day's summary to `memory/YYYY-MM-DD.md` with this structure:
@@ -28,7 +41,7 @@ Persist the day's summary to `memory/YYYY-MM-DD.md` with this structure:
 - **Carry Forward:** unfinished items for tomorrow
 
 After writing the daily log:
-1. Promote any confirmed new preferences to `MEMORY.md` → Confirmed Preferences
+1. Promote any confirmed new preferences to `MEMORY.md` -> Confirmed Preferences
 2. Update Active Projects if project status changed
 3. Add any failure patterns to Recent Lessons
 4. Send a concise Telegram summary (max 100 words) — do NOT send the full log

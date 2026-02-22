@@ -104,6 +104,7 @@ copy_checked "$PROJECT_DIR/openclaw/workspace/business/goals-okrs.md" "$OPENCLAW
 copy_checked "$PROJECT_DIR/openclaw/workspace/business/operating-rules.md" "$OPENCLAW_CONFIG/workspace/business/operating-rules.md"
 copy_checked "$PROJECT_DIR/openclaw/workspace/logs/change-log.md" "$OPENCLAW_CONFIG/workspace/logs/change-log.md"
 copy_checked "$PROJECT_DIR/openclaw/workspace/logs/cron-job-results.md" "$OPENCLAW_CONFIG/workspace/logs/cron-job-results.md"
+copy_checked "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
 if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
     while IFS= read -r -d '' skill_file; do
         rel_path="${skill_file#$PROJECT_DIR/openclaw/skills/}"
@@ -191,7 +192,7 @@ echo "   OpenClaw:  pinned to $OPENCLAW_REF"
 echo "   Config:    12 main agent files + openclaw-config.json"
 echo "   Work:      5 work agent files (sandbox enabled)"
 echo "   Workspace: personal/, business/, outputs/, logs/"
-echo "   Skills:    3 skills (daily-briefing, research, task-tracker)"
+echo "   Skills:    4 skills (ai-daily-brief, daily-briefing, research-assistant, task-tracker)"
 echo "   Sentinel:  Python bot + systemd service"
 echo ""
 echo "Next steps:"

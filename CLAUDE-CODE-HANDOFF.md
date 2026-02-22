@@ -2,7 +2,7 @@
 
 > For the next LLM session.
 >
-> Last updated: 2026-02-21  
+> Last updated: 2026-02-22  
 > Branch: `main`  
 > Current commit: run `git rev-parse --short HEAD` on your checkout  
 
@@ -19,6 +19,7 @@
   - Primary edit source: `/root/openclaw/.env`
   - Sentinel runtime env: `/etc/sentinel/sentinel.env` (synced via script)
 - Backup/restore workflows hardened.
+- AI Daily Brief capability now runs twice daily with stateful duplicate suppression.
 
 ---
 
@@ -109,6 +110,24 @@ Marker:
 - Added:
   - `docs/security/secrets-rotation.md`
 
+### 8) AI Daily Brief capability
+
+- Added new skill:
+  - `openclaw/skills/ai-daily-brief/SKILL.md`
+- Updated existing skill:
+  - `openclaw/skills/daily-briefing/SKILL.md` (now daily planning-first; no duplicate AI headline synthesis)
+- Added stateful AI brief tracking:
+  - `openclaw/workspace/logs/ai-brief-state.json`
+- Updated orchestration and schedules:
+  - `openclaw/config/AGENTS.md` (new `AI Brief Editor` route)
+  - `openclaw/config/CRON.md` (12 jobs; adds morning/evening AI brief runs)
+  - `openclaw/config/HEARTBEAT.md` (slot-aware AI brief checks + anti-duplicate behavior)
+- Added playbook/template:
+  - `docs/playbooks/ai-daily-brief.md`
+  - `docs/templates/ai-daily-brief-template.md`
+- Deployment wiring:
+  - `infrastructure/deploy.sh` now copies AI brief state file and reports 4 deployed skills.
+
 ---
 
 ## Files Most Relevant for Next Session
@@ -124,6 +143,10 @@ Marker:
 - `infrastructure/sync-sentinel-env.sh`
 - `infrastructure/validate-placeholders.sh`
 - `README.md`
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+- `openclaw/workspace/logs/ai-brief-state.json`
+- `docs/playbooks/ai-daily-brief.md`
+- `docs/templates/ai-daily-brief-template.md`
 
 ---
 
@@ -133,6 +156,8 @@ Marker:
 2. Rotate all exposed secrets immediately if any were ever posted in logs/chat.
 3. Validate real VPS migration path for non-root Sentinel (`sync-sentinel-env.sh` + systemd restart).
 4. Consider adding signed release artifacts if repo integrity is part of threat model.
+5. Validate AI brief command flow in Telegram:
+   - `/aibrief`, `/aibrief_morning`, `/aibrief_evening`, `/aibrief_top5`, `/aibrief_watchlist`
 
 ---
 

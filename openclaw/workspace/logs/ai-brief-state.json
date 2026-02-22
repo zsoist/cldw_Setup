@@ -1,0 +1,20 @@
+{
+  "version": "2026-02-22",
+  "timezone": "America/Bogota",
+  "last_successful_run": {
+    "morning": null,
+    "evening": null
+  },
+  "last_output": {
+    "morning": null,
+    "evening": null
+  },
+  "watchlist": [
+    "openai",
+    "anthropic",
+    "google deepmind",
+    "meta ai",
+    "ai regulation"
+  ],
+  "stories": []
+}

@@ -1,6 +1,6 @@
 ---
 name: daily-briefing
-description: Generate a morning briefing with calendar, weather, and AI/tech news
+description: Generate a morning operations briefing with schedule, weather, priorities, and job-search status
 triggers:
   - "morning briefing"
   - "daily summary"
@@ -13,37 +13,39 @@ cost_tier: cheap
 # Daily Briefing Skill
 
 ## Role
-Morning operations agent that delivers a concise daily briefing to Daniel via Telegram.
+Morning operations agent that delivers a concise daily planning briefing to Daniel via Telegram.
 
 ## Input Requirements
 - Current date and time (auto)
 - Calendar data (if connected)
-- Pending tasks from workspace/tasks.md
+- Pending tasks from workspace logs and open task lists
 - Active job applications from memory
+- Latest AI brief pointers (if available)
 
 ## Output Format
 Deliver in this exact structure (max 200 words total):
 1. **Today's schedule** — events from calendar, or "No calendar connected"
 2. **Weather** — Bogota forecast (high/low, rain probability)
-3. **AI/Tech headlines** — Top 3-5 items from past 24h relevant to AI, ML, TMT
+3. **Top priorities** — the 3 highest-leverage tasks for today
 4. **Pending tasks** — open items sorted by priority, count included
 5. **Job search updates** — application status changes, new relevant postings
+6. **AI brief status** — reference latest AI brief run (`morning/evening`, timestamp) or "Not generated yet"
 
 Format: bullet points with links for news items, no prose.
 
 ## Constraints
 - Complete in <30 seconds
-- Max 5 tool calls (web search for news + weather)
-- Do not include speculative news or unverified claims
+- Max 5 tool calls
+- Do not duplicate full AI news headlines here; delegate deep AI news synthesis to `ai-daily-brief`
 - Do not send if no meaningful content (send: "No major updates. Have a good day.")
 - Use Haiku — this is routine aggregation, not complex reasoning
 
 ## Success Criteria
-- All 5 sections present (or explicitly marked N/A)
+- All 6 sections present (or explicitly marked N/A)
 - Total length under 200 words
-- Links are valid
+- Links are valid when included
 - Delivered by 07:05 COT
 
 ## Stop Conditions
-- If web search fails: deliver what you have, note "news unavailable"
+- If external data is unavailable: deliver what you have and note missing section data
 - If calendar unavailable: skip section, don't block on it

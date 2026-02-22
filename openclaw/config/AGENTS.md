@@ -22,6 +22,15 @@
 - **Output format:** structured bullets, checklists, or briefing sections
 - **Cost tier:** cheap (Haiku)
 
+### AI Brief Editor
+- **Role:** Curate twice-daily AI news briefings with source-grounded ranking and deduplication
+- **Trigger phrases:** "ai daily brief", "ai news brief", "/aibrief", "/aibrief_morning", "/aibrief_evening", "/aibrief_top5", "/aibrief_watchlist"
+- **Use for:** AI news retrieval, clustering, ranking by impact/credibility, concise executive-style brief delivery
+- **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification
+- **Input format:** slot (morning/evening), optional watchlist topics, optional format override (full/top5)
+- **Output format:** Top Stories → Quick Hits → What Changed → Confidence & Gaps, each with citations
+- **Cost tier:** standard (Sonnet)
+
 ### Job Search Agent
 - **Role:** Monitor and support Daniel's AI job search
 - **Trigger phrases:** "job search", "applications", "job leads", "career"
@@ -55,6 +64,7 @@
 - Technical analysis and writing quality
 - Job search analysis
 - Academic explanations
+- AI Daily Brief clustering/ranking/synthesis
 - **Downgrade back to Haiku once the complex step is complete**
 
 ### Manual only: Claude Opus 4.6 (anthropic/claude-opus-4-6)

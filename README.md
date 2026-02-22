@@ -105,22 +105,33 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 
 ### 8. Cron Job Architecture
 
-10 scheduled jobs defined in `openclaw/config/CRON.md`, split between personal and business:
+12 scheduled jobs defined in `openclaw/config/CRON.md`, split between personal and business:
 
 | # | Job | Schedule | Agent | Model |
 |---|-----|----------|-------|-------|
 | 1 | Daily Planning Brief | 07:00 daily | Main | Haiku |
-| 2 | EOD Review | 20:00 daily | Main | Haiku |
-| 3 | Weekly Personal Review | Sun 20:00 | Main | Haiku |
-| 4 | Calendar Prep Watch | Every 4h | Main | Haiku |
-| 5 | Knowledge Capture | Mon/Wed/Fri 19:00 | Main | Haiku |
-| 6 | Business Daily Snapshot | Weekdays 08:00 | Work | Haiku |
-| 7 | Meeting Prep Generator | Hourly (work hours) | Work | Haiku/Sonnet |
-| 8 | Pipeline Stale Check | Weekdays 16:00 | Work | Haiku |
-| 9 | Weekly KPI Digest | Fri 17:00 | Work | Haiku |
-| 10 | Security Hygiene | Mon 09:00 | Work | Haiku |
+| 2 | AI Daily Brief (Morning) | 07:10 daily | Main | Sonnet |
+| 3 | AI Daily Brief (Evening) | 19:00 daily | Main | Sonnet |
+| 4 | EOD Review | 20:00 daily | Main | Haiku |
+| 5 | Weekly Personal Review | Sun 20:00 | Main | Haiku |
+| 6 | Calendar Prep Watch | Every 4h | Main | Haiku |
+| 7 | Knowledge Capture | Mon/Wed/Fri 19:00 | Main | Haiku |
+| 8 | Business Daily Snapshot | Weekdays 08:00 | Work | Haiku |
+| 9 | Meeting Prep Generator | Hourly (work hours) | Work | Haiku/Sonnet |
+| 10 | Pipeline Stale Check | Weekdays 16:00 | Work | Haiku |
+| 11 | Weekly KPI Digest | Fri 17:00 | Work | Haiku |
+| 12 | Security Hygiene | Mon 09:00 | Work | Haiku |
 
 Every job follows the read → analyze → notify pattern. Deep research and destructive actions never run automatically.
+
+### 9. AI Daily Brief Capability
+
+The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice daily:
+
+- Slot-aware delivery (`morning` and `evening`) with manual overrides via `/aibrief*` commands.
+- Deduplication and update suppression using `openclaw/workspace/logs/ai-brief-state.json`.
+- Weighted ranking (impact, credibility, novelty, relevance, freshness).
+- Mandatory citations and explicit confidence/gaps section to reduce hallucinated claims.
 
 ## Sentinel: Agentic Sysadmin Bot
 
@@ -188,7 +199,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │   ├── IDENTITY.md                    # Persona tone + style
 │   │   ├── BOOTSTRAP.md                   # First-run behavior (retires after setup)
 │   │   ├── BOOT.md                        # Startup health checks (runs every boot)
-│   │   ├── CRON.md                        # Full cron job registry (10 jobs)
+│   │   ├── CRON.md                        # Full cron job registry (12 jobs)
 │   │   ├── CHANNELS.md                    # Channel security policy + allowlists
 │   │   └── SANDBOX.md                     # Sandbox policy + agent isolation rules
 │   ├── agents/
@@ -214,9 +225,11 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │   │   └── exports/                   # Finalized exports
 │   │   └── logs/                          # Operational logs
 │   │       ├── change-log.md              # Config/infrastructure change record
-│   │       └── cron-job-results.md        # Cron execution log (append-only)
+│   │       ├── cron-job-results.md        # Cron execution log (append-only)
+│   │       └── ai-brief-state.json        # Stateful dedupe + slot tracking for AI brief
 │   ├── skills/
-│   │   ├── daily-briefing/SKILL.md        # Morning briefing (Haiku, scheduled)
+│   │   ├── ai-daily-brief/SKILL.md        # Twice-daily AI news brief (Sonnet, source-grounded)
+│   │   ├── daily-briefing/SKILL.md        # Morning planning briefing (Haiku, scheduled)
 │   │   ├── research-assistant/SKILL.md    # Deep research (Sonnet, on-demand)
 │   │   └── task-tracker/SKILL.md          # Task management (Haiku, triggered)
 │   ├── memory/                            # Daily + weekly log storage
@@ -245,7 +258,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── validate-placeholders.sh           # Validates required secrets are non-placeholder
 │   ├── backup.sh                          # Automated backup (7-day rotation, no secrets)
 │   ├── restore.sh                         # Interactive restore from backup
-│   ├── health-check.sh                    # 8-point system health verification
+│   ├── health-check.sh                    # Multi-check system health verification
 │   └── ssh-config-snippet                 # Mac SSH config with tunnel
 └── docs/
     ├── setup/
@@ -256,11 +269,13 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
     │   ├── openclaw-hardening.md          # Gateway security hardening practices
     │   └── secrets-rotation.md            # Secret rotation schedule and procedure
     ├── playbooks/
+    │   ├── ai-daily-brief.md              # AI brief pipeline + quality gates
     │   ├── daily-planning.md              # Daily brief playbook
     │   ├── personal-weekly-review.md      # Weekly review playbook
     │   ├── meeting-prep.md                # Meeting preparation playbook
     │   └── decision-log-template.md       # Decision record format
     ├── templates/
+    │   ├── ai-daily-brief-template.md     # AI brief output format
     │   ├── research-summary-template.md   # Research output format
     │   ├── brief-template.md              # Executive brief format
     │   └── sop-template.md                # Standard operating procedure format
@@ -288,7 +303,8 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 |-----------------|-------|----------------|
 | Simple Q&A / chat | Haiku 4.5 | ~$0.001 |
 | Heartbeat cycle | Haiku 4.5 | ~$0.0005 |
-| Daily briefing | Haiku 4.5 | ~$0.002 |
+| Daily planning briefing | Haiku 4.5 | ~$0.002 |
+| AI Daily Brief (morning/evening) | Sonnet 4.5 | ~$0.01-0.03 |
 | Research deep dive | Sonnet 4.5 | $0.02-0.05 |
 | Code generation | Sonnet 4.5 | $0.03-0.08 |
 | Sentinel status check | Haiku 4.5 | ~$0.002 |
@@ -322,7 +338,7 @@ With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well unde
 
 ### Operational
 - **Automated backups**: daily at 03:00, 7-day rotation, secrets excluded from tarballs
-- **Health checks**: 8-point verification script (Docker + gateway health, disk, memory, UFW, backups)
+- **Health checks**: multi-check verification script (Docker + gateway health + fallback endpoint + security + disk/memory + backups)
 - **Deploy ownership alignment**: `/root/.openclaw` ownership is aligned to container `openclaw` UID/GID after image build
 - **Rate limiting**: Sentinel enforces per-user request windows to reduce abuse/API burn
 - **Tamper-evident audit trail**: tool execution events are hash-chained in `/var/log/sentinel/audit.log`
@@ -423,7 +439,7 @@ Notes:
 | Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |
 | No elevated exec | Sandboxing is meaningless if agents can bypass it via host execution. |
 | Channel allowlist + no groups | Group chats are the highest prompt injection surface area. |
-| 10 cron jobs, all Haiku default | Scheduled tasks are repetitive — never worth Sonnet unless strategic depth needed. |
+| 12 cron jobs, Haiku-default with Sonnet for AI briefs | Most schedules are repetitive and cheap; twice-daily AI news synthesis is the intentional Sonnet exception. |
 | Read/notify before act | Cron jobs that auto-execute risky actions compound errors at scale. |
 | Deep research opt-in only | Auto-triggered deep research is the fastest way to blow through API budget. |
 | Save reusable research to docs/ | Prevents redundant web searches for the same topic. |
