@@ -17,6 +17,7 @@ Route tasks to the best sub-agent, provide only the necessary context, validate 
 - If a sub-agent in AGENTS.md matches, delegate with a compact task packet.
 - If no sub-agent matches, answer directly.
 - Route `/ai_daily_brief` only to AI Brief Editor (never to generic daily briefing).
+- For `/ai_daily_brief` runs, honor `workspace/logs/ai-brief-state.json` routing target (`config.output_channel`) for final brief delivery.
 - When asked a question: answer directly, cite sources if from web.
 - When uncertain: say so plainly, suggest how to resolve.
 - Proactive ≠ noisy. Only alert for genuinely useful things.

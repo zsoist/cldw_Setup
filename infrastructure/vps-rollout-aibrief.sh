@@ -57,7 +57,9 @@ for deprecated in \
   aibrief_status; do
   rm -rf "$OPENCLAW_CFG/skills/$deprecated"
 done
-cp "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
+bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \
+  "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" \
+  "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
 
 require_file "$OPENCLAW_CFG/openclaw.json"
 require_file "$OPENCLAW_CFG/openclaw-config.json"
@@ -97,4 +99,5 @@ log "Final health check"
 
 log "Rollout complete for ref ${CURRENT_REF}."
 log "Telegram smoke test: send /ai_daily_brief status then /ai_daily_brief top5."
+log "Set/update channel routing: $PROJECT_DIR/infrastructure/set-aibrief-output-channel.sh @dandailybriefAI"
 log "Optional local test: $PROJECT_DIR/infrastructure/aibrief-smoke-test.sh"

@@ -21,6 +21,7 @@
 - Backup/restore workflows hardened.
 - AI Daily Brief capability now runs twice daily with stateful duplicate suppression.
 - AI Daily Brief now uses canonical `/ai_daily_brief` command arguments, plus VPS rollout/smoke-test scripts.
+- AI Daily Brief supports dedicated Telegram delivery target via `config.output_channel` in state.
 
 ---
 
@@ -119,6 +120,7 @@ Marker:
   - `openclaw/skills/daily-briefing/SKILL.md` (now daily planning-first; no duplicate AI headline synthesis)
 - Added stateful AI brief tracking:
   - `openclaw/workspace/logs/ai-brief-state.json`
+  - includes optional `config.output_channel` routing target
 - Updated orchestration and schedules:
   - `openclaw/config/AGENTS.md` (canonical `/ai_daily_brief` routing + collision guard)
   - `openclaw/config/CRON.md` (idempotent slot behavior + richer AI brief format targets)
@@ -131,6 +133,8 @@ Marker:
 - New operational scripts:
   - `infrastructure/vps-rollout-aibrief.sh` (config-only AI brief rollout on VPS)
   - `infrastructure/aibrief-smoke-test.sh` (health/token/state smoke tests)
+  - `infrastructure/merge-ai-brief-state.sh` (preserves runtime AI brief state across deploy/rollout)
+  - `infrastructure/set-aibrief-output-channel.sh` (sets channel target safely)
 
 ---
 
@@ -146,6 +150,8 @@ Marker:
 - `infrastructure/health-check.sh`
 - `infrastructure/vps-rollout-aibrief.sh`
 - `infrastructure/aibrief-smoke-test.sh`
+- `infrastructure/merge-ai-brief-state.sh`
+- `infrastructure/set-aibrief-output-channel.sh`
 - `infrastructure/sync-sentinel-env.sh`
 - `infrastructure/validate-placeholders.sh`
 - `README.md`
@@ -167,6 +173,10 @@ Marker:
    - `/ai_daily_brief top5`
    - `/ai_daily_brief builder`
    - `/ai_daily_brief status`
+6. Validate AI brief channel routing:
+   - set state target with `set-aibrief-output-channel.sh`
+   - ensure OpenClaw bot is channel admin
+   - verify full brief posts to channel and DM gets ACK/status
 
 ---
 
@@ -193,4 +203,10 @@ journalctl -u sentinel -n 100 --no-pager
 # Config-only AI brief rollout (no full redeploy)
 cd /root/openclaw-project
 ./infrastructure/vps-rollout-aibrief.sh
+
+# Route full brief output to dedicated channel
+./infrastructure/set-aibrief-output-channel.sh @dandailybriefAI
+
+# Validate
+./infrastructure/aibrief-smoke-test.sh
 ```

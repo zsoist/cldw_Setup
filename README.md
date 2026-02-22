@@ -133,11 +133,13 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - `/ai_daily_brief morning|evening|top5|builder|watchlist|status`
 - This avoids alias-command drift and keeps command behavior deterministic.
 - Deduplication and update suppression using `openclaw/workspace/logs/ai-brief-state.json`.
+- Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
 - Weighted anti-hype ranking (impact, credibility, novelty, relevance, freshness, confidence).
 - Mandatory citations, builder corner, strategic take, and explicit confidence/gaps section.
 - VPS operational scripts for rollout and smoke-testing:
   - `infrastructure/vps-rollout-aibrief.sh`
   - `infrastructure/aibrief-smoke-test.sh`
+  - `infrastructure/set-aibrief-output-channel.sh`
 
 ### AI Daily Brief VPS Rollout (Fast Path)
 
@@ -153,6 +155,15 @@ EOF
 Manual Telegram validation after rollout:
 - send `/ai_daily_brief status`
 - send `/ai_daily_brief top5`
+
+Configure dedicated AI brief channel (optional):
+```bash
+ssh root@YOUR_VPS_IP <<'EOF'
+set -euo pipefail
+cd /root/openclaw-project
+./infrastructure/set-aibrief-output-channel.sh @dandailybriefAI
+EOF
+```
 
 ## Sentinel: Agentic Sysadmin Bot
 
@@ -282,6 +293,8 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── health-check.sh                    # Multi-check system health verification
 │   ├── aibrief-smoke-test.sh              # AI brief health + token + state smoke test
 │   ├── vps-rollout-aibrief.sh             # Config-only AI brief rollout/update path
+│   ├── merge-ai-brief-state.sh            # Template->runtime state merge (preserve history/routing)
+│   ├── set-aibrief-output-channel.sh      # Configure AI brief output channel in state
 │   └── ssh-config-snippet                 # Mac SSH config with tunnel
 └── docs/
     ├── setup/

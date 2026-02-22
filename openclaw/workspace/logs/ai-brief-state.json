@@ -10,7 +10,8 @@
     "dedupe_days": 14,
     "min_top_story_sources": 2,
     "max_top_stories": 6,
-    "max_quick_hits": 6
+    "max_quick_hits": 6,
+    "output_channel": null
   },
   "last_successful_run": {
     "morning": null,

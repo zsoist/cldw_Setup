@@ -142,6 +142,17 @@ In another terminal:
 # Telegram: send /ai_daily_brief status and /ai_daily_brief top5 to validate AI brief routing
 ```
 
+Optional: route AI brief output to a dedicated Telegram channel (for example `@dandailybriefAI`):
+```bash
+cd /root/openclaw-project
+./infrastructure/set-aibrief-output-channel.sh @dandailybriefAI
+```
+Then re-run:
+```bash
+./infrastructure/aibrief-smoke-test.sh
+```
+and validate in Telegram that `/ai_daily_brief top5` posts the full brief to the channel while DM shows ACK/status.
+
 ## Step 8: Post-deployment
 
 1. Set Anthropic spending limit to $25/month

@@ -104,7 +104,9 @@ copy_checked "$PROJECT_DIR/openclaw/workspace/business/goals-okrs.md" "$OPENCLAW
 copy_checked "$PROJECT_DIR/openclaw/workspace/business/operating-rules.md" "$OPENCLAW_CONFIG/workspace/business/operating-rules.md"
 copy_checked "$PROJECT_DIR/openclaw/workspace/logs/change-log.md" "$OPENCLAW_CONFIG/workspace/logs/change-log.md"
 copy_checked "$PROJECT_DIR/openclaw/workspace/logs/cron-job-results.md" "$OPENCLAW_CONFIG/workspace/logs/cron-job-results.md"
-copy_checked "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
+bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \
+    "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" \
+    "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
 if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
     while IFS= read -r -d '' skill_file; do
         rel_path="${skill_file#$PROJECT_DIR/openclaw/skills/}"
@@ -223,3 +225,4 @@ echo "  8. Open browser:    http://127.0.0.1:18789/"
 echo "  9. Run health check: /root/openclaw-project/infrastructure/health-check.sh"
 echo " 10. AI brief smoke test: /root/openclaw-project/infrastructure/aibrief-smoke-test.sh"
 echo " 11. Future config-only rollout: /root/openclaw-project/infrastructure/vps-rollout-aibrief.sh"
+echo " 12. Optional AI brief channel route: /root/openclaw-project/infrastructure/set-aibrief-output-channel.sh @dandailybriefAI"

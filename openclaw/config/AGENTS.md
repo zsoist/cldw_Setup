@@ -29,6 +29,7 @@
 - **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification
 - **Input format:** `/ai_daily_brief [morning|evening|top5|builder|watchlist|status] [optional watchlist topics]`
 - **Output format:** Full mode: Executive Snapshot → Top Stories → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
+- **Delivery routing:** read `workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat
 - **Cost tier:** standard (Sonnet)
 
 ### Command Namespace Safety

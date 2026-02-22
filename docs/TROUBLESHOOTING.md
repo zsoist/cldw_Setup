@@ -51,6 +51,25 @@ docker exec openclaw-openclaw-gateway-1 node openclaw.mjs pairing list --channel
 docker exec openclaw-openclaw-gateway-1 node openclaw.mjs pairing approve telegram <PAIR_CODE>
 ```
 
+### AI brief should post to channel but still lands in DM
+Checks:
+```bash
+python3 -m json.tool /root/.openclaw/workspace/logs/ai-brief-state.json | sed -n '1,120p'
+```
+Confirm:
+- `config.output_channel` is set (e.g. `@dandailybriefAI`)
+
+Set/update it safely:
+```bash
+cd /root/openclaw-project
+./infrastructure/set-aibrief-output-channel.sh @dandailybriefAI
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+Telegram-side requirement:
+- The OpenClaw bot must be added as admin in the target channel with permission to post messages.
+
 ### `/ai_daily_brief` returns generic daily briefing content
 This indicates command routing collision between AI brief and generic daily briefing.
 

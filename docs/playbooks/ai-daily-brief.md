@@ -25,6 +25,14 @@ Rule: use one canonical command path to avoid command alias drift.
 - Evening slot: 19:00 COT
 - Auto slot cutoff: 13:00 COT (`<13:00` => morning)
 
+## Telegram Output Routing
+- State key: `config.output_channel` (preferred), fallback `output_channel` (legacy).
+- If configured:
+  - full brief is delivered to the configured channel/chat.
+  - originating chat receives concise ACK/status only.
+- If missing or invalid: brief falls back to originating chat.
+- If send to configured target fails: fallback to originating chat and persist failure in `last_run.delivery`.
+
 ## Pipeline Stages
 1. **Collect** candidates in coverage window.
 2. **Normalize** title/url/publisher/timestamp fields.
@@ -85,6 +93,7 @@ Return run-health metadata only:
 - counts (candidates/clusters/included)
 - provider status
 - delivery status
+- active output channel target
 - state file path
 - expected cron schedule
 
@@ -103,3 +112,4 @@ State file: `openclaw/workspace/logs/ai-brief-state.json`
 ## Operational Commands (VPS)
 - Rollout/update: `infrastructure/vps-rollout-aibrief.sh`
 - Smoke test: `infrastructure/aibrief-smoke-test.sh`
+- Configure output channel: `infrastructure/set-aibrief-output-channel.sh @dandailybriefAI`

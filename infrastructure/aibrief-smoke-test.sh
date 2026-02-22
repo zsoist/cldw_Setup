@@ -71,7 +71,7 @@ fi
 
 if [ -f "$STATE_FILE" ]; then
   pass "AI brief state file exists ($STATE_FILE)"
-  python3 - <<'PY' "$STATE_FILE"
+  STATE_INFO="$(python3 - <<'PY' "$STATE_FILE"
 import json, sys
 path = sys.argv[1]
 with open(path, 'r', encoding='utf-8') as f:
@@ -80,7 +80,18 @@ print('State version:', data.get('version'))
 print('Last successful morning:', (data.get('last_successful_run') or {}).get('morning'))
 print('Last successful evening:', (data.get('last_successful_run') or {}).get('evening'))
 print('Watchlist size:', len(data.get('watchlist') or []))
+target = ((data.get('config') or {}).get('output_channel')) or data.get('output_channel')
+print('Output channel target:', target)
+print(target or "")
 PY
+)"
+  echo "$STATE_INFO" | sed '$d'
+  OUTPUT_TARGET="$(echo "$STATE_INFO" | tail -n1 | tr -d '\r')"
+  if [ -n "$OUTPUT_TARGET" ]; then
+    pass "AI brief output channel configured ($OUTPUT_TARGET)"
+  else
+    warn "AI brief output channel not configured (will deliver to originating chat)"
+  fi
 else
   fail "AI brief state file missing ($STATE_FILE)"
 fi

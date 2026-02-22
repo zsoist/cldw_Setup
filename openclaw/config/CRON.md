@@ -30,7 +30,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Reads:** trusted AI sources from the last 12-16h, `workspace/logs/ai-brief-state.json`, optional watchlist topics
 - **Action:** Retrieve, dedupe, cluster, rank, and summarize high-signal AI stories for morning consumption
 - **Output:** `workspace/outputs/summaries/ai-brief-morning-YYYY-MM-DD.md`
-- **Notify:** Always if >=1 credible story; otherwise send "No high-confidence AI updates in this window."
+- **Notify:** Deliver full brief to `config.output_channel` when configured; otherwise originating chat. Always ACK in originating chat.
 - **Model:** Sonnet (escalate only for synthesis; keep retrieval lightweight)
 - **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Confidence & Gaps
 - **Notes:** manual trigger: `/ai_daily_brief morning`; enforce anti-hype penalties before ranking
@@ -40,7 +40,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Reads:** trusted AI sources since morning run, `workspace/logs/ai-brief-state.json`, optional watchlist topics
 - **Action:** Produce evening delta briefing focused on meaningful updates, launches, policy, and market moves
 - **Output:** `workspace/outputs/summaries/ai-brief-evening-YYYY-MM-DD.md`
-- **Notify:** Always if >=1 credible story; suppress unchanged repeats
+- **Notify:** Deliver full brief to `config.output_channel` when configured; otherwise originating chat. Always ACK in originating chat.
 - **Model:** Sonnet
 - **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Updates vs Morning | Confidence & Gaps
 - **Notes:** manual trigger: `/ai_daily_brief evening`; mark updates to prior stories explicitly
