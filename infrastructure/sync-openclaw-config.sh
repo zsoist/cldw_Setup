@@ -78,6 +78,9 @@ data["gateway"]["auth"]["token"] = os.environ["OPENCLAW_GATEWAY_TOKEN"]
 data.setdefault("channels", {}).setdefault("telegram", {})
 data["channels"]["telegram"]["enabled"] = True
 data["channels"]["telegram"]["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
+data["channels"]["telegram"].setdefault("commands", {})
+data["channels"]["telegram"]["commands"]["native"] = True
+data["channels"]["telegram"]["commands"]["nativeSkills"] = True
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)

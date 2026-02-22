@@ -130,6 +130,15 @@ PY
     fail "OPENCLAW_TELEGRAM_TOKEN missing"
   fi
 
+  if [ -n "$TG_TOKEN" ]; then
+    CMDS_OK="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds=[(c.get("command") or "") for c in (d.get("result") or [])]; print("ok" if "ai_daily_brief" in cmds else "missing")' 2>/dev/null || true)"
+    if [ "$CMDS_OK" = "ok" ]; then
+      pass "Telegram native command /ai_daily_brief is registered"
+    else
+      fail "Telegram native command /ai_daily_brief not registered (check nativeSkills config + restart)"
+    fi
+  fi
+
   if [ -n "$SENTINEL_TG_TOKEN" ]; then
     STG_META="$(curl -s "https://api.telegram.org/bot${SENTINEL_TG_TOKEN}/getMe" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ok:"+str((d.get("result") or {}).get("username","?")) if d.get("ok") else "bad")' 2>/dev/null || true)"
     if [[ "$STG_META" == ok:* ]]; then

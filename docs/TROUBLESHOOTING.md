@@ -58,6 +58,7 @@ python3 -m json.tool /root/.openclaw/workspace/logs/ai-brief-state.json | sed -n
 ```
 Confirm:
 - `config.output_channel` is set (e.g. `@dandailybriefAI`)
+- Trigger command is sent in **DM with OpenClaw bot**, not in the channel
 
 Set/update it safely:
 ```bash
@@ -69,6 +70,12 @@ cd /root/openclaw-project
 
 Telegram-side requirement:
 - The OpenClaw bot must be added as admin in the target channel with permission to post messages.
+
+If command is ignored, verify command registration:
+```bash
+/root/openclaw-project/infrastructure/aibrief-smoke-test.sh
+# must pass: "Telegram native command /ai_daily_brief is registered"
+```
 
 ### `/ai_daily_brief` returns generic daily briefing content
 This indicates command routing collision between AI brief and generic daily briefing.

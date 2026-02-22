@@ -155,6 +155,7 @@ EOF
 Manual Telegram validation after rollout:
 - send `/ai_daily_brief status`
 - send `/ai_daily_brief top5`
+- run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
 
 Configure dedicated AI brief channel (optional):
 ```bash

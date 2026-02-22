@@ -153,6 +153,10 @@ Then re-run:
 ```
 and validate in Telegram that `/ai_daily_brief top5` posts the full brief to the channel while DM shows ACK/status.
 
+Important:
+- invoke `/ai_daily_brief ...` from the bot DM chat
+- do not run the command inside the destination channel itself
+
 ## Step 8: Post-deployment
 
 1. Set Anthropic spending limit to $25/month
