@@ -161,6 +161,24 @@ If smoke test reports a gateway token mismatch:
 - remove duplicate `OPENCLAW_GATEWAY_TOKEN=` lines from `/root/openclaw/.env` (keep one canonical value)
 - rerun rollout so runtime `gateway.auth.token` and `.env` are aligned
 
+### Telegram webhook blocking polling mode
+If `aibrief-smoke-test.sh` shows Telegram configured but `running=false`, an active webhook can be blocking long-polling (`getUpdates`).
+
+Check webhook status:
+```bash
+TG_TOKEN="$(grep '^OPENCLAW_TELEGRAM_TOKEN=' /root/openclaw/.env | tail -n1 | cut -d= -f2-)"
+curl -s "https://api.telegram.org/bot${TG_TOKEN}/getWebhookInfo" | python3 -m json.tool
+```
+
+If `result.url` is non-empty, clear webhook and restart gateway:
+```bash
+curl -s "https://api.telegram.org/bot${TG_TOKEN}/deleteWebhook?drop_pending_updates=false"
+cd /root/openclaw
+docker compose restart openclaw-gateway
+```
+
+Rollout now attempts this automatically, but manual cleanup is still valid if the token was previously used by another Telegram integration.
+
 Avoid `openclaw doctor --fix` as part of AI-brief rollout automation. It can rewrite config and interfere with explicit Telegram token wiring.
 
 ### Commands reach bot but AI brief never invokes (`last_run` stays null)

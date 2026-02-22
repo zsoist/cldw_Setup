@@ -29,6 +29,7 @@
 - `infrastructure/docker-compose.yml`
   - now injects `TELEGRAM_BOT_TOKEN` / `OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` (plus AIDB Brave tuning vars) into the gateway container env.
   - AIDB Brave tuning vars now have safe defaults to avoid noisy compose warnings when optional keys are omitted.
+  - gateway startup now waits for mounted runtime config readiness (up to 30s) and clears Telegram webhook state before launching polling ingest.
 - `infrastructure/vps-rollout-aibrief.sh`
   - passes runtime UID/GID into config sync.
   - now resolves docker compose runtime UID/GID from inside `/root/openclaw` (not via `-f` from another cwd), reducing env interpolation drift.
@@ -37,6 +38,7 @@
   - now syncs updated `infrastructure/docker-compose.yml` into `/root/openclaw/docker-compose.yml` during config-only rollout.
   - post-rollout gateway health RPC now prefers `gateway.auth.token` from `/root/.openclaw/openclaw.json` and only falls back to `.env` (with explicit mismatch warning).
   - post-rollout diagnostics now include Telegram token field lengths/paths when `tokenSource=none`.
+  - rollout now checks Telegram `getWebhookInfo`; if URL is active it clears webhook, restarts gateway, and rechecks health.
 - `infrastructure/deploy.sh`
   - same post-sync ownership fix during full deploy.
 - `infrastructure/aibrief-smoke-test.sh`
@@ -45,6 +47,7 @@
   - now checks Telegram DM auth posture (`dmPolicy` + `allowFrom`) to catch non-invoking command setups.
   - now checks container-visible Telegram token env and Brave env.
   - now prefers gateway auth token from runtime config for `gateway call health`; `.env` token is fallback only (with mismatch diagnostics).
+  - now fails when Telegram webhook is active (explicit polling conflict condition).
   - now fails fast for invalid/truncated Brave keys (`len < 20`).
   - improved Brave failure diagnostics (`key_len=...` when both probes fail).
 

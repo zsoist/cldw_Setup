@@ -133,6 +133,40 @@ for i in $(seq 1 "$WAIT_ATTEMPTS"); do
   sleep "$WAIT_SECONDS"
 done
 
+TG_TOKEN_WH=""
+if [ -f "/root/openclaw/.env" ]; then
+  TG_TOKEN_WH="$(grep '^OPENCLAW_TELEGRAM_TOKEN=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+  if [ -z "$TG_TOKEN_WH" ]; then
+    TG_TOKEN_WH="$(grep '^TELEGRAM_BOT_TOKEN=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+  fi
+  if [ -n "$TG_TOKEN_WH" ] && ! [[ "$TG_TOKEN_WH" == REPLACE_* ]]; then
+    WEBHOOK_INFO_JSON="$(curl -sf "https://api.telegram.org/bot${TG_TOKEN_WH}/getWebhookInfo" 2>/dev/null || true)"
+    WEBHOOK_URL="$(echo "$WEBHOOK_INFO_JSON" | python3 -c 'import json,sys
+try:
+    data=json.load(sys.stdin)
+except Exception:
+    data={}
+print(((data.get("result") or {}).get("url")) or "")
+' 2>/dev/null || true)"
+    if [ -n "$WEBHOOK_URL" ]; then
+      log "Active Telegram webhook detected (${WEBHOOK_URL}); deleting to enable polling mode"
+      curl -sf "https://api.telegram.org/bot${TG_TOKEN_WH}/deleteWebhook?drop_pending_updates=false" >/dev/null 2>&1 || true
+      log "Webhook cleared; restarting OpenClaw gateway"
+      docker compose restart openclaw-gateway
+      for i in $(seq 1 "$WAIT_ATTEMPTS"); do
+        HS="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}' openclaw-openclaw-gateway-1 2>/dev/null || echo unknown)"
+        log "webhook-restart attempt ${i}/${WAIT_ATTEMPTS}: gateway health=${HS}"
+        if [ "$HS" = "healthy" ]; then
+          break
+        fi
+        sleep "$WAIT_SECONDS"
+      done
+    else
+      log "No active Telegram webhook detected (polling mode unblocked)"
+    fi
+  fi
+fi
+
 log "Final health check"
 "$PROJECT_DIR/infrastructure/health-check.sh"
 
@@ -204,6 +238,35 @@ PY
         if [ -n "$TG_RUNTIME_DEBUG" ]; then
           log "Telegram runtime token diagnostics:"
           printf '%s\n' "$TG_RUNTIME_DEBUG" | sed 's/^/[aibrief-rollout]   /'
+        fi
+        if [ -n "$TG_TOKEN_WH" ] && ! [[ "$TG_TOKEN_WH" == REPLACE_* ]]; then
+          log "Attempting webhook cleanup retry for tokenSource=none..."
+          curl -sf "https://api.telegram.org/bot${TG_TOKEN_WH}/deleteWebhook?drop_pending_updates=false" >/dev/null 2>&1 || true
+          docker compose restart openclaw-gateway
+          sleep 15
+          RETRY_OK="false"
+          if health_call "$GW_TOKEN"; then
+            RETRY_OK="true"
+          elif [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_ENV" != "$GW_TOKEN" ] && health_call "$GW_TOKEN_ENV"; then
+            RETRY_OK="true"
+          fi
+          if [ "$RETRY_OK" = "true" ]; then
+            RETRY_RUNNING="$(python3 -c 'import json
+data=json.load(open("/tmp/aibrief-post-health.json"))
+print(str(bool(((data.get("channels") or {}).get("telegram") or {}).get("running"))).lower())
+')"
+            RETRY_TOKEN_SOURCE="$(python3 -c 'import json
+data=json.load(open("/tmp/aibrief-post-health.json"))
+print(str((((data.get("channels") or {}).get("telegram") or {}).get("tokenSource")) or "none"))
+')"
+            if [ "$RETRY_RUNNING" = "true" ]; then
+              log "Telegram ingest recovered after webhook cleanup retry (tokenSource=${RETRY_TOKEN_SOURCE})"
+            else
+              log "WARN: Telegram ingest still not running after webhook cleanup retry (tokenSource=${RETRY_TOKEN_SOURCE})"
+            fi
+          else
+            log "WARN: webhook cleanup retry could not authenticate gateway health RPC"
+          fi
         fi
       fi
     else

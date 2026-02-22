@@ -340,6 +340,29 @@ PY
     fail "OPENCLAW_TELEGRAM_TOKEN missing"
   fi
 
+  if [ -n "$TG_TOKEN" ] && [ "${TG_LEN:-0}" -ge 30 ]; then
+    WEBHOOK_INFO="$(curl -sf "https://api.telegram.org/bot${TG_TOKEN}/getWebhookInfo" 2>/dev/null || true)"
+    WEBHOOK_URL="$(echo "$WEBHOOK_INFO" | python3 -c 'import json,sys
+try:
+    data=json.load(sys.stdin)
+except Exception:
+    data={}
+print(((data.get("result") or {}).get("url")) or "")
+' 2>/dev/null || true)"
+    WEBHOOK_PENDING="$(echo "$WEBHOOK_INFO" | python3 -c 'import json,sys
+try:
+    data=json.load(sys.stdin)
+except Exception:
+    data={}
+print((data.get("result") or {}).get("pending_update_count") or 0)
+' 2>/dev/null || echo 0)"
+    if [ -n "$WEBHOOK_URL" ]; then
+      fail "Active Telegram webhook blocks polling (url=${WEBHOOK_URL}, pending=${WEBHOOK_PENDING}). Fix: curl -sf \"https://api.telegram.org/bot\${TG_TOKEN}/deleteWebhook\""
+    else
+      pass "No active Telegram webhook (polling mode unblocked)"
+    fi
+  fi
+
   if [ -n "$TG_TOKEN" ]; then
     CMDS_MISSING="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds={(c.get("command") or "") for c in (d.get("result") or [])}; required=["ai_daily_brief","ai_daily_brief_morning","ai_daily_brief_evening","ai_daily_brief_top5","ai_daily_brief_builder","ai_daily_brief_watchlist","ai_daily_brief_status"]; missing=[c for c in required if c not in cmds]; print(",".join(missing))' 2>/dev/null || true)"
     if [ -z "$CMDS_MISSING" ]; then
