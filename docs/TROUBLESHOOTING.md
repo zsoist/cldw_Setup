@@ -28,6 +28,29 @@ docker compose logs openclaw-gateway | grep -i telegram
 docker compose restart openclaw-gateway
 ```
 
+### Commands work sometimes and sometimes don't
+This usually means one of these:
+1. You're chatting with the wrong bot (Sentinel vs OpenClaw).
+2. Deprecated alias skills (`/aibrief*`) still exist on runtime.
+3. OpenClaw and Sentinel tokens are accidentally the same.
+
+Validate quickly on VPS:
+```bash
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+Then in Telegram:
+- OpenClaw bot: `/ai_daily_brief status`
+- Sentinel bot: `/status`
+
+If OpenClaw replies with pairing:
+```bash
+docker exec openclaw-openclaw-gateway-1 node openclaw.mjs pairing list --channel telegram
+docker exec openclaw-openclaw-gateway-1 node openclaw.mjs pairing approve telegram <PAIR_CODE>
+```
+
 ### `/ai_daily_brief` returns generic daily briefing content
 This indicates command routing collision between AI brief and generic daily briefing.
 

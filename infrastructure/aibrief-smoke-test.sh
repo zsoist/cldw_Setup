@@ -18,6 +18,31 @@ warn() { echo "[WARN] $1"; WARN=$((WARN + 1)); }
 printf '=== AI Daily Brief Smoke Test ===\n'
 printf 'Date: %s\n\n' "$(date -u)"
 
+if [ -f "/root/.openclaw/skills/ai-daily-brief/SKILL.md" ]; then
+  pass "Canonical AI brief skill exists (/root/.openclaw/skills/ai-daily-brief/SKILL.md)"
+else
+  fail "Canonical AI brief skill missing (/root/.openclaw/skills/ai-daily-brief/SKILL.md)"
+fi
+
+STALE_SKILLS=()
+for legacy in \
+  aibrief \
+  aibrief_morning \
+  aibrief_evening \
+  aibrief_top5 \
+  aibrief_builder \
+  aibrief_watchlist \
+  aibrief_status; do
+  if [ -d "/root/.openclaw/skills/$legacy" ]; then
+    STALE_SKILLS+=("$legacy")
+  fi
+done
+if [ "${#STALE_SKILLS[@]}" -gt 0 ]; then
+  fail "Deprecated alias skill folders still present: ${STALE_SKILLS[*]}"
+else
+  pass "No deprecated /aibrief* alias skill folders on runtime"
+fi
+
 if docker inspect openclaw-openclaw-gateway-1 >/dev/null 2>&1; then
   pass "OpenClaw gateway container exists"
 else
@@ -63,6 +88,7 @@ fi
 if [ -f "$ENV_FILE" ]; then
   GW_TOKEN="$(grep '^OPENCLAW_GATEWAY_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
   TG_TOKEN="$(grep '^OPENCLAW_TELEGRAM_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
+  SENTINEL_TG_TOKEN="$(grep '^SENTINEL_TELEGRAM_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
 
   if [ -n "$GW_TOKEN" ]; then
     if docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$GW_TOKEN" --json >/tmp/aibrief-health.json 2>/tmp/aibrief-health.err; then
@@ -83,14 +109,33 @@ PY
   fi
 
   if [ -n "$TG_TOKEN" ]; then
-    TG_OK="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMe" | python3 -c 'import json,sys; print("ok" if json.load(sys.stdin).get("ok") else "bad")' 2>/dev/null || true)"
-    if [ "$TG_OK" = "ok" ]; then
-      pass "OpenClaw Telegram token validated via getMe"
+    TG_META="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMe" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ok:"+str((d.get("result") or {}).get("username","?")) if d.get("ok") else "bad")' 2>/dev/null || true)"
+    if [[ "$TG_META" == ok:* ]]; then
+      pass "OpenClaw Telegram token validated via getMe (${TG_META#ok:})"
     else
       fail "OpenClaw Telegram token failed getMe"
     fi
   else
     fail "OPENCLAW_TELEGRAM_TOKEN missing"
+  fi
+
+  if [ -n "$SENTINEL_TG_TOKEN" ]; then
+    STG_META="$(curl -s "https://api.telegram.org/bot${SENTINEL_TG_TOKEN}/getMe" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ok:"+str((d.get("result") or {}).get("username","?")) if d.get("ok") else "bad")' 2>/dev/null || true)"
+    if [[ "$STG_META" == ok:* ]]; then
+      pass "Sentinel Telegram token validated via getMe (${STG_META#ok:})"
+    else
+      fail "Sentinel Telegram token failed getMe"
+    fi
+  else
+    fail "SENTINEL_TELEGRAM_TOKEN missing"
+  fi
+
+  if [ -n "$TG_TOKEN" ] && [ -n "$SENTINEL_TG_TOKEN" ]; then
+    if [ "$TG_TOKEN" = "$SENTINEL_TG_TOKEN" ]; then
+      fail "OPENCLAW_TELEGRAM_TOKEN and SENTINEL_TELEGRAM_TOKEN are identical"
+    else
+      pass "OpenClaw and Sentinel Telegram tokens are distinct"
+    fi
   fi
 fi
 

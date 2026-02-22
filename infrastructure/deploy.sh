@@ -112,6 +112,18 @@ if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
     done < <(find "$PROJECT_DIR/openclaw/skills" -type f -print0)
 fi
 
+# Remove deprecated alias skill folders so slash command routing stays deterministic.
+for deprecated in \
+    aibrief \
+    aibrief_morning \
+    aibrief_evening \
+    aibrief_top5 \
+    aibrief_builder \
+    aibrief_watchlist \
+    aibrief_status; do
+    rm -rf "$OPENCLAW_CONFIG/skills/$deprecated"
+done
+
 echo "=== [7/9] Copy infrastructure files + setup Sentinel ==="
 copy_checked "$PROJECT_DIR/infrastructure/Dockerfile" "$OPENCLAW_DIR/Dockerfile"
 copy_checked "$PROJECT_DIR/infrastructure/docker-compose.yml" "$OPENCLAW_DIR/docker-compose.yml"
