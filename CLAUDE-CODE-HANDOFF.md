@@ -16,6 +16,7 @@
 - `infrastructure/sync-openclaw-config.sh`
   - now accepts fallback token source `TELEGRAM_BOT_TOKEN` when `OPENCLAW_TELEGRAM_TOKEN` is absent.
   - exports `TELEGRAM_BOT_TOKEN` for runtime parity.
+  - writes both Telegram token keys (`botToken` and `token`) at channel and default-account levels for cross-version compatibility.
   - now maps Telegram DM authorization from `OPENCLAW_TELEGRAM_ALLOW_FROM` (fallback: `OPENCLAW_ALLOWED_USERS`, then `SENTINEL_ALLOWED_USERS`).
   - now derives `channels.telegram.dmPolicy`:
     - explicit `OPENCLAW_TELEGRAM_DM_POLICY` if set

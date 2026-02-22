@@ -124,6 +124,7 @@ If `aibrief-smoke-test.sh` reports:
 then the gateway runtime is up but Telegram ingest is not active. Most common causes:
 1. config ownership drift (`openclaw.json` not readable by runtime user)
 2. token not loaded into runtime (`tokenSource=none`)
+   - some builds read `channels.telegram.token` while others read `channels.telegram.botToken`; rollout now writes both for compatibility.
 3. stale container with old env/config
 
 Do this in order:
