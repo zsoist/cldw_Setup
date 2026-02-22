@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.21-main-hardening -->
+<!-- config-version: 2026.02.22-ai-brief-v2 -->
 
 # Heartbeat Configuration
 
@@ -15,6 +15,7 @@
 5. If evening (19:00-20:00) and no evening AI brief sent today: trigger `ai-daily-brief` (evening slot)
 6. If evening (20:00-21:00): run end-of-day log
 7. If Sunday evening (20:00-21:00): run weekly review
+8. If AI brief repeatedly fails, emit one concise `/aibrief_status` style diagnostic (no spam)
 
 ## Rules
 - Heartbeat should complete in <45 seconds
@@ -28,6 +29,7 @@
   - verify last successful run timestamp for slot (`morning` or `evening`)
   - suppress run if already completed for current slot unless manually forced
   - suppress stories that were already sent without material updates
+  - if provider health is degraded, allow partial run and mark output as partial
 - After successful run:
   - update slot timestamp
   - append story fingerprints and update flags

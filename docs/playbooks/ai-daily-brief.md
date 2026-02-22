@@ -1,62 +1,104 @@
-# AI Daily Brief Playbook
+# AI Daily Brief Playbook (v2)
 
-This playbook defines how the AI Daily Brief capability should run in production.
+This playbook defines the production behavior for `ai_daily_brief` in OpenClaw setup.
 
 ## Objective
-- Deliver two concise, source-grounded AI briefings per day (morning and evening).
-- Maximize signal: avoid duplicates, hype, and unverified claims.
-- Keep continuity between runs using persistent state.
+- Deliver high-signal AI news twice daily.
+- Avoid duplicate noise and rumor amplification.
+- Keep runs stateful, auditable, and Telegram-friendly.
 
-## Run Cadence
+## Command Namespace
+- `/aibrief` (auto slot)
+- `/aibrief_morning`
+- `/aibrief_evening`
+- `/aibrief_top5`
+- `/aibrief_builder`
+- `/aibrief_watchlist [topics]`
+- `/aibrief_status`
+
+Rule: `/aibrief*` must never be handled by the generic personal daily briefing flow.
+
+## Slot Rules
+- Timezone: `America/Bogota`
 - Morning slot: 07:10 COT
 - Evening slot: 19:00 COT
-- Manual triggers:
-  - `/aibrief`
-  - `/aibrief_morning`
-  - `/aibrief_evening`
-  - `/aibrief_top5`
-  - `/aibrief_watchlist <topics>`
+- Auto slot cutoff: 13:00 COT (`<13:00` => morning)
+
+## Pipeline Stages
+1. **Collect** candidates in coverage window.
+2. **Normalize** title/url/publisher/timestamp fields.
+3. **Deduplicate** using URL canonicalization + title similarity + state history.
+4. **Cluster** by event/topic.
+5. **Rank** with weighted scoring.
+6. **Draft** sectioned brief.
+7. **Validate** required sections/sources/dupes.
+8. **Render** mobile-readable Telegram output.
+9. **Deliver** with retries and split-by-section behavior.
+10. **Persist** run metadata and suppression state.
+
+## Ranking Policy
+Default weighted score:
+- impact: 0.28
+- credibility: 0.22
+- novelty: 0.18
+- relevance: 0.14
+- freshness: 0.10
+- confidence: 0.08
+
+Anti-hype penalties apply when:
+- only one low-tier source exists
+- benchmark/performance claims lack methodology context
+- viral social claims are uncorroborated
 
 ## Source Policy
-- Tier 1 (preferred):
-  - official provider/lab announcements, model cards, regulatory publications
-  - Reuters, Bloomberg, Financial Times, WSJ, The Information
-- Tier 2 (context only):
-  - social posts, newsletters, aggregators
-- Do not use Tier 2 as sole evidence for top stories.
+- Tier 1: official labs/vendors/model cards/regulators
+- Tier 2: top-tier reporting outlets
+- Tier 3: secondary summaries (context only)
+- Tier 4: social posts only when corroborated
 
-## Processing Flow
-1. Retrieve stories within slot window.
-2. Normalize metadata (URL/time/source labels).
-3. Deduplicate and cluster related coverage.
-4. Rank with weighted score:
-   - impact 0.30
-   - credibility 0.25
-   - novelty 0.20
-   - audience relevance 0.15
-   - freshness 0.10
-5. Summarize each cluster with 5W framing and source links.
-6. Publish brief and update state file.
+Top stories require at least one primary or Tier-1/2 source.
 
-## Duplicate Suppression
-- State file: `openclaw/workspace/logs/ai-brief-state.json`
-- Before sending:
-  - suppress unchanged stories already sent in the previous 48h
-  - include only `update` items with material changes
-- After sending:
-  - persist timestamps for slot completion
-  - persist fingerprints for published stories
+## Output Modes
+### Full
+- Title
+- Executive Snapshot
+- Ranked Top Stories (what happened, why it matters, signal-vs-hype, watch next, sources)
+- Quick Hits
+- Builder/Agent Corner
+- Strategic Take
+- Tomorrow Watchlist
+- Confidence & Gaps
 
-## Quality Gate Checklist
-- Every top story has at least one high-credibility source link.
-- Conflicting reports are explicitly labeled.
-- Opinion/rumor is separated from fact.
-- Output includes `Confidence & Gaps`.
-- No dead links in published output.
+### Top5
+- Top 5 with minimal commentary + sources
+
+### Builder
+- Builder/agent tools and infra implications only
+
+### Watchlist
+- Watchlist-specific updates and unknowns
+
+### Status
+Return run-health metadata only:
+- last run and last success
+- counts (candidates/clusters/included)
+- provider status
+- delivery status
+- state file path
+- expected cron schedule
+
+## State and Duplicate Suppression
+State file: `openclaw/workspace/logs/ai-brief-state.json`
+- Keep `last_successful_run` per slot
+- Track recent story fingerprints
+- Suppress unchanged stories for at least 48h (configurable)
+- Mark materially changed repeats as `update_to_prior_story=true`
 
 ## Failure Handling
-- If retrieval partially fails, send a reduced brief and explicitly mark missing coverage.
-- If no credible stories are found:
-  - send `No high-confidence AI updates in this window.`
-- If state file is unreadable:
-  - initialize with safe defaults and log incident in `workspace/logs/cron-job-results.md`.
+- If partial source failure: send partial brief and list missing coverage.
+- If no credible stories: send `No high-confidence AI updates in this window.`
+- If state file is missing/corrupt: reinitialize schema and log event.
+
+## Operational Commands (VPS)
+- Rollout/update: `infrastructure/vps-rollout-aibrief.sh`
+- Smoke test: `infrastructure/aibrief-smoke-test.sh`

@@ -28,6 +28,39 @@ docker compose logs openclaw-gateway | grep -i telegram
 docker compose restart openclaw-gateway
 ```
 
+### `/aibrief*` returns generic daily briefing content
+This indicates command routing collision between AI brief and generic daily briefing.
+
+```bash
+# Re-sync latest config + skill files and restart services
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+
+# Validate command path and state
+./infrastructure/aibrief-smoke-test.sh
+```
+
+Then test in Telegram:
+- `/aibrief_status`
+- `/aibrief_top5`
+
+If still wrong, inspect:
+- `/root/.openclaw/AGENTS.md`
+- `/root/.openclaw/skills/ai-daily-brief/SKILL.md`
+- `/root/.openclaw/skills/daily-briefing/SKILL.md`
+
+### AI Daily Brief has no outputs yet
+No files under `/root/.openclaw/workspace/outputs/summaries/ai-brief-*.md` means no successful run yet.
+
+Checks:
+```bash
+/root/openclaw-project/infrastructure/aibrief-smoke-test.sh
+python3 -m json.tool /root/.openclaw/workspace/logs/ai-brief-state.json | sed -n '1,120p'
+```
+
+Run manually from Telegram:
+- `/aibrief_morning` or `/aibrief_evening`
+
 ### High token usage
 1. Check console.anthropic.com -> Usage for daily breakdown
 2. Verify AGENTS.md has Haiku as default (not Sonnet)

@@ -10,7 +10,7 @@
 
 ## Current State
 
-`main` now includes a full security/ops hardening pass across Sentinel + infrastructure scripts.
+`main` now includes a full security/ops hardening pass plus AI Daily Brief v2 routing/ops improvements.
 
 ### Production outcome target
 - OpenClaw gateway should run healthy via Docker health checks.
@@ -20,6 +20,7 @@
   - Sentinel runtime env: `/etc/sentinel/sentinel.env` (synced via script)
 - Backup/restore workflows hardened.
 - AI Daily Brief capability now runs twice daily with stateful duplicate suppression.
+- AI Daily Brief now has dedicated `/aibrief*` namespace safeguards, expanded modes, and VPS rollout/smoke-test scripts.
 
 ---
 
@@ -99,7 +100,7 @@
   - `openclaw/agents/work/*.md`
 
 Marker:
-`<!-- config-version: 2026.02.21-main-hardening -->`
+`<!-- config-version: 2026.02.22-ai-brief-v2 -->`
 
 ### 7) Documentation updates
 
@@ -119,14 +120,17 @@ Marker:
 - Added stateful AI brief tracking:
   - `openclaw/workspace/logs/ai-brief-state.json`
 - Updated orchestration and schedules:
-  - `openclaw/config/AGENTS.md` (new `AI Brief Editor` route)
-  - `openclaw/config/CRON.md` (12 jobs; adds morning/evening AI brief runs)
-  - `openclaw/config/HEARTBEAT.md` (slot-aware AI brief checks + anti-duplicate behavior)
+  - `openclaw/config/AGENTS.md` (explicit `/aibrief*` namespace ownership + collision guard)
+  - `openclaw/config/CRON.md` (idempotent slot behavior + richer AI brief format targets)
+  - `openclaw/config/HEARTBEAT.md` (partial-run logic + status diagnostic guidance)
 - Added playbook/template:
   - `docs/playbooks/ai-daily-brief.md`
   - `docs/templates/ai-daily-brief-template.md`
 - Deployment wiring:
   - `infrastructure/deploy.sh` now copies AI brief state file and reports 4 deployed skills.
+- New operational scripts:
+  - `infrastructure/vps-rollout-aibrief.sh` (config-only AI brief rollout on VPS)
+  - `infrastructure/aibrief-smoke-test.sh` (health/token/state smoke tests)
 
 ---
 
@@ -140,6 +144,8 @@ Marker:
 - `infrastructure/backup.sh`
 - `infrastructure/restore.sh`
 - `infrastructure/health-check.sh`
+- `infrastructure/vps-rollout-aibrief.sh`
+- `infrastructure/aibrief-smoke-test.sh`
 - `infrastructure/sync-sentinel-env.sh`
 - `infrastructure/validate-placeholders.sh`
 - `README.md`
@@ -157,7 +163,7 @@ Marker:
 3. Validate real VPS migration path for non-root Sentinel (`sync-sentinel-env.sh` + systemd restart).
 4. Consider adding signed release artifacts if repo integrity is part of threat model.
 5. Validate AI brief command flow in Telegram:
-   - `/aibrief`, `/aibrief_morning`, `/aibrief_evening`, `/aibrief_top5`, `/aibrief_watchlist`
+   - `/aibrief`, `/aibrief_morning`, `/aibrief_evening`, `/aibrief_top5`, `/aibrief_builder`, `/aibrief_watchlist`, `/aibrief_status`
 
 ---
 
@@ -179,4 +185,9 @@ docker compose ps
 systemctl status sentinel --no-pager
 journalctl -u sentinel -n 100 --no-pager
 /root/openclaw-project/infrastructure/health-check.sh
+/root/openclaw-project/infrastructure/aibrief-smoke-test.sh
+
+# Config-only AI brief rollout (no full redeploy)
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
 ```

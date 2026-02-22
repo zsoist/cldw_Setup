@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.21-main-hardening -->
+<!-- config-version: 2026.02.22-ai-brief-v2 -->
 
 # Cron Job Registry
 
@@ -10,6 +10,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - Log results to `workspace/logs/cron-job-results.md`
 - On failure: log error + notify, do NOT retry automatically
 - AI briefing jobs must consult `workspace/logs/ai-brief-state.json` to suppress duplicates
+- AI briefing jobs must be idempotent per slot (skip if same slot already succeeded unless forced)
 
 ---
 
@@ -31,7 +32,8 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Output:** `workspace/outputs/summaries/ai-brief-morning-YYYY-MM-DD.md`
 - **Notify:** Always if >=1 credible story; otherwise send "No high-confidence AI updates in this window."
 - **Model:** Sonnet (escalate only for synthesis; keep retrieval lightweight)
-- **Format:** Top Stories | Quick Hits | What Changed Since Last Brief | Confidence & Gaps
+- **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Confidence & Gaps
+- **Notes:** command alias `/aibrief_morning`; enforce anti-hype penalties before ranking
 
 ### 3. AI Daily Brief (Evening)
 - **Schedule:** Daily 19:00 COT
@@ -40,7 +42,8 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Output:** `workspace/outputs/summaries/ai-brief-evening-YYYY-MM-DD.md`
 - **Notify:** Always if >=1 credible story; suppress unchanged repeats
 - **Model:** Sonnet
-- **Format:** Top Stories | Quick Hits | Updates vs Morning | Confidence & Gaps
+- **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Updates vs Morning | Confidence & Gaps
+- **Notes:** command alias `/aibrief_evening`; mark updates to prior stories explicitly
 
 ### 4. EOD Review
 - **Schedule:** Daily 20:00 COT

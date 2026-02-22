@@ -119,6 +119,9 @@ journalctl -u sentinel -n 80 --no-pager
 
 # Run full system checks
 /root/openclaw-project/infrastructure/health-check.sh
+
+# Run AI brief-specific smoke tests
+/root/openclaw-project/infrastructure/aibrief-smoke-test.sh
 ```
 
 Note: OpenClaw is a WebSocket gateway, so root HTTP probes can return `000`/`404` depending on route handling.  
@@ -136,6 +139,7 @@ In another terminal:
 # Browser: open http://127.0.0.1:18789/
 # Telegram: send /start to your OpenClaw bot
 # Telegram: send /status to your Sentinel bot
+# Telegram: send /aibrief_status and /aibrief_top5 to validate AI brief routing
 ```
 
 ## Step 8: Post-deployment
@@ -147,3 +151,15 @@ In another terminal:
    # Add: 0 3 * * * /root/openclaw-project/infrastructure/backup.sh
    ```
 3. Monitor API usage for the first 24 hours at console.anthropic.com
+
+## Fast AI Brief Config Rollout (post-deploy updates)
+
+When only AI brief config/skills/state changed in this repo:
+
+```bash
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+This path avoids a full redeploy and only syncs AI brief assets, restarts services, and verifies health.

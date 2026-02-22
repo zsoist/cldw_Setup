@@ -128,10 +128,29 @@ Every job follows the read → analyze → notify pattern. Deep research and des
 
 The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice daily:
 
-- Slot-aware delivery (`morning` and `evening`) with manual overrides via `/aibrief*` commands.
+- Dedicated namespace routing (`/aibrief*`) so AI brief requests never collide with generic personal briefing handlers.
+- Slot-aware delivery (`morning` and `evening`) with command modes: `/aibrief`, `/aibrief_morning`, `/aibrief_evening`, `/aibrief_top5`, `/aibrief_builder`, `/aibrief_watchlist`, `/aibrief_status`.
 - Deduplication and update suppression using `openclaw/workspace/logs/ai-brief-state.json`.
-- Weighted ranking (impact, credibility, novelty, relevance, freshness).
-- Mandatory citations and explicit confidence/gaps section to reduce hallucinated claims.
+- Weighted anti-hype ranking (impact, credibility, novelty, relevance, freshness, confidence).
+- Mandatory citations, builder corner, strategic take, and explicit confidence/gaps section.
+- VPS operational scripts for rollout and smoke-testing:
+  - `infrastructure/vps-rollout-aibrief.sh`
+  - `infrastructure/aibrief-smoke-test.sh`
+
+### AI Daily Brief VPS Rollout (Fast Path)
+
+```bash
+ssh root@YOUR_VPS_IP <<'EOF'
+set -euo pipefail
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+EOF
+```
+
+Manual Telegram validation after rollout:
+- send `/aibrief_status`
+- send `/aibrief_top5`
 
 ## Sentinel: Agentic Sysadmin Bot
 
@@ -259,6 +278,8 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── backup.sh                          # Automated backup (7-day rotation, no secrets)
 │   ├── restore.sh                         # Interactive restore from backup
 │   ├── health-check.sh                    # Multi-check system health verification
+│   ├── aibrief-smoke-test.sh              # AI brief health + token + state smoke test
+│   ├── vps-rollout-aibrief.sh             # Config-only AI brief rollout/update path
 │   └── ssh-config-snippet                 # Mac SSH config with tunnel
 └── docs/
     ├── setup/

@@ -1,29 +1,58 @@
 # AI Daily Brief (<slot>) - <YYYY-MM-DD HH:MM COT>
 
-## Top Stories
-- **<headline>** (score: <0.00>)
-  - What happened: <fact summary>
-  - Why it matters: <impact summary>
-  - Sources: [<source 1>](<url>), [<source 2>](<url>)
+## Executive Snapshot
+- <signal 1>
+- <signal 2>
+- <signal 3>
 
-- **<headline>** (score: <0.00>)
-  - What happened: <fact summary>
-  - Why it matters: <impact summary>
-  - Sources: [<source 1>](<url>)
+## Top Stories
+### 1) <headline> (score: <0.00>)
+- What happened:
+  - <fact bullet>
+  - <fact bullet>
+- Why it matters:
+  - <impact bullet>
+- Signal vs Hype:
+  - <signal classification + rationale>
+- What to watch next:
+  - <watch item>
+- Sources:
+  - [<source 1>](<url>)
+  - [<source 2>](<url>)
+
+### 2) <headline> (score: <0.00>)
+- What happened:
+  - <fact bullet>
+- Why it matters:
+  - <impact bullet>
+- Signal vs Hype:
+  - <signal classification + rationale>
+- What to watch next:
+  - <watch item>
+- Sources:
+  - [<source 1>](<url>)
 
 ## Quick Hits
-- <short update + source link>
-- <short update + source link>
-- <short update + source link>
+- <short update + source>
+- <short update + source>
 
-## Watchlist Notes
-- <topic>: <new signal or "no material update">
+## Builder / Agent Corner
+- <tooling/API/runtime implication>
+- <experiment or implementation idea>
+
+## Strategic Take
+- <1 concise paragraph>
+
+## Tomorrow Watchlist
+- <topic> - <why monitor>
+- <topic> - <why monitor>
 
 ## What Changed Since Last Brief
 - New: <count>
-- Updates: <count>
-- Unchanged suppressed: <count>
+- Updated: <count>
+- Suppressed unchanged: <count>
 
 ## Confidence & Gaps
 - Confidence: <High|Medium|Low>
-- Known gaps: <missing sources or unresolved conflicts>
+- Missing coverage: <known gaps>
+- Unverified claims: <if any>
