@@ -34,6 +34,10 @@ mkdir -p \
   "$OPENCLAW_CFG/workspace" \
   "$OPENCLAW_CFG/workspace/logs"
 
+# Keep runtime compose/config templates in sync during config-only rollouts.
+cp "$PROJECT_DIR/infrastructure/docker-compose.yml" "$OPENCLAW_DIR/docker-compose.yml"
+cp "$PROJECT_DIR/openclaw/openclaw-config.json" "$OPENCLAW_DIR/openclaw-config.json"
+
 # OpenClaw loads AGENTS/SOUL/HEARTBEAT/etc from the agent workspace root.
 # Keep root copies for legacy tooling, but always sync workspace bootstrap files.
 for bootstrap in AGENTS.md SOUL.md TOOLS.md IDENTITY.md USER.md HEARTBEAT.md BOOTSTRAP.md MEMORY.md; do

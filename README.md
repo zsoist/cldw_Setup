@@ -151,6 +151,7 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
 - Rollout hardening:
   - config sync preserves gateway runtime ownership for `/root/.openclaw/openclaw.json`
   - gateway container receives `TELEGRAM_BOT_TOKEN`/`OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` from `.env`
+  - config-only rollout now syncs `infrastructure/docker-compose.yml` into `/root/openclaw` before restart
   - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`) and container-visible Brave key
 - Runtime bootstrap files used by command routing are loaded from:
   - `/root/.openclaw/workspace/AGENTS.md`

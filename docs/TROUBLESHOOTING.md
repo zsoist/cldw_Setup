@@ -140,6 +140,10 @@ bash ./infrastructure/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw
 cd /root/openclaw
 docker compose up -d --force-recreate
 ```
+
+Important:
+- run `docker compose ...` from `/root/openclaw` (or use `-f /root/openclaw/docker-compose.yml`).
+- running compose commands from `/root/openclaw-project` will fail with `no configuration file provided`.
 Then re-run:
 ```bash
 cd /root/openclaw-project

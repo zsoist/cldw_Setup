@@ -22,10 +22,12 @@
 - `infrastructure/vps-rollout-aibrief.sh`
   - passes runtime UID/GID into config sync.
   - reapplies ownership/chmod after sync to keep config readable by the gateway runtime user.
+  - now syncs updated `infrastructure/docker-compose.yml` into `/root/openclaw/docker-compose.yml` during config-only rollout.
 - `infrastructure/deploy.sh`
   - same post-sync ownership fix during full deploy.
 - `infrastructure/aibrief-smoke-test.sh`
   - now checks runtime readability of `/home/node/.openclaw/openclaw.json`.
+  - now checks whether Telegram token exists in runtime config (`channels.telegram.botToken` or `accounts.default.botToken`).
   - now checks container-visible Telegram token env and Brave env.
   - improved Brave failure diagnostics (`key_len=...` when both probes fail).
 

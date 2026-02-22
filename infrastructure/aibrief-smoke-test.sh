@@ -125,6 +125,27 @@ if [ -f "$ENV_FILE" ]; then
   SENTINEL_TG_TOKEN="$(grep '^SENTINEL_TELEGRAM_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
   BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
 
+  TG_CFG_PRESENT="$(python3 - <<'PY'
+import json
+path='/root/.openclaw/openclaw.json'
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    tg = ((data.get('channels') or {}).get('telegram') or {})
+    token = (tg.get('botToken') or '').strip()
+    acct_token = (((tg.get('accounts') or {}).get('default') or {}).get('botToken') or '').strip()
+    ok = bool(token or acct_token)
+    print('yes' if ok else 'no')
+except Exception:
+    print('no')
+PY
+)"
+  if [ "$TG_CFG_PRESENT" = "yes" ]; then
+    pass "Runtime config has Telegram bot token at channels.telegram(.accounts.default).botToken"
+  else
+    fail "Runtime config missing Telegram bot token (openclaw.json channel config)"
+  fi
+
   if docker exec openclaw-openclaw-gateway-1 sh -lc 'test -r /home/node/.openclaw/openclaw.json'; then
     pass "Gateway runtime user can read /home/node/.openclaw/openclaw.json"
   else
