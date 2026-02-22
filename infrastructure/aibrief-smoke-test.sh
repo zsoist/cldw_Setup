@@ -207,7 +207,21 @@ except Exception:
     print('no-json-error-body')
 PY
 )"
-      fail "Brave LLM Context API probe failed (HTTP ${BRAVE_HTTP_CODE}): ${BRAVE_ERROR}"
+      BRAVE_WEB_CODE="$(curl -sS --max-time 20 \
+        -o /tmp/aibrief-brave-web.json \
+        -w '%{http_code}' \
+        -H 'accept: application/json' \
+        -H "X-Subscription-Token: ${BRAVE_API_KEY}" \
+        --get \
+        --data-urlencode 'q=openai' \
+        --data-urlencode 'count=1' \
+        'https://api.search.brave.com/res/v1/web/search' \
+        2>/tmp/aibrief-brave-web.err || true)"
+      if [ "$BRAVE_WEB_CODE" = "200" ]; then
+        warn "Brave LLM Context probe failed (HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}) but Brave Web Search is reachable. Likely missing LLM Context entitlement; AI brief should run in fallback/partial mode."
+      else
+        fail "Brave API probes failed (llm/context HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}; web/search HTTP ${BRAVE_WEB_CODE})"
+      fi
     fi
   fi
 fi

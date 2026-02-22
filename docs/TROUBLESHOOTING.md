@@ -139,6 +139,13 @@ cd /root/openclaw && docker compose up -d --force-recreate
 Expected smoke-test pass line:
 - `Brave LLM Context API reachable (...)`
 
+If smoke test shows:
+- `Brave LLM Context probe failed (HTTP 422)` and
+- `Brave Web Search is reachable`
+
+then your Brave key is valid but likely does not include LLM Context entitlement.  
+In this case AI brief can still run with fallback web-search grounding (partial mode).
+
 ### High token usage
 1. Check console.anthropic.com -> Usage for daily breakdown
 2. Verify AGENTS.md has Haiku as default (not Sonnet)
