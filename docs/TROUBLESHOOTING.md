@@ -104,9 +104,30 @@ Then test in Telegram:
 - `/commands` (confirm `/ai_daily_brief` appears in listed commands)
 
 If still wrong, inspect:
-- `/root/.openclaw/AGENTS.md`
+- `/root/.openclaw/workspace/AGENTS.md`
+- `/root/.openclaw/workspace/SOUL.md`
 - `/root/.openclaw/skills/ai-daily-brief/SKILL.md`
 - `/root/.openclaw/skills/daily-briefing/SKILL.md`
+
+If `/root/.openclaw/workspace/AGENTS.md` or `/root/.openclaw/workspace/SOUL.md` is missing, the gateway falls back to default behavior and command routing becomes inconsistent. Re-run:
+```bash
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+### Telegram configured but not consuming commands (`running=false`)
+If `aibrief-smoke-test.sh` reports Telegram configured but runtime not running, apply runtime doctor fixes:
+```bash
+cd /root/openclaw
+docker exec openclaw-openclaw-gateway-1 node openclaw.mjs doctor --fix
+docker compose up -d --force-recreate
+```
+Then re-run:
+```bash
+cd /root/openclaw-project
+./infrastructure/aibrief-smoke-test.sh
+```
 
 ### AI Daily Brief has no outputs yet
 No files under `/root/.openclaw/workspace/outputs/summaries/ai-brief-*.md` means no successful run yet.

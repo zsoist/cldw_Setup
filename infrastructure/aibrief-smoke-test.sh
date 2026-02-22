@@ -24,6 +24,18 @@ else
   fail "Canonical AI brief skill missing (/root/.openclaw/skills/ai-daily-brief/SKILL.md)"
 fi
 
+WORKSPACE_BOOTSTRAP_MISSING=()
+for bootstrap in AGENTS.md SOUL.md TOOLS.md HEARTBEAT.md; do
+  if [ ! -f "/root/.openclaw/workspace/$bootstrap" ]; then
+    WORKSPACE_BOOTSTRAP_MISSING+=("$bootstrap")
+  fi
+done
+if [ "${#WORKSPACE_BOOTSTRAP_MISSING[@]}" -gt 0 ]; then
+  fail "Workspace bootstrap files missing: ${WORKSPACE_BOOTSTRAP_MISSING[*]} (expected under /root/.openclaw/workspace)"
+else
+  pass "Workspace bootstrap files present (/root/.openclaw/workspace/{AGENTS,SOUL,TOOLS,HEARTBEAT}.md)"
+fi
+
 STALE_SKILLS=()
 for legacy in \
   aibrief \
@@ -122,8 +134,23 @@ with open('/tmp/aibrief-health.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 print('Gateway OK:', data.get('ok'))
 print('Default agent:', data.get('defaultAgentId'))
-print('Telegram configured:', (((data.get('channels') or {}).get('telegram') or {}).get('configured')))
+telegram = ((data.get('channels') or {}).get('telegram') or {})
+print('Telegram configured:', telegram.get('configured'))
+print('Telegram running:', telegram.get('running'))
 PY
+      TELEGRAM_RUNNING="$(python3 - <<'PY'
+import json
+with open('/tmp/aibrief-health.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+telegram = ((data.get('channels') or {}).get('telegram') or {})
+print(str(bool(telegram.get('running'))).lower())
+PY
+)"
+      if [ "$TELEGRAM_RUNNING" = "true" ]; then
+        pass "Telegram ingest runtime is running"
+      else
+        fail "Telegram ingest runtime is not running (configured but not consuming updates)"
+      fi
     else
       fail "Gateway health call failed: $(tail -n 1 /tmp/aibrief-health.err)"
     fi

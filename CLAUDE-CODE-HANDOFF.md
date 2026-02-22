@@ -24,6 +24,7 @@
 - AI Daily Brief supports dedicated Telegram delivery target via `config.output_channel` in state.
 - AI Daily Brief now expects Brave LLM Context grounding (`BRAVE_API_KEY`) and reports provider diagnostics in smoke tests.
 - AI brief runtime state path is absolute: `/home/node/.openclaw/workspace/logs/ai-brief-state.json` (avoid relative-path drift).
+- Critical runtime path fix: workspace bootstrap files must be synced to `/root/.openclaw/workspace/*.md` (not only `/root/.openclaw/*.md`) so OpenClaw actually loads custom SOUL/AGENTS routing.
 
 ---
 
@@ -184,6 +185,9 @@ Marker:
    - set `BRAVE_API_KEY` in `/root/openclaw/.env`
    - run `infrastructure/aibrief-smoke-test.sh`
    - confirm Brave LLM Context probe passes
+8. Validate Telegram ingest runtime:
+   - smoke test must pass `Telegram ingest runtime is running`
+   - if not, run `docker exec openclaw-openclaw-gateway-1 node openclaw.mjs doctor --fix` and recreate gateway
 
 ---
 

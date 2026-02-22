@@ -31,12 +31,17 @@ log "Using project ref: ${CURRENT_REF}"
 
 log "Syncing AI Daily Brief config and skill assets"
 mkdir -p \
+  "$OPENCLAW_CFG/workspace" \
   "$OPENCLAW_CFG/workspace/logs"
 
-cp "$PROJECT_DIR/openclaw/config/AGENTS.md" "$OPENCLAW_CFG/AGENTS.md"
-cp "$PROJECT_DIR/openclaw/config/SOUL.md" "$OPENCLAW_CFG/SOUL.md"
+# OpenClaw loads AGENTS/SOUL/HEARTBEAT/etc from the agent workspace root.
+# Keep root copies for legacy tooling, but always sync workspace bootstrap files.
+for bootstrap in AGENTS.md SOUL.md TOOLS.md IDENTITY.md USER.md HEARTBEAT.md BOOTSTRAP.md MEMORY.md; do
+  cp "$PROJECT_DIR/openclaw/config/$bootstrap" "$OPENCLAW_CFG/workspace/$bootstrap"
+  cp "$PROJECT_DIR/openclaw/config/$bootstrap" "$OPENCLAW_CFG/$bootstrap"
+done
+cp "$PROJECT_DIR/openclaw/config/CRON.md" "$OPENCLAW_CFG/workspace/CRON.md"
 cp "$PROJECT_DIR/openclaw/config/CRON.md" "$OPENCLAW_CFG/CRON.md"
-cp "$PROJECT_DIR/openclaw/config/HEARTBEAT.md" "$OPENCLAW_CFG/HEARTBEAT.md"
 # Sync all skills recursively to keep alias commands current.
 if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
   while IFS= read -r -d '' skill_file; do
@@ -119,6 +124,38 @@ done
 
 log "Final health check"
 "$PROJECT_DIR/infrastructure/health-check.sh"
+
+log "Applying OpenClaw doctor fixes (if any)"
+if docker exec openclaw-openclaw-gateway-1 node openclaw.mjs doctor --fix >/tmp/aibrief-doctor.log 2>&1; then
+  log "openclaw doctor --fix completed"
+else
+  log "WARN: openclaw doctor --fix failed; continuing rollout"
+  tail -n 20 /tmp/aibrief-doctor.log || true
+fi
+
+if [ -f "/root/openclaw/.env" ]; then
+  GW_TOKEN="$(grep '^OPENCLAW_GATEWAY_TOKEN=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+  if [ -n "$GW_TOKEN" ]; then
+    if docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$GW_TOKEN" --json >/tmp/aibrief-post-health.json 2>/tmp/aibrief-post-health.err; then
+      TG_RUNNING="$(python3 - <<'PY'
+import json
+with open('/tmp/aibrief-post-health.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+telegram = ((data.get('channels') or {}).get('telegram') or {})
+print(str(bool(telegram.get('running'))).lower())
+PY
+)"
+      if [ "$TG_RUNNING" = "true" ]; then
+        log "Telegram ingest runtime is running"
+      else
+        log "WARN: Telegram ingest runtime reports running=false (commands may not be consumed)"
+      fi
+    else
+      log "WARN: unable to perform post-rollout gateway health call"
+      tail -n 5 /tmp/aibrief-post-health.err || true
+    fi
+  fi
+fi
 
 log "Rollout complete for ref ${CURRENT_REF}."
 log "Telegram smoke test: send /ai_daily_brief status then /ai_daily_brief top5 (or /ai_daily_brief_top5 compatibility alias)."

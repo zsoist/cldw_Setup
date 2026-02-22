@@ -85,8 +85,14 @@ mkdir -p "$OPENCLAW_CONFIG/memory/weekly"
 mkdir -p /root/backups
 
 echo "=== [4/9] Copy OpenClaw config files (main agent) ==="
-for f in SOUL.md USER.md AGENTS.md TOOLS.md HEARTBEAT.md MEMORY.md \
-         IDENTITY.md BOOTSTRAP.md BOOT.md CRON.md CHANNELS.md SANDBOX.md; do
+# Workspace bootstrap files are loaded from $workspaceDir root (not state root).
+for f in SOUL.md USER.md AGENTS.md TOOLS.md HEARTBEAT.md MEMORY.md IDENTITY.md BOOTSTRAP.md; do
+    copy_checked "$PROJECT_DIR/openclaw/config/$f" "$OPENCLAW_CONFIG/workspace/$f"
+    copy_checked "$PROJECT_DIR/openclaw/config/$f" "$OPENCLAW_CONFIG/$f"
+done
+# Keep auxiliary policy docs available in both locations for operators.
+for f in BOOT.md CRON.md CHANNELS.md SANDBOX.md; do
+    copy_checked "$PROJECT_DIR/openclaw/config/$f" "$OPENCLAW_CONFIG/workspace/$f"
     copy_checked "$PROJECT_DIR/openclaw/config/$f" "$OPENCLAW_CONFIG/$f"
 done
 copy_checked "$PROJECT_DIR/openclaw/openclaw-config.json" "$OPENCLAW_CONFIG/openclaw-config.json"

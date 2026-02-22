@@ -148,6 +148,11 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - `infrastructure/vps-rollout-aibrief.sh`
   - `infrastructure/aibrief-smoke-test.sh`
   - `infrastructure/set-aibrief-output-channel.sh`
+- Runtime bootstrap files used by command routing are loaded from:
+  - `/root/.openclaw/workspace/AGENTS.md`
+  - `/root/.openclaw/workspace/SOUL.md`
+  - `/root/.openclaw/workspace/TOOLS.md`
+  - `/root/.openclaw/workspace/HEARTBEAT.md`
 
 ### AI Daily Brief VPS Rollout (Fast Path)
 
