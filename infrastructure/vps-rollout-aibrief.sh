@@ -201,6 +201,10 @@ PY
       local token="$1"
       docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$token" --json >/tmp/aibrief-post-health.json 2>/tmp/aibrief-post-health.err
     }
+    channels_status_call() {
+      local token="$1"
+      docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call channels.status --url ws://127.0.0.1:18789 --token "$token" --json >/tmp/aibrief-post-channels.json 2>/tmp/aibrief-post-channels.err
+    }
 
     if health_call "$GW_TOKEN"; then
       HEALTH_AUTH_SOURCE="runtime-config"
@@ -225,16 +229,75 @@ PY
       TG_RUNNING="$(echo "$TG_STATUS" | sed -n 's/^running=//p' | tail -n1)"
       TG_TOKEN_SOURCE="$(echo "$TG_STATUS" | sed -n 's/^tokenSource=//p' | tail -n1)"
       TG_LAST_ERROR="$(echo "$TG_STATUS" | sed -n 's/^lastError=//p' | tail -n1)"
-      if [ "$TG_RUNNING" = "true" ]; then
-        log "Telegram ingest runtime is running (tokenSource=${TG_TOKEN_SOURCE})"
+      if channels_status_call "$GW_TOKEN" || { [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_ENV" != "$GW_TOKEN" ] && channels_status_call "$GW_TOKEN_ENV"; }; then
+        TG_RUNTIME="$(python3 - <<'PY'
+import json
+with open('/tmp/aibrief-post-channels.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+default_id = str(((data.get('channelDefaultAccountId') or {}).get('telegram')) or 'default')
+accounts = ((data.get('channelAccounts') or {}).get('telegram') or [])
+selected = None
+for item in accounts:
+    if str(item.get('accountId') or '') == default_id:
+        selected = item
+        break
+if selected is None and accounts:
+    selected = accounts[0]
+selected = selected or {}
+print("accountId=" + str(selected.get('accountId') or default_id))
+print("configured=" + str(bool(selected.get('configured'))).lower())
+print("running=" + str(bool(selected.get('running'))).lower())
+print("tokenSource=" + str(selected.get('tokenSource') or "none"))
+print("lastError=" + str(selected.get('lastError')))
+print("lastInboundAt=" + str(selected.get('lastInboundAt')))
+print("lastOutboundAt=" + str(selected.get('lastOutboundAt')))
+PY
+)"
+        TG_ACCOUNT_ID="$(echo "$TG_RUNTIME" | sed -n 's/^accountId=//p' | tail -n1)"
+        TG_CONFIGURED="$(echo "$TG_RUNTIME" | sed -n 's/^configured=//p' | tail -n1)"
+        TG_RUNNING="$(echo "$TG_RUNTIME" | sed -n 's/^running=//p' | tail -n1)"
+        TG_TOKEN_SOURCE="$(echo "$TG_RUNTIME" | sed -n 's/^tokenSource=//p' | tail -n1)"
+        TG_LAST_ERROR="$(echo "$TG_RUNTIME" | sed -n 's/^lastError=//p' | tail -n1)"
+        TG_LAST_INBOUND_AT="$(echo "$TG_RUNTIME" | sed -n 's/^lastInboundAt=//p' | tail -n1)"
+        TG_LAST_OUTBOUND_AT="$(echo "$TG_RUNTIME" | sed -n 's/^lastOutboundAt=//p' | tail -n1)"
+        if [ "$TG_RUNNING" = "true" ]; then
+          log "Telegram ingest runtime is running (account=${TG_ACCOUNT_ID}, tokenSource=${TG_TOKEN_SOURCE}, configured=${TG_CONFIGURED}, lastInboundAt=${TG_LAST_INBOUND_AT}, lastOutboundAt=${TG_LAST_OUTBOUND_AT})"
+          TG_OFFSET_FILE="/root/.openclaw/telegram/update-offset-${TG_ACCOUNT_ID:-default}.json"
+          if [ -f "$TG_OFFSET_FILE" ]; then
+            TG_OFFSET_LAST_UPDATE_ID="$(TG_OFFSET_FILE="$TG_OFFSET_FILE" python3 - <<'PY'
+import json
+import os
+path = os.environ.get('TG_OFFSET_FILE', '')
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    value = data.get('lastUpdateId')
+    print(value if value is not None else '')
+except Exception:
+    print('')
+PY
+)"
+            log "Telegram update offset file detected (${TG_OFFSET_FILE}; lastUpdateId=${TG_OFFSET_LAST_UPDATE_ID:-unknown})"
+          fi
+          if [ -z "$TG_LAST_INBOUND_AT" ] || [ "$TG_LAST_INBOUND_AT" = "None" ] || [ "$TG_LAST_INBOUND_AT" = "null" ]; then
+            log "WARN: Telegram has no inbound activity yet; if commands are ignored, reset offset with: ${PROJECT_DIR}/infrastructure/reset-telegram-offset.sh ${TG_ACCOUNT_ID:-default}"
+          fi
+        else
+          log "WARN: Telegram ingest runtime reports running=false (account=${TG_ACCOUNT_ID}, tokenSource=${TG_TOKEN_SOURCE}, configured=${TG_CONFIGURED}, lastError=${TG_LAST_ERROR})"
+          if [ "$TG_TOKEN_SOURCE" = "none" ]; then
+            log "WARN: Telegram token not loaded by gateway runtime account resolution."
+          fi
+        fi
       else
-        log "WARN: Telegram ingest runtime reports running=false (tokenSource=${TG_TOKEN_SOURCE}; lastError=${TG_LAST_ERROR})"
-        if [ "$TG_TOKEN_SOURCE" = "none" ]; then
-          log "WARN: Telegram token not loaded by gateway config. Re-sync with infrastructure/sync-openclaw-config.sh and recreate container."
+        log "WARN: channels.status call failed; falling back to health snapshot fields (health does not include live channel runtime)"
+        if [ "$TG_RUNNING" = "true" ]; then
+          log "Telegram ingest runtime appears running via health snapshot (tokenSource=${TG_TOKEN_SOURCE})"
+        else
+          log "WARN: Telegram ingest runtime appears stopped via health snapshot (tokenSource=${TG_TOKEN_SOURCE}; lastError=${TG_LAST_ERROR})"
         fi
       fi
       if [ "$TG_TOKEN_SOURCE" = "none" ]; then
-        TG_RUNTIME_DEBUG="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require(\"fs\");const p=\"/home/node/.openclaw/openclaw.json\";const trim=(v)=>typeof v===\"string\"?v.trim():\"\";try{const d=JSON.parse(fs.readFileSync(p,\"utf8\"));const tg=(d.channels&&d.channels.telegram)||{};const acct=(tg.accounts&&tg.accounts.default)||{};console.log(\"top.botToken.len=\"+trim(tg.botToken).length);console.log(\"top.tokenFile=\"+trim(tg.tokenFile));console.log(\"account.default.botToken.len=\"+trim(acct.botToken).length);console.log(\"account.default.tokenFile=\"+trim(acct.tokenFile));}catch(err){console.log(\"runtime.config.read.error=\"+String(err));}')" || true
+        TG_RUNTIME_DEBUG="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require("fs");const p="/home/node/.openclaw/openclaw.json";const trim=(v)=>typeof v==="string"?v.trim():"";try{const d=JSON.parse(fs.readFileSync(p,"utf8"));const tg=(d.channels&&d.channels.telegram)||{};const acct=(tg.accounts&&tg.accounts.default)||{};console.log("top.botToken.len="+trim(tg.botToken).length);console.log("top.tokenFile="+trim(tg.tokenFile));console.log("account.default.botToken.len="+trim(acct.botToken).length);console.log("account.default.tokenFile="+trim(acct.tokenFile));}catch(err){console.log("runtime.config.read.error="+String(err));}')" || true
         if [ -n "$TG_RUNTIME_DEBUG" ]; then
           log "Telegram runtime token diagnostics:"
           printf '%s\n' "$TG_RUNTIME_DEBUG" | sed 's/^/[aibrief-rollout]   /'
@@ -251,14 +314,45 @@ PY
             RETRY_OK="true"
           fi
           if [ "$RETRY_OK" = "true" ]; then
-            RETRY_RUNNING="$(python3 -c 'import json
-data=json.load(open("/tmp/aibrief-post-health.json"))
-print(str(bool(((data.get("channels") or {}).get("telegram") or {}).get("running"))).lower())
-')"
-            RETRY_TOKEN_SOURCE="$(python3 -c 'import json
-data=json.load(open("/tmp/aibrief-post-health.json"))
-print(str((((data.get("channels") or {}).get("telegram") or {}).get("tokenSource")) or "none"))
-')"
+            if channels_status_call "$GW_TOKEN" || { [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_ENV" != "$GW_TOKEN" ] && channels_status_call "$GW_TOKEN_ENV"; }; then
+              RETRY_RUNNING="$(python3 - <<'PY'
+import json
+with open('/tmp/aibrief-post-channels.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+default_id = str(((data.get('channelDefaultAccountId') or {}).get('telegram')) or 'default')
+accounts = ((data.get('channelAccounts') or {}).get('telegram') or [])
+selected = None
+for item in accounts:
+    if str(item.get('accountId') or '') == default_id:
+        selected = item
+        break
+if selected is None and accounts:
+    selected = accounts[0]
+selected = selected or {}
+print(str(bool(selected.get('running'))).lower())
+PY
+)"
+              RETRY_TOKEN_SOURCE="$(python3 - <<'PY'
+import json
+with open('/tmp/aibrief-post-channels.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+default_id = str(((data.get('channelDefaultAccountId') or {}).get('telegram')) or 'default')
+accounts = ((data.get('channelAccounts') or {}).get('telegram') or [])
+selected = None
+for item in accounts:
+    if str(item.get('accountId') or '') == default_id:
+        selected = item
+        break
+if selected is None and accounts:
+    selected = accounts[0]
+selected = selected or {}
+print(str(selected.get('tokenSource') or 'none'))
+PY
+)"
+            else
+              RETRY_RUNNING="false"
+              RETRY_TOKEN_SOURCE="unknown"
+            fi
             if [ "$RETRY_RUNNING" = "true" ]; then
               log "Telegram ingest recovered after webhook cleanup retry (tokenSource=${RETRY_TOKEN_SOURCE})"
             else

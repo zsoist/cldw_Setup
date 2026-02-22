@@ -262,6 +262,10 @@ PY
       local token="$1"
       docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$token" --json >/tmp/aibrief-health.json 2>/tmp/aibrief-health.err
     }
+    channels_status_call() {
+      local token="$1"
+      docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call channels.status --url ws://127.0.0.1:18789 --token "$token" --json >/tmp/aibrief-channels.json 2>/tmp/aibrief-channels.err
+    }
 
     if health_call "$GW_TOKEN"; then
       HEALTH_AUTH_SOURCE="runtime-config"
@@ -282,41 +286,78 @@ with open('/tmp/aibrief-health.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
 print('Gateway OK:', data.get('ok'))
 print('Default agent:', data.get('defaultAgentId'))
-telegram = ((data.get('channels') or {}).get('telegram') or {})
-print('Telegram configured:', telegram.get('configured'))
-print('Telegram running:', telegram.get('running'))
-print('Telegram tokenSource:', telegram.get('tokenSource'))
-print('Telegram lastError:', telegram.get('lastError'))
 PY
-      TELEGRAM_RUNNING="$(python3 - <<'PY'
+      if channels_status_call "$GW_TOKEN" || { [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_ENV" != "$GW_TOKEN" ] && channels_status_call "$GW_TOKEN_ENV"; }; then
+        TG_RUNTIME="$(python3 - <<'PY'
 import json
-with open('/tmp/aibrief-health.json', 'r', encoding='utf-8') as f:
+with open('/tmp/aibrief-channels.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
-telegram = ((data.get('channels') or {}).get('telegram') or {})
-print(str(bool(telegram.get('running'))).lower())
+default_id = str(((data.get('channelDefaultAccountId') or {}).get('telegram')) or 'default')
+accounts = ((data.get('channelAccounts') or {}).get('telegram') or [])
+selected = None
+for item in accounts:
+    if str(item.get('accountId') or '') == default_id:
+        selected = item
+        break
+if selected is None and accounts:
+    selected = accounts[0]
+selected = selected or {}
+print('Telegram accountId:', str(selected.get('accountId') or default_id))
+print('Telegram configured:', bool(selected.get('configured')))
+print('Telegram running:', bool(selected.get('running')))
+print('Telegram tokenSource:', str(selected.get('tokenSource') or 'none'))
+print('Telegram lastError:', selected.get('lastError'))
+print('Telegram lastInboundAt:', selected.get('lastInboundAt'))
+print('Telegram lastOutboundAt:', selected.get('lastOutboundAt'))
+print('__ACCOUNT_ID__=' + str(selected.get('accountId') or default_id))
+print('__RUNNING__=' + str(bool(selected.get('running'))).lower())
+print('__TOKENSOURCE__=' + str(selected.get('tokenSource') or 'none'))
+print('__LASTINBOUND__=' + str(selected.get('lastInboundAt')))
+print('__LASTOUTBOUND__=' + str(selected.get('lastOutboundAt')))
 PY
 )"
-      TELEGRAM_TOKEN_SOURCE="$(python3 - <<'PY'
+        echo "$TG_RUNTIME" | grep -Ev '^__ACCOUNT_ID__=|^__RUNNING__=|^__TOKENSOURCE__=|^__LASTINBOUND__=|^__LASTOUTBOUND__='
+        TG_ACCOUNT_ID="$(echo "$TG_RUNTIME" | sed -n 's/^__ACCOUNT_ID__=//p' | tail -n1)"
+        TELEGRAM_RUNNING="$(echo "$TG_RUNTIME" | sed -n 's/^__RUNNING__=//p' | tail -n1)"
+        TELEGRAM_TOKEN_SOURCE="$(echo "$TG_RUNTIME" | sed -n 's/^__TOKENSOURCE__=//p' | tail -n1)"
+        TG_LAST_INBOUND_AT="$(echo "$TG_RUNTIME" | sed -n 's/^__LASTINBOUND__=//p' | tail -n1)"
+        TG_LAST_OUTBOUND_AT="$(echo "$TG_RUNTIME" | sed -n 's/^__LASTOUTBOUND__=//p' | tail -n1)"
+        if [ "$TELEGRAM_RUNNING" = "true" ]; then
+          pass "Telegram ingest runtime is running"
+        else
+          fail "Telegram ingest runtime is not running (channels.status reports running=false)"
+        fi
+        if [ "$TELEGRAM_TOKEN_SOURCE" = "none" ]; then
+          fail "Gateway Telegram tokenSource=none (channels.status account resolution failed to load token)"
+          TG_RUNTIME_DEBUG="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require("fs");const p="/home/node/.openclaw/openclaw.json";const trim=(v)=>typeof v==="string"?v.trim():"";try{const d=JSON.parse(fs.readFileSync(p,"utf8"));const tg=(d.channels&&d.channels.telegram)||{};const acct=(tg.accounts&&tg.accounts.default)||{};console.log("runtime.top.botToken.len="+trim(tg.botToken).length);console.log("runtime.top.tokenFile="+trim(tg.tokenFile));console.log("runtime.account.default.botToken.len="+trim(acct.botToken).length);console.log("runtime.account.default.tokenFile="+trim(acct.tokenFile));}catch(err){console.log("runtime.config.read.error="+String(err));}')" || true
+          if [ -n "$TG_RUNTIME_DEBUG" ]; then
+            echo "$TG_RUNTIME_DEBUG" | sed 's/^/[INFO] /'
+          fi
+        else
+          pass "Gateway Telegram token source is ${TELEGRAM_TOKEN_SOURCE}"
+        fi
+        TG_OFFSET_FILE="/root/.openclaw/telegram/update-offset-${TG_ACCOUNT_ID:-default}.json"
+        if [ -f "$TG_OFFSET_FILE" ]; then
+          TG_OFFSET_LAST_UPDATE_ID="$(TG_OFFSET_FILE="$TG_OFFSET_FILE" python3 - <<'PY'
 import json
-with open('/tmp/aibrief-health.json', 'r', encoding='utf-8') as f:
-    data = json.load(f)
-telegram = ((data.get('channels') or {}).get('telegram') or {})
-print(str(telegram.get('tokenSource') or "none"))
+import os
+path = os.environ.get('TG_OFFSET_FILE', '')
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    value = data.get('lastUpdateId')
+    print(value if value is not None else '')
+except Exception:
+    print('')
 PY
 )"
-      if [ "$TELEGRAM_RUNNING" = "true" ]; then
-        pass "Telegram ingest runtime is running"
-      else
-        fail "Telegram ingest runtime is not running (configured but not consuming updates)"
-      fi
-      if [ "$TELEGRAM_TOKEN_SOURCE" = "none" ]; then
-        fail "Gateway Telegram tokenSource=none (runtime did not load bot token from config)"
-        TG_RUNTIME_DEBUG="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require(\"fs\");const p=\"/home/node/.openclaw/openclaw.json\";const trim=(v)=>typeof v===\"string\"?v.trim():\"\";try{const d=JSON.parse(fs.readFileSync(p,\"utf8\"));const tg=(d.channels&&d.channels.telegram)||{};const acct=(tg.accounts&&tg.accounts.default)||{};console.log(\"runtime.top.botToken.len=\"+trim(tg.botToken).length);console.log(\"runtime.top.tokenFile=\"+trim(tg.tokenFile));console.log(\"runtime.account.default.botToken.len=\"+trim(acct.botToken).length);console.log(\"runtime.account.default.tokenFile=\"+trim(acct.tokenFile));}catch(err){console.log(\"runtime.config.read.error=\"+String(err));}')" || true
-        if [ -n "$TG_RUNTIME_DEBUG" ]; then
-          echo "$TG_RUNTIME_DEBUG" | sed 's/^/[INFO] /'
+          echo "Telegram update offset file: ${TG_OFFSET_FILE} (lastUpdateId=${TG_OFFSET_LAST_UPDATE_ID:-unknown})"
+          if [ "$TELEGRAM_RUNNING" = "true" ] && { [ -z "$TG_LAST_INBOUND_AT" ] || [ "$TG_LAST_INBOUND_AT" = "None" ] || [ "$TG_LAST_INBOUND_AT" = "null" ]; }; then
+            warn "Telegram has no inbound activity yet; stale update offset can silently skip commands. If commands do not trigger, run: /root/openclaw-project/infrastructure/reset-telegram-offset.sh ${TG_ACCOUNT_ID:-default}"
+          fi
         fi
       else
-        pass "Gateway Telegram token source is ${TELEGRAM_TOKEN_SOURCE}"
+        warn "channels.status call failed; skipping Telegram runtime assertions (health snapshot does not include live channel runtime)"
       fi
     else
       fail "Gateway health call failed: $(tail -n 1 /tmp/aibrief-health.err)"

@@ -179,6 +179,28 @@ docker compose restart openclaw-gateway
 
 Rollout now attempts this automatically, but manual cleanup is still valid if the token was previously used by another Telegram integration.
 
+### Telegram provider is running but commands are silently ignored
+If `channels.status` shows Telegram `running=true` and `tokenSource` is valid, but `/ai_daily_brief*` commands still never trigger, check for a stale update-offset file.
+
+Background:
+- OpenClaw stores last processed Telegram `update_id` per account in:
+  - `/root/.openclaw/telegram/update-offset-default.json`
+- If that value becomes stale after token/account swaps, inbound updates can be skipped with no obvious runtime error.
+
+Reset safely:
+```bash
+cd /root/openclaw-project
+./infrastructure/reset-telegram-offset.sh default
+```
+
+Then validate:
+```bash
+cd /root/openclaw-project
+./infrastructure/aibrief-smoke-test.sh
+```
+
+The smoke test now prints account runtime fields from `channels.status` (`accountId`, `running`, `tokenSource`, `lastInboundAt`, `lastOutboundAt`) and warns when offset state is a likely blocker.
+
 Avoid `openclaw doctor --fix` as part of AI-brief rollout automation. It can rewrite config and interfere with explicit Telegram token wiring.
 
 ### Commands reach bot but AI brief never invokes (`last_run` stays null)

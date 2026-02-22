@@ -39,6 +39,8 @@
   - post-rollout gateway health RPC now prefers `gateway.auth.token` from `/root/.openclaw/openclaw.json` and only falls back to `.env` (with explicit mismatch warning).
   - post-rollout diagnostics now include Telegram token field lengths/paths when `tokenSource=none`.
   - rollout now checks Telegram `getWebhookInfo`; if URL is active it clears webhook, restarts gateway, and rechecks health.
+  - Telegram runtime diagnostics now use `gateway call channels.status` (live channel runtime) instead of relying on `health` snapshot fields.
+  - rollout now surfaces per-account runtime details (`accountId`, `configured`, `running`, `tokenSource`, `lastInboundAt`, `lastOutboundAt`) and warns about stale update-offset risk.
 - `infrastructure/deploy.sh`
   - same post-sync ownership fix during full deploy.
 - `infrastructure/aibrief-smoke-test.sh`
@@ -50,6 +52,10 @@
   - now fails when Telegram webhook is active (explicit polling conflict condition).
   - now fails fast for invalid/truncated Brave keys (`len < 20`).
   - improved Brave failure diagnostics (`key_len=...` when both probes fail).
+  - Telegram runtime assertions now come from `channels.status` account snapshots (not `health` channel summary defaults).
+  - warns when Telegram has no inbound activity and update-offset state may be silently blocking command ingest.
+- `infrastructure/reset-telegram-offset.sh`
+  - new recovery script: backs up and removes `/root/.openclaw/telegram/update-offset-<account>.json`, restarts gateway, and tails Telegram startup logs.
 
 ### Production outcome target
 - OpenClaw gateway should run healthy via Docker health checks.
