@@ -12,6 +12,23 @@
 
 `main` now includes a full security/ops hardening pass plus AI Daily Brief v2 routing/ops improvements.
 
+### Latest hotfix (2026-02-22, Telegram ingest + runtime env hardening)
+- `infrastructure/sync-openclaw-config.sh`
+  - now accepts fallback token source `TELEGRAM_BOT_TOKEN` when `OPENCLAW_TELEGRAM_TOKEN` is absent.
+  - exports `TELEGRAM_BOT_TOKEN` for runtime parity.
+  - now restores config file ownership after writing (`OPENCLAW_CONFIG_UID/GID` aware) to prevent root-owned unreadable config drift.
+- `infrastructure/docker-compose.yml`
+  - now injects `TELEGRAM_BOT_TOKEN` / `OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` (plus AIDB Brave tuning vars) into the gateway container env.
+- `infrastructure/vps-rollout-aibrief.sh`
+  - passes runtime UID/GID into config sync.
+  - reapplies ownership/chmod after sync to keep config readable by the gateway runtime user.
+- `infrastructure/deploy.sh`
+  - same post-sync ownership fix during full deploy.
+- `infrastructure/aibrief-smoke-test.sh`
+  - now checks runtime readability of `/home/node/.openclaw/openclaw.json`.
+  - now checks container-visible Telegram token env and Brave env.
+  - improved Brave failure diagnostics (`key_len=...` when both probes fail).
+
 ### Production outcome target
 - OpenClaw gateway should run healthy via Docker health checks.
 - Sentinel now runs as a **dedicated non-root user**.
@@ -186,6 +203,7 @@ Marker:
    - run `infrastructure/aibrief-smoke-test.sh`
    - confirm Brave LLM Context probe passes
 8. Validate Telegram ingest runtime:
+   - smoke test must pass `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
    - smoke test must pass `Telegram ingest runtime is running`
    - if smoke test shows `tokenSource=none`, re-run:
      - `bash /root/openclaw-project/infrastructure/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw-project/openclaw/openclaw-config.json`

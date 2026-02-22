@@ -99,6 +99,10 @@ Validate and sync Sentinel environment:
 /usr/local/sbin/sync-openclaw-config.sh
 ```
 
+Important:
+- `OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` in `/root/openclaw/.env` are propagated into the OpenClaw container environment.
+- `sync-openclaw-config.sh` must preserve runtime ownership of `/root/.openclaw/openclaw.json` (the rollout script enforces this).
+
 Optional provider sanity check (recommended):
 ```bash
 BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' /root/openclaw/.env | cut -d= -f2-)"
@@ -136,6 +140,12 @@ journalctl -u sentinel -n 80 --no-pager
 # Run AI brief-specific smoke tests
 /root/openclaw-project/infrastructure/aibrief-smoke-test.sh
 ```
+
+Before Telegram command testing, confirm smoke test includes:
+- `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
+- `Telegram ingest runtime is running`
+- `Gateway Telegram token source is ...` (not `none`)
+- `Gateway container has BRAVE_API_KEY in environment` (unless intentionally running fallback mode)
 
 Note: OpenClaw is a WebSocket gateway, so root HTTP probes can return `000`/`404` depending on route handling.  
 The bundled health check validates Docker health status for the gateway container.

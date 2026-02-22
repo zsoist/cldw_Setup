@@ -35,7 +35,7 @@ extract_key() {
 }
 
 OPENCLAW_GATEWAY_TOKEN="$(extract_key OPENCLAW_GATEWAY_TOKEN || true)"
-OPENCLAW_TELEGRAM_TOKEN="$(extract_key OPENCLAW_TELEGRAM_TOKEN || true)"
+OPENCLAW_TELEGRAM_TOKEN="$(extract_key OPENCLAW_TELEGRAM_TOKEN || extract_key TELEGRAM_BOT_TOKEN || true)"
 OPENCLAW_GATEWAY_BIND="$(extract_key OPENCLAW_GATEWAY_BIND || true)"
 OPENCLAW_GATEWAY_PORT="$(extract_key OPENCLAW_GATEWAY_PORT || true)"
 
@@ -57,6 +57,7 @@ fi
 
 mkdir -p /root/.openclaw
 export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
+export TELEGRAM_BOT_TOKEN="$OPENCLAW_TELEGRAM_TOKEN"
 
 python3 - "$TEMPLATE_JSON" "$RUNTIME_JSON" <<'PY'
 import json
@@ -91,5 +92,39 @@ cp "$RUNTIME_JSON" "$RUNTIME_COPY_JSON"
 cp "$RUNTIME_JSON" "$IMAGE_COPY_JSON"
 
 chmod 600 "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON"
+
+resolve_owner() {
+    local owner=""
+    local uid=""
+    local gid=""
+    stat_owner() {
+        local path="$1"
+        stat -c '%u:%g' "$path" 2>/dev/null || stat -f '%u:%g' "$path" 2>/dev/null || true
+    }
+
+    if [[ "${OPENCLAW_CONFIG_UID:-}" =~ ^[0-9]+$ ]] && [[ "${OPENCLAW_CONFIG_GID:-}" =~ ^[0-9]+$ ]]; then
+        owner="${OPENCLAW_CONFIG_UID}:${OPENCLAW_CONFIG_GID}"
+    elif [ -n "${OPENCLAW_RUNTIME_OWNER:-}" ]; then
+        owner="${OPENCLAW_RUNTIME_OWNER}"
+    elif [ -f "$RUNTIME_JSON" ]; then
+        owner="$(stat_owner "$RUNTIME_JSON")"
+    elif [ -d /root/.openclaw ]; then
+        owner="$(stat_owner /root/.openclaw)"
+    fi
+
+    if [ -z "$owner" ] && command -v docker >/dev/null 2>&1 && [ -f /root/openclaw/docker-compose.yml ]; then
+        uid="$(docker compose -f /root/openclaw/docker-compose.yml run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -u openclaw' 2>/dev/null | tr -d '\r' | tail -n 1 || true)"
+        gid="$(docker compose -f /root/openclaw/docker-compose.yml run --rm --no-deps --entrypoint sh openclaw-gateway -c 'id -g openclaw' 2>/dev/null | tr -d '\r' | tail -n 1 || true)"
+        if [[ "$uid" =~ ^[0-9]+$ ]] && [[ "$gid" =~ ^[0-9]+$ ]]; then
+            owner="${uid}:${gid}"
+        fi
+    fi
+
+    if [ -n "$owner" ]; then
+        chown "$owner" "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON"
+    fi
+}
+
+resolve_owner
 
 echo "Wrote OpenClaw config: $RUNTIME_JSON"

@@ -148,6 +148,10 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - `infrastructure/vps-rollout-aibrief.sh`
   - `infrastructure/aibrief-smoke-test.sh`
   - `infrastructure/set-aibrief-output-channel.sh`
+- Rollout hardening:
+  - config sync preserves gateway runtime ownership for `/root/.openclaw/openclaw.json`
+  - gateway container receives `TELEGRAM_BOT_TOKEN`/`OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` from `.env`
+  - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`) and container-visible Brave key
 - Runtime bootstrap files used by command routing are loaded from:
   - `/root/.openclaw/workspace/AGENTS.md`
   - `/root/.openclaw/workspace/SOUL.md`
@@ -168,12 +172,19 @@ echo "BRAVE_API_KEY=YOUR_REAL_KEY" >> /root/openclaw/.env
 EOF
 ```
 
+Smoke test must pass these lines before Telegram command validation:
+- `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
+- `Telegram ingest runtime is running`
+- `Gateway Telegram token source is ...` (not `none`)
+- `Gateway container has BRAVE_API_KEY in environment` (or explicit fallback warning if intentionally unconfigured)
+
 Manual Telegram validation after rollout:
 - send `/ai_daily_brief status`
 - send `/ai_daily_brief top5`
 - send compatibility alias `/ai_daily_brief_top5` (must return equivalent output path)
 - run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
 - if status reports `provider unconfigured`, re-check `BRAVE_API_KEY` in `/root/openclaw/.env`
+- avoid `openclaw doctor --fix` during AI brief rollout/troubleshooting because it can rewrite channel config and break token wiring
 
 Configure dedicated AI brief channel (optional):
 ```bash

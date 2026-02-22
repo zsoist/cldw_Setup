@@ -125,6 +125,19 @@ if [ -f "$ENV_FILE" ]; then
   SENTINEL_TG_TOKEN="$(grep '^SENTINEL_TELEGRAM_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
   BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
 
+  if docker exec openclaw-openclaw-gateway-1 sh -lc 'test -r /home/node/.openclaw/openclaw.json'; then
+    pass "Gateway runtime user can read /home/node/.openclaw/openclaw.json"
+  else
+    fail "Gateway runtime user cannot read /home/node/.openclaw/openclaw.json (ownership/permissions drift)"
+  fi
+
+  TG_ENV_VISIBLE="$(docker exec openclaw-openclaw-gateway-1 sh -lc 'if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || [ -n "${OPENCLAW_TELEGRAM_TOKEN:-}" ]; then echo yes; else echo no; fi' 2>/dev/null || echo no)"
+  if [ "$TG_ENV_VISIBLE" = "yes" ]; then
+    pass "Gateway container has Telegram bot token in environment"
+  else
+    warn "Gateway container Telegram env token is empty (config botToken may still work, but env fallback is unavailable)"
+  fi
+
   if [ -n "$GW_TOKEN" ]; then
     if docker exec openclaw-openclaw-gateway-1 node openclaw.mjs gateway call health --url ws://127.0.0.1:18789 --token "$GW_TOKEN" --json >/tmp/aibrief-health.json 2>/tmp/aibrief-health.err; then
       pass "Gateway health call authenticated"
@@ -215,6 +228,13 @@ PY
   if [ -z "$BRAVE_API_KEY" ] || [[ "$BRAVE_API_KEY" == REPLACE_* ]]; then
     fail "BRAVE_API_KEY missing/placeholder (AI Daily Brief web grounding unavailable)"
   else
+    BRAVE_ENV_VISIBLE="$(docker exec openclaw-openclaw-gateway-1 sh -lc 'if [ -n "${BRAVE_API_KEY:-}" ]; then echo yes; else echo no; fi' 2>/dev/null || echo no)"
+    if [ "$BRAVE_ENV_VISIBLE" = "yes" ]; then
+      pass "Gateway container has BRAVE_API_KEY in environment"
+    else
+      fail "Gateway container BRAVE_API_KEY is empty (runtime provider will be unconfigured)"
+    fi
+
     BRAVE_HTTP_CODE="$(curl -sS --max-time 30 --compressed \
       -o /tmp/aibrief-brave-context.json \
       -w '%{http_code}' \
@@ -266,6 +286,7 @@ PY
       if [ "$BRAVE_WEB_CODE" = "200" ]; then
         warn "Brave LLM Context probe failed (HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}) but Brave Web Search is reachable. Likely missing LLM Context entitlement; AI brief should run in fallback/partial mode."
       else
+        BRAVE_KEY_LEN="${#BRAVE_API_KEY}"
         BRAVE_WEB_ERROR="$(python3 - <<'PY'
 import json
 try:
@@ -280,7 +301,7 @@ except Exception:
     print('no-json-error-body')
 PY
 )"
-        fail "Brave API probes failed (llm/context HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}; web/search HTTP ${BRAVE_WEB_CODE}: ${BRAVE_WEB_ERROR})"
+        fail "Brave API probes failed (llm/context HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}; web/search HTTP ${BRAVE_WEB_CODE}: ${BRAVE_WEB_ERROR}; key_len=${BRAVE_KEY_LEN})"
       fi
     fi
   fi

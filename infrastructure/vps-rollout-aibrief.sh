@@ -98,13 +98,17 @@ else
 fi
 
 if [ -x /usr/local/sbin/sync-openclaw-config.sh ]; then
-  /usr/local/sbin/sync-openclaw-config.sh
+  OPENCLAW_CONFIG_UID="$OC_UID" OPENCLAW_CONFIG_GID="$OC_GID" /usr/local/sbin/sync-openclaw-config.sh
 else
   log "WARN: /usr/local/sbin/sync-openclaw-config.sh missing; using project-local fallback"
-  bash "$PROJECT_DIR/infrastructure/sync-openclaw-config.sh" \
+  OPENCLAW_CONFIG_UID="$OC_UID" OPENCLAW_CONFIG_GID="$OC_GID" bash "$PROJECT_DIR/infrastructure/sync-openclaw-config.sh" \
     "/root/openclaw/.env" \
     "$PROJECT_DIR/openclaw/openclaw-config.json"
 fi
+
+# sync-openclaw-config.sh writes config files as root; force ownership back to runtime uid/gid.
+chown -R "${OC_UID}:${OC_GID}" "$OPENCLAW_CFG"
+chmod 600 "$OPENCLAW_CFG/openclaw.json" "$OPENCLAW_CFG/openclaw-config.json"
 
 log "Restarting services"
 cd "$OPENCLAW_DIR"

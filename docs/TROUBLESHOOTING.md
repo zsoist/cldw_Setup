@@ -121,11 +121,20 @@ If `aibrief-smoke-test.sh` reports:
 - `Telegram running: False`
 - `Telegram tokenSource: none`
 
-then the gateway runtime did not load bot token from config.
+then the gateway runtime is up but Telegram ingest is not active. Most common causes:
+1. config ownership drift (`openclaw.json` not readable by runtime user)
+2. token not loaded into runtime (`tokenSource=none`)
+3. stale container with old env/config
 
 Do this in order:
 ```bash
-cd /root/openclaw
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+If still failing, force config resync + recreate:
+```bash
 cd /root/openclaw-project
 bash ./infrastructure/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw-project/openclaw/openclaw-config.json
 cd /root/openclaw
@@ -136,6 +145,12 @@ Then re-run:
 cd /root/openclaw-project
 ./infrastructure/aibrief-smoke-test.sh
 ```
+
+Required smoke-test lines:
+- `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
+- `Gateway container has Telegram bot token in environment` (warning is acceptable only if tokenSource is `config` and running is true)
+- `Telegram ingest runtime is running`
+- `Gateway Telegram token source is ...` (not `none`)
 
 Avoid `openclaw doctor --fix` as part of AI-brief rollout automation. It can rewrite config and interfere with explicit Telegram token wiring.
 
@@ -176,6 +191,14 @@ If smoke test shows:
 
 then your Brave key is valid but likely does not include LLM Context entitlement.  
 In this case AI brief can still run with fallback web-search grounding (partial mode).
+
+If smoke test shows both probes failing (LLM Context + Web Search):
+- check key length in failure output (`key_len=...`)
+- rotate/re-paste `BRAVE_API_KEY` (no quotes, no trailing spaces/comments)
+- ensure OpenClaw container sees the key:
+```bash
+docker exec openclaw-openclaw-gateway-1 sh -lc 'echo ${#BRAVE_API_KEY}'
+```
 
 ### High token usage
 1. Check console.anthropic.com -> Usage for daily breakdown

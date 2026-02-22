@@ -193,7 +193,9 @@ if [ -x /usr/local/sbin/sync-sentinel-env.sh ]; then
     /usr/local/sbin/sync-sentinel-env.sh || true
 fi
 if [ -x /usr/local/sbin/sync-openclaw-config.sh ]; then
-    /usr/local/sbin/sync-openclaw-config.sh || true
+    OPENCLAW_CONFIG_UID="$OPENCLAW_UID" OPENCLAW_CONFIG_GID="$OPENCLAW_GID" /usr/local/sbin/sync-openclaw-config.sh || true
+    chown -R "${OPENCLAW_UID}:${OPENCLAW_GID}" "$OPENCLAW_CONFIG"
+    chmod 600 "$OPENCLAW_CONFIG/openclaw.json" "$OPENCLAW_CONFIG/openclaw-config.json"
 fi
 
 if grep -q 'REPLACE_WITH_VPS_IP' "$PROJECT_DIR/infrastructure/ssh-config-snippet"; then
