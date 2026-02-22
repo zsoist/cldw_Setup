@@ -55,6 +55,7 @@
   - Telegram runtime assertions now come from `channels.status` account snapshots (not `health` channel summary defaults).
   - warns when Telegram has no inbound activity and update-offset state may be silently blocking command ingest.
   - now validates that `/ai_daily_brief*` slash triggers have unique single-skill ownership (detects ambiguous duplicate trigger mappings).
+  - now **fails hard** on `dmPolicy=pairing` with empty `allowFrom` (previously warning-only), because this silently blocks DM command invocation.
 - `infrastructure/reset-telegram-offset.sh`
   - new recovery script: backs up and removes `/root/.openclaw/telegram/update-offset-<account>.json`, restarts gateway, and tails Telegram startup logs.
 - `openclaw/skills/ai-daily-brief/SKILL.md`

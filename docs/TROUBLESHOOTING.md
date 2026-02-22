@@ -210,6 +210,8 @@ If `/ai_daily_brief*` returns generic replies and `last_run.run_id/mode/status` 
 - `Telegram DM allowFrom configured (...)`, or
 - an intentional pairing setup you already approved.
 
+Current behavior: smoke test now **fails** when it detects `dmPolicy=pairing` with empty `allowFrom`, because this blocks `/ai_daily_brief*` skill execution in DM until pairing is explicitly approved.
+
 Fix with explicit allowlist (recommended):
 ```bash
 cd /root/openclaw

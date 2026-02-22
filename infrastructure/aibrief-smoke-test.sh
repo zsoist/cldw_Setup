@@ -236,7 +236,7 @@ PY
   TG_ALLOW_FROM="$(echo "$TG_DM_RUNTIME" | sed -n '2p')"
   TG_ALLOW_COUNT="$(echo "$TG_DM_RUNTIME" | sed -n '3p')"
   if [ "${TG_DM_POLICY}" = "pairing" ] && [ "${TG_ALLOW_COUNT}" = "0" ]; then
-    warn "Telegram dmPolicy=pairing with empty allowFrom (DM commands require pairing approval before skills run)"
+    fail "Telegram dmPolicy=pairing with empty allowFrom (DM skill commands are gated until pairing approval). Fix: set OPENCLAW_TELEGRAM_DM_POLICY=allowlist + OPENCLAW_TELEGRAM_ALLOW_FROM=<your_telegram_id>, or approve pending pair codes via: docker exec openclaw-openclaw-gateway-1 node openclaw.mjs pairing list --channel telegram"
   elif [ "${TG_ALLOW_COUNT}" != "0" ]; then
     pass "Telegram DM allowFrom configured (${TG_ALLOW_FROM})"
   else
