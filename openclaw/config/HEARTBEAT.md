@@ -11,11 +11,13 @@
 1. Check for unread Telegram messages that need follow-up
 2. Review pending reminders/tasks due within 2 hours
 3. If morning (07:00-08:00): trigger daily planning briefing
-4. If morning (07:00-08:00) and no morning AI brief sent today: trigger `ai-daily-brief` (morning slot)
-5. If evening (19:00-20:00) and no evening AI brief sent today: trigger `ai-daily-brief` (evening slot)
+4. If morning (07:00-07:30) and no morning AI top5 sent today: trigger `ai-daily-brief top5 12h`
+5. If evening (19:00-19:30) and no evening AI top5 sent today: trigger `ai-daily-brief top5 12h`
 6. If evening (20:00-21:00): run end-of-day log
-7. If Sunday evening (20:00-21:00): run weekly review
-8. If AI brief repeatedly fails, emit one concise `/ai_daily_brief status` style diagnostic (no spam)
+7. If Sunday evening (20:00-20:20): run weekly AI top5 recap (`ai-daily-brief top5 week`)
+8. If first day of month (20:00-20:20): run monthly AI top5 recap for previous month (`ai-daily-brief top5 month <previous-YYYY-MM>`)
+9. If Sunday evening (20:30-21:00): run weekly review
+10. If AI brief repeatedly fails, emit one concise `/ai_daily_brief status` style diagnostic (no spam)
 
 ## Rules
 - Heartbeat should complete in <45 seconds
@@ -30,6 +32,7 @@
   - verify Brave provider is configured (`BRAVE_API_KEY` present) before full run
   - suppress run if already completed for current slot unless manually forced
   - suppress stories that were already sent without material updates
+  - enforce strict time scope in top5 mode (`12h`, `week`, `month`)
   - if provider health is degraded, allow partial run and mark output as partial
 - After successful run:
   - update slot timestamp
@@ -52,7 +55,7 @@ After writing the daily log:
 Anti-spam: if no meaningful activity occurred, write a minimal log and send:
 "Quiet day. No actions required."
 
-## Weekly Review (Sunday 20:00 COT)
+## Weekly Review (Sunday 20:30 COT)
 Persist to `memory/weekly/YYYY-WXX.md` with this structure:
 - **Week summary:** 3-5 bullet points of key accomplishments
 - **Patterns:** recurring themes or requests detected

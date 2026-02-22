@@ -44,6 +44,7 @@ OPENCLAW_TELEGRAM_ALLOW_FROM="$(
         extract_key SENTINEL_ALLOWED_USERS ||
         true
 )"
+OPENCLAW_TELEGRAM_INTERACTIVE_CHATS="$(extract_key OPENCLAW_TELEGRAM_INTERACTIVE_CHATS || true)"
 OPENCLAW_TELEGRAM_DM_POLICY="$(extract_key OPENCLAW_TELEGRAM_DM_POLICY || true)"
 OPENCLAW_GATEWAY_BIND="$(extract_key OPENCLAW_GATEWAY_BIND || true)"
 OPENCLAW_GATEWAY_PORT="$(extract_key OPENCLAW_GATEWAY_PORT || true)"
@@ -69,7 +70,7 @@ mkdir -p /root/.openclaw/secrets
 printf '%s' "$OPENCLAW_TELEGRAM_TOKEN" > "$TELEGRAM_TOKEN_FILE_HOST"
 chmod 600 "$TELEGRAM_TOKEN_FILE_HOST"
 export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
-export OPENCLAW_TELEGRAM_ALLOW_FROM OPENCLAW_TELEGRAM_DM_POLICY
+export OPENCLAW_TELEGRAM_ALLOW_FROM OPENCLAW_TELEGRAM_INTERACTIVE_CHATS OPENCLAW_TELEGRAM_DM_POLICY
 export TELEGRAM_BOT_TOKEN="$OPENCLAW_TELEGRAM_TOKEN"
 export OPENCLAW_TELEGRAM_TOKEN_FILE="$TELEGRAM_TOKEN_FILE_RUNTIME"
 
@@ -133,6 +134,37 @@ if allow_from:
 else:
     data["channels"]["telegram"].pop("allowFrom", None)
     default_account.pop("allowFrom", None)
+
+interactive_chats_raw = (os.environ.get("OPENCLAW_TELEGRAM_INTERACTIVE_CHATS") or "").strip()
+interactive_chats = []
+if interactive_chats_raw:
+    for raw in re.split(r"[\s,]+", interactive_chats_raw):
+        value = raw.strip()
+        if not value:
+            continue
+        normalized = None
+        if re.fullmatch(r"-100\d{6,}", value) or re.fullmatch(r"\d{6,}", value):
+            normalized = value
+        elif re.fullmatch(r"@?[A-Za-z0-9_]{5,}", value):
+            normalized = value if value.startswith("@") else f"@{value}"
+        if normalized and normalized not in interactive_chats:
+            interactive_chats.append(normalized)
+
+groups = data["channels"]["telegram"].get("groups")
+if not isinstance(groups, dict):
+    groups = {}
+default_group = groups.get("*")
+if not isinstance(default_group, dict):
+    default_group = {}
+default_group.setdefault("requireMention", True)
+groups["*"] = default_group
+for chat in interactive_chats:
+    chat_group = groups.get(chat)
+    if not isinstance(chat_group, dict):
+        chat_group = {}
+    chat_group["requireMention"] = False
+    groups[chat] = chat_group
+data["channels"]["telegram"]["groups"] = groups
 
 accounts["default"] = default_account
 data["channels"]["telegram"].setdefault("commands", {})

@@ -8,9 +8,10 @@
 - Start with minimal permissions, expand only when needed
 
 ## Telegram (Primary — Enabled)
-- **Mode:** private DM only (pairing mode)
-- **Allowlist:** Daniel's Telegram user ID only (set in env)
-- **Group chats:** DENIED — never join or respond in group chats
+- **Mode:** private DM + approved AI-brief interaction chats
+- **Allowlist:** Daniel's Telegram user ID only for DM (set in env)
+- **Approved channel/supergroup chats:** set `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` in env
+- **Group chats:** denied by default; only explicitly approved interactive chats are allowed
 - **Bot visibility:** private — not listed in public bot directories
 - **Message handling:** all messages routed through agent with auth check
 
@@ -20,12 +21,18 @@
 - Short research summaries
 - Decision prompts (yes/no approvals)
 - Alerts (failed jobs, quota warnings, system issues via Sentinel)
+- AI brief full output to configured channel target (`config.output_channel`)
 
 ### What NOT to send via Telegram
 - Long code diffs or technical output
 - Full research reports (send summary, store full report in workspace)
 - Secrets, API keys, or credentials
 - Multi-step debugging sessions (use SSH tunnel + direct access)
+
+### Channel interaction requirements
+- Bot must be admin in target channel/supergroup with permission to post.
+- For command interaction in a channel context, use a supergroup/discussion chat where users can send bot commands.
+- Add that chat ID to `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` and rerun rollout.
 
 ## WhatsApp (Not Configured)
 - Status: disabled

@@ -128,6 +128,18 @@ PY
   OUTPUT_TARGET="$(echo "$STATE_INFO" | tail -n1 | tr -d '\r')"
   if [ -n "$OUTPUT_TARGET" ]; then
     pass "AI brief output channel configured ($OUTPUT_TARGET)"
+    if [[ "$OUTPUT_TARGET" =~ ^-100[0-9]{6,}$ ]] || [[ "$OUTPUT_TARGET" =~ ^[0-9]{6,}$ ]]; then
+      if [ -f "$ENV_FILE" ]; then
+        TG_INTERACTIVE_CHATS_STATE="$(grep '^OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+        if echo "${TG_INTERACTIVE_CHATS_STATE:-}" | tr ', ' '\n' | grep -Fxq "$OUTPUT_TARGET"; then
+          pass "Interactive Telegram chat routing includes output target (${OUTPUT_TARGET})"
+        else
+          warn "OPENCLAW_TELEGRAM_INTERACTIVE_CHATS does not include output target (${OUTPUT_TARGET}); channel command invocation may be limited to DM"
+        fi
+      else
+        warn "Env file unavailable while validating OPENCLAW_TELEGRAM_INTERACTIVE_CHATS for output target (${OUTPUT_TARGET})"
+      fi
+    fi
   else
     warn "AI brief output channel not configured (will deliver to originating chat)"
   fi

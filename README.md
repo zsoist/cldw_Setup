@@ -110,10 +110,10 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 | # | Job | Schedule | Agent | Model |
 |---|-----|----------|-------|-------|
 | 1 | Daily Planning Brief | 07:00 daily | Main | Haiku |
-| 2 | AI Daily Brief (Morning) | 07:10 daily | Main | Sonnet |
-| 3 | AI Daily Brief (Evening) | 19:00 daily | Main | Sonnet |
+| 2 | AI Daily Brief Top5 (12h, Morning) | 07:00 daily | Main | Sonnet |
+| 3 | AI Daily Brief Top5 (12h, Evening) | 19:00 daily | Main | Sonnet |
 | 4 | EOD Review | 20:00 daily | Main | Haiku |
-| 5 | Weekly Personal Review | Sun 20:00 | Main | Haiku |
+| 5 | Weekly Personal Review | Sun 20:30 | Main | Haiku |
 | 6 | Calendar Prep Watch | Every 4h | Main | Haiku |
 | 7 | Knowledge Capture | Mon/Wed/Fri 19:00 | Main | Haiku |
 | 8 | Business Daily Snapshot | Weekdays 08:00 | Work | Haiku |
@@ -121,6 +121,8 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 | 10 | Pipeline Stale Check | Weekdays 16:00 | Work | Haiku |
 | 11 | Weekly KPI Digest | Fri 17:00 | Work | Haiku |
 | 12 | Security Hygiene | Mon 09:00 | Work | Haiku |
+| 13 | AI Weekly Top5 Recap | Sun 20:00 | Main | Sonnet |
+| 14 | AI Monthly Top5 Recap (prev month) | Day 1 20:00 | Main | Sonnet |
 
 Every job follows the read → analyze → notify pattern. Deep research and destructive actions never run automatically.
 
@@ -131,6 +133,7 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
 - Canonical command: `/ai_daily_brief` (single stable command path).
 - Slot/mode selection via arguments:
   - `/ai_daily_brief morning|evening|top5|builder|watchlist|status`
+  - `/ai_daily_brief top5 12h|week|month|month YYYY-MM`
 - Compatibility aliases are also supported:
   - `/ai_daily_brief_morning`
   - `/ai_daily_brief_evening`
@@ -143,8 +146,10 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
 - Deduplication and update suppression using `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
 - Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
 - Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
+- Commands can be accepted in approved channel/supergroup chats by setting `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` (in addition to DM).
 - Weighted anti-hype ranking (impact, credibility, novelty, relevance, freshness, confidence).
 - Mandatory citations, builder corner, strategic take, and explicit confidence/gaps section.
+- Source references must be clickable markdown hyperlinks (`[Outlet](https://...)`).
 - VPS operational scripts for rollout and smoke-testing:
   - `infrastructure/vps-rollout-aibrief.sh`
   - `infrastructure/aibrief-smoke-test.sh`
@@ -160,6 +165,7 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - rollout/smoke diagnostics now read gateway auth token from `/root/.openclaw/openclaw.json` first (env fallback only), preventing false `device token mismatch` checks caused by stale `.env` duplicates
   - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`), tokenFile readability, webhook conflict absence, direct in-lane AI brief policy markers in workspace SOUL/AGENTS, and container-visible Brave key
   - smoke test now fails hard when `dmPolicy=pairing` with empty `allowFrom` because DM commands are gated until pairing approval
+  - `set-aibrief-output-channel.sh` now also updates `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` when target is numeric chat ID
 - Runtime bootstrap files used by command routing are loaded from:
   - `/root/.openclaw/workspace/AGENTS.md`
   - `/root/.openclaw/workspace/SOUL.md`
@@ -192,9 +198,10 @@ Smoke test must pass these lines before Telegram command validation:
 
 Manual Telegram validation after rollout:
 - send `/ai_daily_brief status`
-- send `/ai_daily_brief top5`
+- send `/ai_daily_brief top5 12h`
 - send compatibility alias `/ai_daily_brief_top5` (must return equivalent output path)
 - run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
+- if interactive channel commands are required, ensure channel/supergroup ID is present in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`
 - note: `/ai_daily_brief_status` is diagnostic and may not mutate `last_run`; `/ai_daily_brief_top5` should create/update `last_run.run_id/status`
 - if status reports `provider unconfigured`, re-check `BRAVE_API_KEY` in `/root/openclaw/.env`
 - if smoke test shows `BRAVE_API_KEY appears invalid (len=...)`, rotate the key in `/root/openclaw/.env` (no quotes/comments on the same line)
@@ -275,7 +282,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │   ├── IDENTITY.md                    # Persona tone + style
 │   │   ├── BOOTSTRAP.md                   # First-run behavior (retires after setup)
 │   │   ├── BOOT.md                        # Startup health checks (runs every boot)
-│   │   ├── CRON.md                        # Full cron job registry (12 jobs)
+│   │   ├── CRON.md                        # Full cron job registry (14 jobs)
 │   │   ├── CHANNELS.md                    # Channel security policy + allowlists
 │   │   └── SANDBOX.md                     # Sandbox policy + agent isolation rules
 │   ├── agents/
@@ -413,7 +420,7 @@ With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well unde
 - **Multi-agent separation**: main and work agents have separate workspaces, memory, and tool policies
 - **Work agent sandboxing**: agent-scope sandbox prevents cross-contamination of personal/professional data
 - **No elevated exec**: neither agent can bypass sandbox to run commands on host
-- **Channel security**: private DM only, no group chats, sender allowlist enforced
+- **Channel security**: private DM plus explicitly approved interactive channel/supergroup chats, sender allowlist enforced
 - **Tool call caps**: max 10 per task (main), max 8 per task (work) — prevents runaway loops
 
 ### Operational

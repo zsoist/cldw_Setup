@@ -1,7 +1,7 @@
 # Playbook: Personal Weekly Review
 
 ## When
-Sunday 20:00 COT (triggered by cron job #3).
+Sunday 20:30 COT (triggered by cron job #5).
 
 ## Inputs
 - All daily logs from the past week (memory/YYYY-MM-DD.md)

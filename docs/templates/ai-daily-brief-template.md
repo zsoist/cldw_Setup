@@ -1,4 +1,8 @@
-# AI Daily Brief (<slot>) - <YYYY-MM-DD HH:MM COT>
+# AI Daily Brief — Top 5 | <scope label + bounds in COT>
+# Examples:
+# - Week of 2026-02-16 to 2026-02-22 (COT)
+# - Last 12h through 2026-02-22 19:00 (COT)
+# - Month 2026-02 (COT)
 
 ## Executive Snapshot
 - <signal 1>
@@ -6,7 +10,7 @@
 - <signal 3>
 
 ## Top Stories
-### 1) <headline> (score: <0.00>)
+### 1) <headline with model/product name when known> (score: <0.00>) — <event date>
 - What happened:
   - <fact bullet>
   - <fact bullet>
@@ -16,11 +20,11 @@
   - <signal classification + rationale>
 - What to watch next:
   - <watch item>
-- Sources:
+- Sources (hyperlinks):
   - [<source 1>](<url>)
   - [<source 2>](<url>)
 
-### 2) <headline> (score: <0.00>)
+### 2) <headline with model/product name when known> (score: <0.00>) — <event date>
 - What happened:
   - <fact bullet>
 - Why it matters:
@@ -29,7 +33,7 @@
   - <signal classification + rationale>
 - What to watch next:
   - <watch item>
-- Sources:
+- Sources (hyperlinks):
   - [<source 1>](<url>)
 
 ## Quick Hits

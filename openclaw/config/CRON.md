@@ -25,25 +25,25 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Model:** Haiku (cheap)
 - **Format:** Top 3 priorities | meetings/blocks | prep needed | risks | win condition for the day
 
-### 2. AI Daily Brief (Morning)
-- **Schedule:** Daily 07:10 COT
-- **Reads:** trusted AI sources from the last 12-16h, `/home/node/.openclaw/workspace/logs/ai-brief-state.json`, optional watchlist topics
-- **Action:** Retrieve, dedupe, cluster, rank, and summarize high-signal AI stories for morning consumption
-- **Output:** `workspace/outputs/summaries/ai-brief-morning-YYYY-MM-DD.md`
-- **Notify:** Deliver full brief to `config.output_channel` when configured; otherwise originating chat. Always ACK in originating chat.
+### 2. AI Daily Brief Top5 (Morning 12h)
+- **Schedule:** Daily 07:00 COT
+- **Reads:** trusted AI sources from the previous 12h, `/home/node/.openclaw/workspace/logs/ai-brief-state.json`, optional watchlist topics
+- **Action:** Retrieve, dedupe, cluster, rank, and summarize Top 5 AI stories in strict 12h scope
+- **Output:** `workspace/outputs/summaries/ai-brief-top5-morning-YYYY-MM-DD.md`
+- **Notify:** Deliver full brief to `config.output_channel`; ACK in originating chat for DM-triggered runs. If command originates in configured channel, return full response in that channel.
 - **Model:** Sonnet (escalate only for synthesis; keep retrieval lightweight)
-- **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Confidence & Gaps
-- **Notes:** manual trigger: `/ai_daily_brief morning`; use Brave LLM Context as primary grounding provider; enforce anti-hype penalties before ranking
+- **Format:** Top 5 (dated) | Source hyperlinks | Watch Next | Confidence
+- **Notes:** scheduled trigger equivalent: `/ai_daily_brief top5 12h`; source lines must be clickable markdown links.
 
-### 3. AI Daily Brief (Evening)
+### 3. AI Daily Brief Top5 (Evening 12h)
 - **Schedule:** Daily 19:00 COT
-- **Reads:** trusted AI sources since morning run, `/home/node/.openclaw/workspace/logs/ai-brief-state.json`, optional watchlist topics
-- **Action:** Produce evening delta briefing focused on meaningful updates, launches, policy, and market moves
-- **Output:** `workspace/outputs/summaries/ai-brief-evening-YYYY-MM-DD.md`
-- **Notify:** Deliver full brief to `config.output_channel` when configured; otherwise originating chat. Always ACK in originating chat.
+- **Reads:** trusted AI sources from the previous 12h, `/home/node/.openclaw/workspace/logs/ai-brief-state.json`, optional watchlist topics
+- **Action:** Produce evening Top 5 focused on meaningful updates in strict 12h scope
+- **Output:** `workspace/outputs/summaries/ai-brief-top5-evening-YYYY-MM-DD.md`
+- **Notify:** Deliver full brief to `config.output_channel`; ACK in originating chat for DM-triggered runs. If command originates in configured channel, return full response in that channel.
 - **Model:** Sonnet
-- **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Updates vs Morning | Confidence & Gaps
-- **Notes:** manual trigger: `/ai_daily_brief evening`; use Brave LLM Context as primary grounding provider; mark updates to prior stories explicitly
+- **Format:** Top 5 (dated) | Source hyperlinks | Watch Next | Confidence
+- **Notes:** scheduled trigger equivalent: `/ai_daily_brief top5 12h`; use Brave LLM Context as primary grounding provider.
 
 ### 4. EOD Review
 - **Schedule:** Daily 20:00 COT
@@ -55,7 +55,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Format:** Completed | Deferred | Blockers | First task tomorrow
 
 ### 5. Weekly Personal Review
-- **Schedule:** Sunday 20:00 COT
+- **Schedule:** Sunday 20:30 COT
 - **Reads:** week's daily logs, `personal/goals.md`, `personal/routines.md`
 - **Action:** Summarize progress + recommend 3 adjustments
 - **Output:** `memory/weekly/YYYY-WXX.md`
@@ -127,3 +127,23 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Notify:** Always if issues exist; skip if clean
 - **Model:** Haiku
 - **Format:** Open actions | Token rotation due? | Failed jobs | New permissions added? | Next 3 checks
+
+### 13. AI Weekly Top5 Recap
+- **Schedule:** Sunday 20:00 COT
+- **Reads:** trusted AI sources from current calendar week (Mon-Sun, COT), `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
+- **Action:** Generate weekly Top 5 recap with trend-level significance
+- **Output:** `workspace/outputs/summaries/ai-brief-top5-weekly-YYYY-WXX.md`
+- **Notify:** Deliver full brief to `config.output_channel`; if invoked inside channel, respond there.
+- **Model:** Sonnet
+- **Format:** Top 5 (week scope in title) | Why it mattered this week | Hyperlinked sources
+- **Notes:** scheduled trigger equivalent: `/ai_daily_brief top5 week`
+
+### 14. AI Monthly Top5 Recap (Previous Month)
+- **Schedule:** Day 1 of every month at 20:00 COT
+- **Reads:** trusted AI sources from previous calendar month, `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
+- **Action:** Generate monthly Top 5 recap for prior month with strategic implications
+- **Output:** `workspace/outputs/summaries/ai-brief-top5-monthly-YYYY-MM.md`
+- **Notify:** Deliver full brief to `config.output_channel`; if invoked inside channel, respond there.
+- **Model:** Sonnet
+- **Format:** Top 5 (month scope in title) | Strategic takeaway | Hyperlinked sources
+- **Notes:** scheduled trigger equivalent: `/ai_daily_brief top5 month <previous-YYYY-MM>`

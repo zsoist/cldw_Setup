@@ -21,6 +21,7 @@
     - `channels.telegram.accounts.default.tokenFile`
   - token file is written without trailing newline and permissioned/chowned with runtime config files.
   - now maps Telegram DM authorization from `OPENCLAW_TELEGRAM_ALLOW_FROM` (fallback: `OPENCLAW_ALLOWED_USERS`, then `SENTINEL_ALLOWED_USERS`).
+  - now maps approved channel/supergroup interaction targets from `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` into `channels.telegram.groups` with `requireMention=false`.
   - now derives `channels.telegram.dmPolicy`:
     - explicit `OPENCLAW_TELEGRAM_DM_POLICY` if set
     - otherwise `allowlist` when allowFrom IDs exist
@@ -59,16 +60,30 @@
   - now validates runtime SOUL/AGENTS policy contains direct in-lane `/ai_daily_brief*` execution rules (catches stale sub-agent-only policy drift).
 - `openclaw/skills/ai-daily-brief/SKILL.md`
   - status mode now has strict truth rules: pairing/sub-agent blockage can only be reported with explicit current runtime evidence.
+  - top5 now enforces explicit time scopes (`12h`, `week`, `month`, `month YYYY-MM`) and rejects out-of-scope stories.
+  - source references must be clickable markdown hyperlinks.
+  - top stories must include concrete model/product names when known (or explicitly marked undisclosed).
 - `infrastructure/reset-telegram-offset.sh`
   - new recovery script: backs up and removes `/root/.openclaw/telegram/update-offset-<account>.json`, restarts gateway, and tails Telegram startup logs.
 - `openclaw/skills/ai-daily-brief/SKILL.md`
   - canonical skill now owns only `/ai_daily_brief` trigger (aliases removed to avoid non-deterministic native command routing).
 - `openclaw/skills/ai-daily-brief-top5/SKILL.md`
   - alias model switched to `haiku` for lower-latency/manual diagnostics and reduced Sonnet rate-limit exposure.
+  - top5 alias now accepts explicit scope suffixes and enforces hyperlink/model-name output rules.
 - `openclaw/skills/ai-daily-brief-status/SKILL.md`
   - alias model switched to `haiku` so status diagnostics remain available when Sonnet is throttled.
 - `openclaw/config/SOUL.md` + `openclaw/config/AGENTS.md`
   - `/ai_daily_brief*` command path now executes directly in-lane; no mandatory sub-agent spawn dependency.
+- `openclaw/config/CRON.md`
+  - AI brief automation schedules now:
+    - daily `07:00` COT top5 previous 12h
+    - daily `19:00` COT top5 previous 12h
+    - Sunday `20:00` COT weekly top5 recap
+    - day 1 `20:00` COT monthly top5 recap for previous month
+- `infrastructure/set-aibrief-output-channel.sh`
+  - when output channel is numeric chat ID, script now also updates `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` in env.
+- `openclaw/config/CHANNELS.md`
+  - Telegram policy now supports DM + approved interactive channel/supergroup chats instead of DM-only policy.
 
 ### Incident Status (resolved)
 - Telegram command ingestion is healthy (`channels.status` running with valid token source).

@@ -18,7 +18,7 @@
 ## Standard Operating Procedures
 - Morning briefing at 07:00 COT via Telegram
 - End-of-day summary at 20:00 COT — persist to `memory/YYYY-MM-DD.md`
-- Weekly review Sunday 20:00 COT — persist to `memory/weekly/YYYY-WXX.md`
+- Weekly review Sunday 20:30 COT — persist to `memory/weekly/YYYY-WXX.md`
 - GitHub backup daily at 03:00 COT (no secrets in repo)
 - Heartbeat every 55 minutes during active hours to keep cache warm
 

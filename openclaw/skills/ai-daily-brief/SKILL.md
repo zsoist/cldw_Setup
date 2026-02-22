@@ -20,6 +20,7 @@ Optional mode argument (same command):
 - `/ai_daily_brief morning`
 - `/ai_daily_brief evening`
 - `/ai_daily_brief top5`
+- `/ai_daily_brief top5 12h`
 - `/ai_daily_brief top5 week`
 - `/ai_daily_brief top5 month`
 - `/ai_daily_brief top5 month YYYY-MM`
@@ -52,6 +53,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 - Coverage window:
   - Morning: previous evening run or last 12-16h
   - Evening: previous morning run or last 10-14h
+  - Top5 `12h`: rolling previous 12 hours from execution time in COT
   - Top5 default: **current calendar week in COT** (Monday 00:00 through Sunday 23:59 containing execution date)
   - Top5 monthly: calendar month in COT (from day 1 00:00 to month-end 23:59)
 - Trusted source tiers:
@@ -89,6 +91,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 - `watchlist` mode: narrow watchlist terms, `count=10`, `maximum_number_of_tokens=3072`
 
 ### Top5 Time-Scope Contract (mandatory)
+- For `/ai_daily_brief top5 12h`, scope is strict rolling previous 12 hours.
 - Default scope for `/ai_daily_brief top5` is the **current week** in `America/Bogota`:
   - Monday 00:00:00 COT to Sunday 23:59:59 COT.
 - If user asks monthly intent (examples: "top stories of the month", "this month", `/ai_daily_brief top5 month`), use calendar month scope.
@@ -97,6 +100,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 - If fewer than 5 credible stories exist in the requested scope, report fewer and add: `Coverage limited by requested time scope.`
 
 ### Natural-Language Scope Mapping
+- "top stories in the last 12 hours" -> `/ai_daily_brief top5 12h`
 - "top stories this week" -> `/ai_daily_brief top5 week`
 - "top stories this month" / "top stories of the month" -> `/ai_daily_brief top5 month`
 - "top stories of February 2026" -> `/ai_daily_brief top5 month 2026-02`
@@ -134,9 +138,11 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
    - no duplicate stories in same run
    - each top story has credible source(s)
 9. **Render**: Telegram-safe sections, concise bullets.
+   - Every referenced source must be rendered as clickable Markdown link: `[Outlet](https://...)`.
 10. **Deliver**:
    - `status` mode: reply in originating chat only.
    - non-`status` modes: deliver final brief to configured output channel when present; then send a short ACK in originating chat.
+   - if command originates in the configured output channel, return full response in that same chat (no DM-only detour).
    - if channel delivery fails, fall back to originating chat and mark failure reason.
 11. **Persist**: run metadata + story fingerprints + suppression state.
 12. **Finalize state (mandatory, last action)**:
@@ -183,9 +189,11 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 ### `top5`
 - Title + Top 5 + concise sources + watch-next mini-list
 - Title must include explicit scope label and bounds in COT, e.g.:
+  - `AI Daily Brief — Top 5 | Last 12h through 2026-02-22 19:00 (COT)`
   - `AI Daily Brief — Top 5 | Week of 2026-02-16 to 2026-02-22 (COT)`
   - `AI Daily Brief — Top 5 | Month 2026-02 (COT)`
 - Each story line must include event date and concrete model/product identifier when known.
+- Sources must be clickable Markdown links (not plain outlet names).
 
 ### `builder`
 - Builder/agent tooling changes, APIs, evals, infra implications, experiments
@@ -213,7 +221,10 @@ Return:
   - `allowFrom` count
 - active output channel target
 - state file path + loaded status
-- expected schedule (`07:10` and `19:00` COT)
+- expected schedule:
+  - daily top5 previous 12h: `07:00` and `19:00` COT
+  - weekly recap: Sunday `20:00` COT
+  - monthly recap: day 1 `20:00` COT for previous month
 
 Status truth rules:
 - Do not claim "pairing blocked", "sub-agent blocked", or "gateway not paired" unless you have explicit current-run evidence.
@@ -230,6 +241,7 @@ Status truth rules:
 - If no credible stories: `No high-confidence AI updates in this window.`
 - In `top5` mode, reject any story outside requested scope.
 - In `top5` mode, reject generic model claims lacking named model/product unless explicitly marked as undisclosed by sources.
+- Reject output with non-clickable source references for included stories.
 - If retrieval degraded: send partial brief and list missing coverage.
 - If `BRAVE_API_KEY` is missing: report provider as unconfigured and return setup command.
 - If target channel is configured but unreachable (forbidden/not admin):

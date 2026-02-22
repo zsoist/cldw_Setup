@@ -79,6 +79,15 @@ cd /root/openclaw-project
 Telegram-side requirement:
 - The OpenClaw bot must be added as admin in the target channel with permission to post messages.
 
+If you also want to invoke commands from the channel/supergroup itself:
+```bash
+cd /root/openclaw
+sed -i '/^OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=/d' .env
+echo 'OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=-1003826801947' >> .env  # replace with your chat id
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+```
+
 If command is ignored, verify command registration:
 ```bash
 /root/openclaw-project/infrastructure/aibrief-smoke-test.sh

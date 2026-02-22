@@ -4,11 +4,12 @@ set -euo pipefail
 
 CHANNEL_INPUT="${1:-}"
 STATE_FILE="${2:-/root/.openclaw/workspace/logs/ai-brief-state.json}"
+ENV_FILE="${3:-/root/openclaw/.env}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  set-aibrief-output-channel.sh <channel> [state_file]
+  set-aibrief-output-channel.sh <channel> [state_file] [env_file]
 
 Examples:
   set-aibrief-output-channel.sh @dandailybriefAI
@@ -19,6 +20,8 @@ Examples:
 Notes:
   - Username targets are normalized to @username.
   - Numeric chat IDs are preserved as-is.
+  - When env_file exists and channel is numeric, script also updates
+    OPENCLAW_TELEGRAM_INTERACTIVE_CHATS to include that chat ID.
 EOF
 }
 
@@ -80,3 +83,44 @@ PY
 
 chmod 600 "$STATE_FILE"
 echo "Configured ai_daily_brief output_channel=${NORMALIZED_CHANNEL} in ${STATE_FILE}"
+
+if [ -f "$ENV_FILE" ] && ([[ "$NORMALIZED_CHANNEL" =~ ^-100[0-9]{6,}$ ]] || [[ "$NORMALIZED_CHANNEL" =~ ^[0-9]{6,}$ ]]); then
+  UPDATED_INTERACTIVE="$(
+    python3 - "$ENV_FILE" "$NORMALIZED_CHANNEL" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+env_path = Path(sys.argv[1])
+new_chat = sys.argv[2].strip()
+lines = env_path.read_text(encoding="utf-8").splitlines()
+
+existing = ""
+out_lines = []
+for line in lines:
+    if line.startswith("OPENCLAW_TELEGRAM_INTERACTIVE_CHATS="):
+        existing = line.split("=", 1)[1].strip()
+        continue
+    out_lines.append(line)
+
+items = []
+seen = set()
+if existing:
+    for raw in re.split(r"[\s,]+", existing):
+        value = raw.strip()
+        if not value:
+            continue
+        if value not in seen:
+            items.append(value)
+            seen.add(value)
+if new_chat and new_chat not in seen:
+    items.append(new_chat)
+
+merged = ",".join(items)
+out_lines.append(f"OPENCLAW_TELEGRAM_INTERACTIVE_CHATS={merged}")
+env_path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+print(merged)
+PY
+  )"
+  echo "Updated OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=${UPDATED_INTERACTIVE} in ${ENV_FILE}"
+fi

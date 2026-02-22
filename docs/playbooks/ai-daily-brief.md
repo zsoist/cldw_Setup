@@ -13,6 +13,10 @@ This playbook defines the production behavior for `ai_daily_brief` in OpenClaw s
   - `/ai_daily_brief morning`
   - `/ai_daily_brief evening`
   - `/ai_daily_brief top5`
+  - `/ai_daily_brief top5 12h`
+  - `/ai_daily_brief top5 week`
+  - `/ai_daily_brief top5 month`
+  - `/ai_daily_brief top5 month YYYY-MM`
   - `/ai_daily_brief builder`
   - `/ai_daily_brief watchlist [topics]`
   - `/ai_daily_brief status`
@@ -28,8 +32,10 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
 
 ## Slot Rules
 - Timezone: `America/Bogota`
-- Morning slot: 07:10 COT
+- Morning slot: 07:00 COT (Top 5, previous 12h)
 - Evening slot: 19:00 COT
+- Weekly recap slot: Sunday 20:00 COT (`top5 week`)
+- Monthly recap slot: day 1, 20:00 COT (`top5 month <previous-YYYY-MM>`)
 - Auto slot cutoff: 13:00 COT (`<13:00` => morning)
 
 ## Provider Grounding (Brave LLM Context)
@@ -102,6 +108,9 @@ Top stories require at least one primary or Tier-1/2 source.
 
 ### Top5
 - Top 5 with minimal commentary + sources
+- Enforce requested scope exactly (`12h`, `week`, or `month`)
+- Story headlines should name the concrete model/product when known
+- Every source must be a clickable markdown link `[Outlet](https://...)`
 
 ### Builder
 - Builder/agent tools and infra implications only
