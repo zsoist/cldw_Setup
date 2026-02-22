@@ -11,7 +11,30 @@
     "min_top_story_sources": 2,
     "max_top_stories": 6,
     "max_quick_hits": 6,
-    "output_channel": null
+    "output_channel": null,
+    "provider": "brave_llm_context",
+    "brave_llm_context": {
+      "endpoint": "https://api.search.brave.com/res/v1/llm/context",
+      "country": "us",
+      "search_lang": "en",
+      "count": 20,
+      "maximum_number_of_urls": 20,
+      "maximum_number_of_tokens": 8192,
+      "maximum_number_of_snippets": 50,
+      "maximum_number_of_tokens_per_url": 4096,
+      "maximum_number_of_snippets_per_url": 50,
+      "context_threshold_mode": "balanced",
+      "enable_local": null
+    },
+    "performance": {
+      "timeout_seconds": 30,
+      "max_retries": 2,
+      "backoff_seconds": [
+        1,
+        2,
+        4
+      ]
+    }
   },
   "last_successful_run": {
     "morning": null,
@@ -48,9 +71,14 @@
     "ai regulation"
   ],
   "providers": {
-    "primary": "unknown",
-    "fallback": "unknown",
-    "updated_at": null
+    "primary": "brave_llm_context",
+    "fallback": "web_search",
+    "updated_at": null,
+    "brave_llm_context": {
+      "status": "unknown",
+      "last_check_at": null,
+      "last_error": null
+    }
   },
   "recent_story_fingerprints": [],
   "stories": []

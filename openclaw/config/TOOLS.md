@@ -1,9 +1,10 @@
-<!-- config-version: 2026.02.21-main-hardening -->
+<!-- config-version: 2026.02.22-ai-brief-v3 -->
 
 # Tools Policy
 
 ## Allowed Tools
 - **Web search:** for current info, source validation, news, job postings
+- **Brave LLM Context API:** preferred for ai_daily_brief grounding when `BRAVE_API_KEY` is configured
 - **File read/write:** within workspace directory only
 - **Task/notes management:** read and update task files, memory files
 - **Calendar read:** check schedule (when connected)

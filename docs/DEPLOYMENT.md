@@ -7,6 +7,7 @@ Step-by-step guide for deploying OpenClaw + Sentinel on a Hetzner CPX22 VPS.
 - Hetzner Cloud account
 - SSH key pair generated (`ssh-keygen -t ed25519`)
 - Anthropic API key from console.anthropic.com
+- Brave Search API key from https://api.search.brave.com
 - Two Telegram bots created via @BotFather
 - Your Telegram user ID (get from @userinfobot)
 
@@ -79,6 +80,7 @@ Fill in all placeholder values:
 - `OPENCLAW_TELEGRAM_TOKEN` — from @BotFather (assistant bot)
 - `SENTINEL_TELEGRAM_TOKEN` — from @BotFather (sysadmin bot)
 - `SENTINEL_ALLOWED_USERS` — your Telegram user ID
+- `BRAVE_API_KEY` — required for full `ai_daily_brief` web grounding
 - `OPENCLAW_REF` — pinned OpenClaw git commit/tag (keep default unless intentionally upgrading)
 
 Important: assign plain values only in `.env` (no trailing inline comments after values).
@@ -95,6 +97,17 @@ Validate and sync Sentinel environment:
 /root/openclaw-project/infrastructure/validate-placeholders.sh /root/openclaw/.env
 /usr/local/sbin/sync-sentinel-env.sh
 /usr/local/sbin/sync-openclaw-config.sh
+```
+
+Optional provider sanity check (recommended):
+```bash
+BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' /root/openclaw/.env | cut -d= -f2-)"
+curl -sS --compressed --get 'https://api.search.brave.com/res/v1/llm/context' \
+  -H "X-Subscription-Token: ${BRAVE_API_KEY}" \
+  --data-urlencode 'q=latest ai model release updates' \
+  --data-urlencode 'count=3' \
+  --data-urlencode 'maximum_number_of_tokens=2048' \
+  --data-urlencode 'context_threshold_mode=balanced' | python3 -m json.tool | sed -n '1,60p'
 ```
 
 Sentinel runs as a dedicated non-root `sentinel` user and reads `/etc/sentinel/sentinel.env`.

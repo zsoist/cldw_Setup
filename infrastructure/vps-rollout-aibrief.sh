@@ -81,6 +81,17 @@ else
   log "WARN: /usr/local/sbin/sync-sentinel-env.sh missing; skipping Sentinel env sync"
 fi
 
+if [ -f "/root/openclaw/.env" ]; then
+  BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+  if [ -z "$BRAVE_API_KEY" ] || [[ "$BRAVE_API_KEY" == REPLACE_* ]]; then
+    log "WARN: BRAVE_API_KEY missing/placeholder in /root/openclaw/.env (ai_daily_brief will report provider unconfigured)"
+  else
+    log "Brave provider key detected for ai_daily_brief grounding"
+  fi
+else
+  log "WARN: /root/openclaw/.env missing; cannot validate BRAVE_API_KEY"
+fi
+
 if [ -x /usr/local/sbin/sync-openclaw-config.sh ]; then
   /usr/local/sbin/sync-openclaw-config.sh
 else
@@ -113,3 +124,4 @@ log "Rollout complete for ref ${CURRENT_REF}."
 log "Telegram smoke test: send /ai_daily_brief status then /ai_daily_brief top5 (or /ai_daily_brief_top5 compatibility alias)."
 log "Set/update channel routing: $PROJECT_DIR/infrastructure/set-aibrief-output-channel.sh @dandailybriefAI"
 log "Optional local test: $PROJECT_DIR/infrastructure/aibrief-smoke-test.sh"
+log "If provider is unconfigured: set BRAVE_API_KEY in /root/openclaw/.env, then rerun rollout + smoke test."

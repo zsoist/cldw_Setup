@@ -32,6 +32,21 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
 - Evening slot: 19:00 COT
 - Auto slot cutoff: 13:00 COT (`<13:00` => morning)
 
+## Provider Grounding (Brave LLM Context)
+- Primary provider: Brave LLM Context API (`/res/v1/llm/context`)
+- Auth: `X-Subscription-Token: ${BRAVE_API_KEY}`
+- Config source:
+  - `.env`: `BRAVE_API_KEY`
+  - state: `config.brave_llm_context` in `openclaw/workspace/logs/ai-brief-state.json`
+- Default threshold mode: `balanced`
+- Fallback behavior: if Brave is unavailable, run partial brief with fallback web search and explicit confidence downgrade.
+
+Recommended context budgets:
+- `full`: `count=20`, `maximum_number_of_tokens=8192`
+- `top5`: `count=12`, `maximum_number_of_tokens=4096`
+- `builder`: `count=15`, `maximum_number_of_tokens=6144`
+- `watchlist`: `count=10`, `maximum_number_of_tokens=3072`
+
 ## Telegram Output Routing
 - State key: `config.output_channel` (preferred), fallback `output_channel` (legacy).
 - If configured:
@@ -99,6 +114,7 @@ Return run-health metadata only:
 - last run and last success
 - counts (candidates/clusters/included)
 - provider status
+- provider diagnostics (provider name, endpoint, threshold mode, key-present boolean)
 - delivery status
 - active output channel target
 - state file path
@@ -120,3 +136,6 @@ State file: `openclaw/workspace/logs/ai-brief-state.json`
 - Rollout/update: `infrastructure/vps-rollout-aibrief.sh`
 - Smoke test: `infrastructure/aibrief-smoke-test.sh`
 - Configure output channel: `infrastructure/set-aibrief-output-channel.sh @dandailybriefAI`
+- Provider sanity check:
+  - `grep '^BRAVE_API_KEY=' /root/openclaw/.env`
+  - `infrastructure/aibrief-smoke-test.sh` (includes Brave LLM Context probe)

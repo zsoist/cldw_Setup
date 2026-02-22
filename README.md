@@ -140,6 +140,7 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - `/ai_daily_brief_status`
 - Canonical command remains preferred; aliases route to the same handler.
 - Deduplication and update suppression using `openclaw/workspace/logs/ai-brief-state.json`.
+- Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
 - Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
 - Weighted anti-hype ranking (impact, credibility, novelty, relevance, freshness, confidence).
 - Mandatory citations, builder corner, strategic take, and explicit confidence/gaps section.
@@ -154,6 +155,9 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
 ssh root@YOUR_VPS_IP <<'EOF'
 set -euo pipefail
 cd /root/openclaw-project
+# Set Brave key once (required for full AI brief grounding)
+sed -i '/^BRAVE_API_KEY=/d' /root/openclaw/.env
+echo "BRAVE_API_KEY=YOUR_REAL_KEY" >> /root/openclaw/.env
 ./infrastructure/vps-rollout-aibrief.sh
 ./infrastructure/aibrief-smoke-test.sh
 EOF
@@ -164,6 +168,7 @@ Manual Telegram validation after rollout:
 - send `/ai_daily_brief top5`
 - send compatibility alias `/ai_daily_brief_top5` (must return equivalent output path)
 - run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
+- if status reports `provider unconfigured`, re-check `BRAVE_API_KEY` in `/root/openclaw/.env`
 
 Configure dedicated AI brief channel (optional):
 ```bash

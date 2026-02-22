@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v2 -->
+<!-- config-version: 2026.02.22-ai-brief-v3 -->
 
 # Heartbeat Configuration
 
@@ -27,6 +27,7 @@
 - State file: `workspace/logs/ai-brief-state.json`
 - Before running AI brief:
   - verify last successful run timestamp for slot (`morning` or `evening`)
+  - verify Brave provider is configured (`BRAVE_API_KEY` present) before full run
   - suppress run if already completed for current slot unless manually forced
   - suppress stories that were already sent without material updates
   - if provider health is degraded, allow partial run and mark output as partial

@@ -38,6 +38,10 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 ## Inputs
 - Local timezone: `America/Bogota`
 - State file: `workspace/logs/ai-brief-state.json`
+- Brave API key: `BRAVE_API_KEY` from runtime env
+- Provider config in state:
+  - `config.provider` (expect `brave_llm_context`)
+  - `config.brave_llm_context` (endpoint + token budget + threshold)
 - Delivery target from state:
   - `config.output_channel` (preferred)
   - fallback: `output_channel` (legacy key)
@@ -51,8 +55,38 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
   - Tier 3: secondary summaries (context only)
   - Tier 4: social posts only if corroborated
 
+## Brave LLM Context Provider Contract
+- Primary retrieval endpoint: `https://api.search.brave.com/res/v1/llm/context`
+- Auth header: `X-Subscription-Token: ${BRAVE_API_KEY}`
+- Prefer POST with JSON body for predictable parameter control.
+- Required request fields:
+  - `q` (query)
+  - `count` (default from state or 20)
+  - `search_lang`, `country`
+  - `context_threshold_mode` (`strict|balanced|lenient|disabled`)
+  - context budget fields:
+    - `maximum_number_of_urls`
+    - `maximum_number_of_tokens`
+    - `maximum_number_of_snippets`
+    - `maximum_number_of_tokens_per_url`
+    - `maximum_number_of_snippets_per_url`
+- Parse from `grounding.generic`, and include `grounding.map` / `grounding.poi` only when relevant.
+- Keep `sources` metadata so every top story can cite URLs and hostnames.
+- If provider errors or returns empty grounding:
+  - mark provider degraded in run status
+  - continue with fallback web search only as partial brief
+  - never fabricate source-backed claims
+
+### Brave Query/Token Budget Defaults
+- `full` mode: `count=20`, `maximum_number_of_tokens=8192`
+- `top5` mode: `count=12`, `maximum_number_of_tokens=4096`
+- `builder` mode: bias to tooling queries, `count=15`, `maximum_number_of_tokens=6144`
+- `watchlist` mode: narrow watchlist terms, `count=10`, `maximum_number_of_tokens=3072`
+
 ## Pipeline (deterministic first, then synthesis)
-1. **Collect**: fetch AI-relevant items in coverage window.
+1. **Collect**:
+   - call Brave LLM Context first for AI queries in coverage window
+   - if Brave is unavailable, use fallback web search and mark partial mode
 2. **Normalize**: canonical URL, normalized publisher, UTC+COT timestamps.
 3. **Deduplicate**:
    - canonical URL dedupe
@@ -127,6 +161,12 @@ Return:
 - last run + last success (morning/evening)
 - candidate/cluster counts from last completed run
 - provider health (ok/degraded/unknown)
+- provider diagnostics:
+  - `provider` name
+  - endpoint in use
+  - key present (`yes/no`)
+  - threshold mode
+  - token budget for current mode
 - Telegram delivery state (last send path/result)
 - active output channel target
 - state file path + loaded status
@@ -137,6 +177,7 @@ Return:
 - Mark conflicting reports explicitly.
 - If no credible stories: `No high-confidence AI updates in this window.`
 - If retrieval degraded: send partial brief and list missing coverage.
+- If `BRAVE_API_KEY` is missing: report provider as unconfigured and return setup command.
 - If target channel is configured but unreachable (forbidden/not admin):
   - send concise failure notice to originating chat
   - do not silently drop brief output
@@ -146,3 +187,4 @@ Return:
 - Max tool calls: 10
 - Default to concise mode when signal is weak
 - Avoid repeating unchanged stories from last 48h unless materially updated
+- Keep retrieval under configured token budgets; do not request max context for simple factual updates

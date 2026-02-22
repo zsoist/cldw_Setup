@@ -22,6 +22,7 @@
 - AI Daily Brief capability now runs twice daily with stateful duplicate suppression.
 - AI Daily Brief now uses canonical `/ai_daily_brief` command arguments, plus VPS rollout/smoke-test scripts.
 - AI Daily Brief supports dedicated Telegram delivery target via `config.output_channel` in state.
+- AI Daily Brief now expects Brave LLM Context grounding (`BRAVE_API_KEY`) and reports provider diagnostics in smoke tests.
 
 ---
 
@@ -157,6 +158,7 @@ Marker:
 - `README.md`
 - `openclaw/skills/ai-daily-brief/SKILL.md`
 - `openclaw/workspace/logs/ai-brief-state.json`
+- `infrastructure/env.template`
 - `docs/playbooks/ai-daily-brief.md`
 - `docs/templates/ai-daily-brief-template.md`
 
@@ -177,6 +179,10 @@ Marker:
    - set state target with `set-aibrief-output-channel.sh`
    - ensure OpenClaw bot is channel admin
    - verify full brief posts to channel and DM gets ACK/status
+7. Validate Brave provider health:
+   - set `BRAVE_API_KEY` in `/root/openclaw/.env`
+   - run `infrastructure/aibrief-smoke-test.sh`
+   - confirm Brave LLM Context probe passes
 
 ---
 
@@ -209,4 +215,10 @@ cd /root/openclaw-project
 
 # Validate
 ./infrastructure/aibrief-smoke-test.sh
+
+# If provider unconfigured, set Brave key then rerun smoke test
+sed -i '/^BRAVE_API_KEY=/d' /root/openclaw/.env
+echo 'BRAVE_API_KEY=YOUR_REAL_KEY' >> /root/openclaw/.env
+cd /root/openclaw && docker compose up -d --force-recreate
+cd /root/openclaw-project && ./infrastructure/aibrief-smoke-test.sh
 ```

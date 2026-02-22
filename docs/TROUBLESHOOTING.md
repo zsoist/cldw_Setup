@@ -120,6 +120,25 @@ python3 -m json.tool /root/.openclaw/workspace/logs/ai-brief-state.json | sed -n
 Run manually from Telegram:
 - `/ai_daily_brief morning` or `/ai_daily_brief evening`
 
+### `/ai_daily_brief` says provider is unconfigured
+This means Brave LLM Context grounding is not available to the runtime.
+
+```bash
+# 1) Set Brave key
+nano /root/openclaw/.env
+# add/update: BRAVE_API_KEY=...
+
+# 2) Re-sync + restart OpenClaw
+/usr/local/sbin/sync-openclaw-config.sh
+cd /root/openclaw && docker compose up -d --force-recreate
+
+# 3) Verify provider health
+/root/openclaw-project/infrastructure/aibrief-smoke-test.sh
+```
+
+Expected smoke-test pass line:
+- `Brave LLM Context API reachable (...)`
+
 ### High token usage
 1. Check console.anthropic.com -> Usage for daily breakdown
 2. Verify AGENTS.md has Haiku as default (not Sonnet)

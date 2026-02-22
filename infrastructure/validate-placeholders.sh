@@ -45,4 +45,24 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
+optional_keys=(
+    BRAVE_API_KEY
+)
+
+for key in "${optional_keys[@]}"; do
+    line="$(grep -E "^${key}=" "$ENV_FILE" | tail -n 1 || true)"
+    if [ -z "$line" ]; then
+        echo "[WARN] Missing optional key: $key (AI Daily Brief live web grounding will be degraded)"
+        continue
+    fi
+    value="${line#*=}"
+    value="${value%%#*}"
+    value="$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' <<<"$value")"
+    if [ -z "$value" ] || [[ "$value" == REPLACE_* ]]; then
+        echo "[WARN] Optional key unset/placeholder: $key (AI Daily Brief live web grounding will be degraded)"
+    else
+        echo "[PASS] $key (optional)"
+    fi
+done
+
 echo "Validation passed."

@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v2 -->
+<!-- config-version: 2026.02.22-ai-brief-v3 -->
 
 # Cron Job Registry
 
@@ -33,7 +33,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Notify:** Deliver full brief to `config.output_channel` when configured; otherwise originating chat. Always ACK in originating chat.
 - **Model:** Sonnet (escalate only for synthesis; keep retrieval lightweight)
 - **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Confidence & Gaps
-- **Notes:** manual trigger: `/ai_daily_brief morning`; enforce anti-hype penalties before ranking
+- **Notes:** manual trigger: `/ai_daily_brief morning`; use Brave LLM Context as primary grounding provider; enforce anti-hype penalties before ranking
 
 ### 3. AI Daily Brief (Evening)
 - **Schedule:** Daily 19:00 COT
@@ -43,7 +43,7 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Notify:** Deliver full brief to `config.output_channel` when configured; otherwise originating chat. Always ACK in originating chat.
 - **Model:** Sonnet
 - **Format:** Executive Snapshot | Top Stories | Quick Hits | Builder/Agent Corner | Strategic Take | Tomorrow Watchlist | Updates vs Morning | Confidence & Gaps
-- **Notes:** manual trigger: `/ai_daily_brief evening`; mark updates to prior stories explicitly
+- **Notes:** manual trigger: `/ai_daily_brief evening`; use Brave LLM Context as primary grounding provider; mark updates to prior stories explicitly
 
 ### 4. EOD Review
 - **Schedule:** Daily 20:00 COT
