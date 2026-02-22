@@ -13,7 +13,7 @@ cost_tier: standard
 Compatibility command shim for users invoking `/ai_daily_brief_status`.
 
 ## Behavior
-- Interpret this command exactly as: `/ai_daily_brief status`
-- Route immediately to `ai-daily-brief`
-- Preserve all existing ranking, validation, delivery routing, and state persistence behavior
-- Do not implement separate logic in this alias
+- Force mode `status` and execute `ai-daily-brief` status flow immediately.
+- Status must read and report from `workspace/logs/ai-brief-state.json`.
+- If no run exists yet, report explicitly and do not fail.
+- Preserve canonical provider/delivery diagnostics behavior.

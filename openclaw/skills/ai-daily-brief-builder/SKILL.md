@@ -13,7 +13,6 @@ cost_tier: standard
 Compatibility command shim for users invoking `/ai_daily_brief_builder`.
 
 ## Behavior
-- Interpret this command exactly as: `/ai_daily_brief builder`
-- Route immediately to `ai-daily-brief`
-- Preserve all existing ranking, validation, delivery routing, and state persistence behavior
-- Do not implement separate logic in this alias
+- Force mode `builder` and execute full `ai-daily-brief` behavior immediately.
+- Persist start/end/error metadata in `last_run`.
+- Preserve canonical ranking, validation, delivery routing, and state behavior.

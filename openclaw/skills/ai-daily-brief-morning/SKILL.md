@@ -13,7 +13,6 @@ cost_tier: standard
 Compatibility command shim for users invoking `/ai_daily_brief_morning`.
 
 ## Behavior
-- Interpret this command exactly as: `/ai_daily_brief morning`
-- Route immediately to `ai-daily-brief`
-- Preserve all existing ranking, validation, delivery routing, and state persistence behavior
-- Do not implement separate logic in this alias
+- Force slot `morning` in full mode and execute `ai-daily-brief` behavior immediately.
+- Persist start/end/error metadata in `last_run`.
+- Preserve canonical ranking, validation, delivery routing, and state behavior.

@@ -5,6 +5,12 @@ triggers:
   - "ai daily brief"
   - "ai news brief"
   - "/ai_daily_brief"
+  - "/ai_daily_brief_morning"
+  - "/ai_daily_brief_evening"
+  - "/ai_daily_brief_top5"
+  - "/ai_daily_brief_builder"
+  - "/ai_daily_brief_watchlist"
+  - "/ai_daily_brief_status"
 schedule: "10 7,19 * * *"
 model: sonnet
 cost_tier: standard
@@ -84,6 +90,10 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 - `watchlist` mode: narrow watchlist terms, `count=10`, `maximum_number_of_tokens=3072`
 
 ## Pipeline (deterministic first, then synthesis)
+0. **State bootstrap (mandatory, first action)**:
+   - load `workspace/logs/ai-brief-state.json`
+   - write `last_run` with `run_id`, `started_at`, inferred `slot`/`mode`, and `status=running`
+   - if any subsequent step fails, update `last_run.status=failed` and `last_run.error=<reason>` before returning
 1. **Collect**:
    - call Brave LLM Context first for AI queries in coverage window
    - if Brave is unavailable, use fallback web search and mark partial mode
@@ -115,6 +125,10 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
    - non-`status` modes: deliver final brief to configured output channel when present; then send a short ACK in originating chat.
    - if channel delivery fails, fall back to originating chat and mark failure reason.
 11. **Persist**: run metadata + story fingerprints + suppression state.
+12. **Finalize state (mandatory, last action)**:
+   - write `finished_at`
+   - write final `status` (`success|partial|failed`)
+   - write delivery metadata + `error` field (null on success, explicit string on failure)
 
 ## Delivery Routing Rules
 - Resolve `delivery_target` from state in this order:
