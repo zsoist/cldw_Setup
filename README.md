@@ -139,6 +139,7 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - `/ai_daily_brief_watchlist`
   - `/ai_daily_brief_status`
 - Canonical command remains preferred; aliases route to the same handler.
+- Execution policy: `/ai_daily_brief*` runs directly in-lane (skill-first), not via mandatory sub-agent spawn.
 - Deduplication and update suppression using `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
 - Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
 - Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
@@ -157,7 +158,8 @@ The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice dail
   - config-only rollout now syncs `infrastructure/docker-compose.yml` into `/root/openclaw` before restart
   - rollout now detects active Telegram webhooks via `getWebhookInfo`, clears them, and restarts gateway before final health validation
   - rollout/smoke diagnostics now read gateway auth token from `/root/.openclaw/openclaw.json` first (env fallback only), preventing false `device token mismatch` checks caused by stale `.env` duplicates
-  - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`), tokenFile readability, webhook conflict absence, and container-visible Brave key
+  - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`), tokenFile readability, webhook conflict absence, direct in-lane AI brief policy markers in workspace SOUL/AGENTS, and container-visible Brave key
+  - smoke test now fails hard when `dmPolicy=pairing` with empty `allowFrom` because DM commands are gated until pairing approval
 - Runtime bootstrap files used by command routing are loaded from:
   - `/root/.openclaw/workspace/AGENTS.md`
   - `/root/.openclaw/workspace/SOUL.md`
@@ -181,9 +183,11 @@ EOF
 Smoke test must pass these lines before Telegram command validation:
 - `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
 - `Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)`
-- `Telegram DM allowFrom configured (...)` (or explicit pairing warning you intentionally accept)
+- `Telegram DM allowFrom configured (...)`
 - `Telegram ingest runtime is running`
 - `Gateway Telegram token source is ...` (not `none`)
+- `SOUL policy enforces direct in-lane execution for /ai_daily_brief*`
+- `AGENTS policy confirms /ai_daily_brief* does not require sub-agent spawn`
 - `Gateway container has BRAVE_API_KEY in environment` (or explicit fallback warning if intentionally unconfigured)
 
 Manual Telegram validation after rollout:
@@ -191,6 +195,7 @@ Manual Telegram validation after rollout:
 - send `/ai_daily_brief top5`
 - send compatibility alias `/ai_daily_brief_top5` (must return equivalent output path)
 - run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
+- note: `/ai_daily_brief_status` is diagnostic and may not mutate `last_run`; `/ai_daily_brief_top5` should create/update `last_run.run_id/status`
 - if status reports `provider unconfigured`, re-check `BRAVE_API_KEY` in `/root/openclaw/.env`
 - if smoke test shows `BRAVE_API_KEY appears invalid (len=...)`, rotate the key in `/root/openclaw/.env` (no quotes/comments on the same line)
 - avoid `openclaw doctor --fix` during AI brief rollout/troubleshooting because it can rewrite channel config and break token wiring

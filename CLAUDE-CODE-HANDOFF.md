@@ -12,7 +12,7 @@
 
 `main` now includes a full security/ops hardening pass plus AI Daily Brief v2 routing/ops improvements.
 
-### Latest hotfix (2026-02-22, Telegram ingest + runtime env hardening)
+### Latest hotfix (2026-02-22, Telegram AI brief invocation hardening)
 - `infrastructure/sync-openclaw-config.sh`
   - now accepts fallback token source `TELEGRAM_BOT_TOKEN` when `OPENCLAW_TELEGRAM_TOKEN` is absent.
   - exports `TELEGRAM_BOT_TOKEN` for runtime parity.
@@ -67,6 +67,14 @@
   - alias model switched to `haiku` for lower-latency/manual diagnostics and reduced Sonnet rate-limit exposure.
 - `openclaw/skills/ai-daily-brief-status/SKILL.md`
   - alias model switched to `haiku` so status diagnostics remain available when Sonnet is throttled.
+- `openclaw/config/SOUL.md` + `openclaw/config/AGENTS.md`
+  - `/ai_daily_brief*` command path now executes directly in-lane; no mandatory sub-agent spawn dependency.
+
+### Incident Status (resolved)
+- Telegram command ingestion is healthy (`channels.status` running with valid token source).
+- `/ai_daily_brief_status` returns diagnostics from state/provider config.
+- `/ai_daily_brief_top5` invocation path is unblocked by pairing/sub-agent gate after in-lane policy fix.
+- Remaining runtime failures should now present as concrete provider/model/tool errors rather than generic pairing text.
 
 ### Production outcome target
 - OpenClaw gateway should run healthy via Docker health checks.
@@ -228,11 +236,12 @@ Marker:
 2. Rotate all exposed secrets immediately if any were ever posted in logs/chat.
 3. Validate real VPS migration path for non-root Sentinel (`sync-sentinel-env.sh` + systemd restart).
 4. Consider adding signed release artifacts if repo integrity is part of threat model.
-5. Validate AI brief command flow in Telegram:
+5. Monitor AI brief execution quality in Telegram for 24h:
    - `/ai_daily_brief`
    - `/ai_daily_brief top5`
    - `/ai_daily_brief builder`
    - `/ai_daily_brief status`
+   - confirm that status does not claim pairing/sub-agent blockage unless runtime evidence exists
 6. Validate AI brief channel routing:
    - set state target with `set-aibrief-output-channel.sh`
    - ensure OpenClaw bot is channel admin
