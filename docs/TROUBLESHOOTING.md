@@ -66,7 +66,8 @@ python3 -m json.tool /root/.openclaw/workspace/logs/ai-brief-state.json | sed -n
 ```
 Confirm:
 - `config.output_channel` is set (e.g. `@dandailybriefAI`)
-- Trigger command is sent in **DM with OpenClaw bot**, not in the channel
+- DM invocation works by default.
+- Channel/supergroup invocation requires `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` to include the chat ID.
 
 Set/update it safely:
 ```bash
@@ -86,6 +87,34 @@ sed -i '/^OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=/d' .env
 echo 'OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=-1003826801947' >> .env  # replace with your chat id
 cd /root/openclaw-project
 ./infrastructure/vps-rollout-aibrief.sh
+```
+
+### Dashboard shows `gateway token missing` or `pairing required`
+Symptoms in browser:
+- `unauthorized: gateway token missing`
+- `pairing required`
+
+This is a Control UI auth flow issue (not Telegram ingest).
+
+Use a tokenized dashboard URL:
+```bash
+# keep tunnel open in one terminal
+ssh -N -L 28789:127.0.0.1:18789 root@YOUR_VPS_IP
+
+# in another terminal, generate and open tokenized URL
+RAW_URL="$(ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs dashboard --no-open | sed -n "s/^Dashboard URL: //p" | head -n1')"
+URL="${RAW_URL/127.0.0.1:18789/127.0.0.1:28789}"
+open -a "Safari" "$URL"
+```
+
+If still blocked by `pairing required`, approve latest device request and refresh:
+```bash
+ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs devices approve --latest --json'
+```
+
+Quick log check:
+```bash
+ssh root@YOUR_VPS_IP "cd /root/openclaw && docker compose logs --since=90s openclaw-gateway | grep -Ei 'token_missing|pairing required|unauthorized|device token mismatch' || echo 'no auth errors'"
 ```
 
 If command is ignored, verify command registration:

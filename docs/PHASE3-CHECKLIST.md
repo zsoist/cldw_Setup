@@ -25,7 +25,7 @@
 - [ ] `docker compose up -d` — OpenClaw gateway starts
 - [ ] `docker compose logs -f` — shows "listening on ws://0.0.0.0:18789"
 - [ ] SSH tunnel active: `ssh openclaw`
-- [ ] Browser: http://127.0.0.1:18789/ loads, token accepted
+- [ ] Browser: tokenized dashboard URL opens via local `28789` tunnel and token is accepted
 - [ ] Telegram: /start on OpenClaw bot -> pairing works
 - [ ] Send test message: "What time is it?" -> bot responds
 - [ ] `systemctl start sentinel` — Sentinel starts
@@ -46,7 +46,7 @@
 ## Verification — Sentinel
 - [ ] /security -> audit completes
 - [ ] /openclaw -> health check passes
-- [ ] /backup -> backup created (check /root/backups/)
+- [ ] /backup -> backup created (check /var/backups/openclaw/)
 - [ ] Verify backup excludes .env/.pem/.key files
 
 ## Verification — Cron Jobs
@@ -57,6 +57,6 @@
 ## Post-verification
 - [ ] Raise Anthropic spending limit to $25/month
 - [ ] Set up backup cron: `crontab -e` -> `0 3 * * * /root/openclaw-project/infrastructure/backup.sh`
-- [ ] Run health-check.sh: all 8 checks pass
+- [ ] Run health-check.sh: all checks pass
 - [ ] Monitor first 24h of API usage on console.anthropic.com
 - [ ] Review first daily brief and EOD log for quality

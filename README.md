@@ -105,7 +105,7 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 
 ### 8. Cron Job Architecture
 
-12 scheduled jobs defined in `openclaw/config/CRON.md`, split between personal and business:
+14 scheduled jobs defined in `openclaw/config/CRON.md`, split between personal and business:
 
 | # | Job | Schedule | Agent | Model |
 |---|-----|----------|-------|-------|
@@ -128,7 +128,7 @@ Every job follows the read → analyze → notify pattern. Deep research and des
 
 ### 9. AI Daily Brief Capability
 
-The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice daily:
+The `ai-daily-brief` skill delivers scoped source-grounded briefings across daily, weekly, and monthly windows:
 
 - Canonical command: `/ai_daily_brief` (single stable command path).
 - Slot/mode selection via arguments:
@@ -311,7 +311,8 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │       ├── cron-job-results.md        # Cron execution log (append-only)
 │   │       └── ai-brief-state.json        # Stateful dedupe + slot tracking for AI brief
 │   ├── skills/
-│   │   ├── ai-daily-brief/SKILL.md        # Twice-daily AI news brief (Sonnet, source-grounded)
+│   │   ├── ai-daily-brief/SKILL.md        # Canonical AI brief command (scoped top5 + full modes)
+│   │   ├── ai-daily-brief-*/SKILL.md      # Compatibility alias shims for /ai_daily_brief_* commands
 │   │   ├── daily-briefing/SKILL.md        # Morning planning briefing (Haiku, scheduled)
 │   │   ├── research-assistant/SKILL.md    # Deep research (Sonnet, on-demand)
 │   │   └── task-tracker/SKILL.md          # Task management (Haiku, triggered)
@@ -346,6 +347,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── vps-rollout-aibrief.sh             # Config-only AI brief rollout/update path
 │   ├── merge-ai-brief-state.sh            # Template->runtime state merge (preserve history/routing)
 │   ├── set-aibrief-output-channel.sh      # Configure AI brief output channel in state
+│   ├── reset-telegram-offset.sh           # Reset stale Telegram update offsets + restart gateway
 │   └── ssh-config-snippet                 # Mac SSH config with tunnel
 └── docs/
     ├── setup/
@@ -508,6 +510,30 @@ Notes:
 - OpenClaw is a WebSocket gateway; root HTTP probes can be misleading on some builds.
 - Treat Docker health (`healthy`) and `health-check.sh` as the source of truth.
 
+## Dashboard Access (Token + Pairing)
+
+Keep a tunnel open from your Mac:
+
+```bash
+ssh -N -L 28789:127.0.0.1:18789 root@YOUR_VPS_IP
+```
+
+In another terminal on your Mac, open a tokenized dashboard URL:
+
+```bash
+RAW_URL="$(ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs dashboard --no-open | sed -n "s/^Dashboard URL: //p" | head -n1')"
+URL="${RAW_URL/127.0.0.1:18789/127.0.0.1:28789}"
+open -a "Safari" "$URL"
+```
+
+If UI shows `pairing required`, approve latest pending device request on VPS and refresh:
+
+```bash
+ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs devices approve --latest --json'
+```
+
+If logs show `token_missing`, ensure the opened URL still contains `#token=...` and that tunnel/local port mapping matches (`28789` in this example).
+
 ## Key Optimization Decisions Explained
 
 | Decision | Rationale |
@@ -526,7 +552,7 @@ Notes:
 | Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |
 | No elevated exec | Sandboxing is meaningless if agents can bypass it via host execution. |
 | Channel allowlist + no groups | Group chats are the highest prompt injection surface area. |
-| 12 cron jobs, Haiku-default with Sonnet for AI briefs | Most schedules are repetitive and cheap; twice-daily AI news synthesis is the intentional Sonnet exception. |
+| 14 cron jobs, Haiku-default with Sonnet for AI briefs | Most schedules are repetitive and cheap; Sonnet is reserved for scoped AI brief synthesis windows. |
 | Read/notify before act | Cron jobs that auto-execute risky actions compound errors at scale. |
 | Deep research opt-in only | Auto-triggered deep research is the fastest way to blow through API budget. |
 | Save reusable research to docs/ | Prevents redundant web searches for the same topic. |

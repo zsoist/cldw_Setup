@@ -31,7 +31,7 @@ Host openclaw
     HostName YOUR_VPS_IP
     User root
     IdentityFile ~/.ssh/id_ed25519
-    LocalForward 18789 127.0.0.1:18789
+    LocalForward 28789 127.0.0.1:18789
     ServerAliveInterval 60
     ServerAliveCountMax 3
 ```
@@ -152,14 +152,28 @@ The bundled health check validates Docker health status for the gateway containe
 
 ## Step 7: Verify via SSH tunnel
 
-On your Mac:
+On your Mac, keep a tunnel open:
+
 ```bash
-ssh openclaw  # This opens the tunnel automatically
+ssh -N -L 28789:127.0.0.1:18789 root@YOUR_VPS_IP
 ```
 
-In another terminal:
+In another terminal, open a tokenized dashboard URL (required by Control UI auth):
+
 ```bash
-# Browser: open http://127.0.0.1:18789/
+RAW_URL="$(ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs dashboard --no-open | sed -n "s/^Dashboard URL: //p" | head -n1')"
+URL="${RAW_URL/127.0.0.1:18789/127.0.0.1:28789}"
+open -a "Safari" "$URL"
+```
+
+If browser shows `pairing required`, approve latest pending device request and refresh:
+
+```bash
+ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs devices approve --latest --json'
+```
+
+Then validate bots:
+```bash
 # Telegram: send /start to your OpenClaw bot
 # Telegram: send /status to your Sentinel bot
 # Telegram: send /ai_daily_brief status and /ai_daily_brief top5 to validate AI brief routing
@@ -177,8 +191,9 @@ Then re-run:
 and validate in Telegram that `/ai_daily_brief top5` posts the full brief to the channel while DM shows ACK/status.
 
 Important:
-- invoke `/ai_daily_brief ...` from the bot DM chat
-- do not run the command inside the destination channel itself
+- DM invocation is always supported.
+- Channel/supergroup invocation is supported only for IDs present in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`.
+- `set-aibrief-output-channel.sh` auto-adds numeric output channels to `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` for interactive command use.
 
 ## Step 8: Post-deployment
 
