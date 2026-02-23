@@ -82,7 +82,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled
 - Prefer POST with JSON body for predictable parameter control.
 - Required request fields:
   - `q` (query)
-  - `count` (default from state or 20)
+  - `count` (from mode profile; never exceed profile cap)
   - `search_lang`, `country`
   - `context_threshold_mode` (`strict|balanced|lenient|disabled`)
   - context budget fields:
@@ -99,10 +99,13 @@ Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled
   - never fabricate source-backed claims
 
 ### Brave Query/Token Budget Defaults
-- `full` mode: `count=20`, `maximum_number_of_tokens=8192`
-- `top5` mode: `count=12`, `maximum_number_of_tokens=4096`
-- `builder` mode: bias to tooling queries, `count=15`, `maximum_number_of_tokens=6144`
-- `watchlist` mode: narrow watchlist terms, `count=10`, `maximum_number_of_tokens=3072`
+- `full` mode: `count=14`, `maximum_number_of_urls=14`, `maximum_number_of_tokens=6144`, `maximum_number_of_snippets=30`
+- `top5` mode: `count=8`, `maximum_number_of_urls=10`, `maximum_number_of_tokens=3072`, `maximum_number_of_snippets=20`
+- `builder` mode: bias to tooling queries, `count=12`, `maximum_number_of_urls=12`, `maximum_number_of_tokens=5120`, `maximum_number_of_snippets=24`
+- `watchlist` mode: narrow watchlist terms, `count=8`, `maximum_number_of_urls=8`, `maximum_number_of_tokens=2048`, `maximum_number_of_snippets=16`
+- Keep per-url caps conservative for latency:
+  - `maximum_number_of_tokens_per_url <= 2048`
+  - `maximum_number_of_snippets_per_url <= 20`
 
 ### Brave Query Construction (mandatory — date-scoped queries)
 
@@ -121,8 +124,21 @@ correct window. Use these templates exactly:
 - Never use a bare query like `"AI news"` or `"AI news February 2026"` without specific day/week bounds.
 - For `week` scope: compute the Monday and Sunday dates of the target week in COT before constructing the query.
 - For `12h` scope: compute the exact start hour in COT and include the calendar date.
-- Run at least **two** Brave queries per top5 invocation to improve recall and cross-validate.
+- Use adaptive fan-out:
+  - Run query #1 (broad, date-scoped) first.
+  - Run query #2 (watchlist-focused) only if coverage after normalization is weak:
+    - fewer than 8 credible candidates, or
+    - fewer than 4 unique Tier-1/2 sources, or
+    - obvious watchlist coverage gap.
+  - Hard cap for `top5`: 2 Brave queries.
 - Watchlist-focused query: append watchlist terms from state (e.g., `openai anthropic "google deepmind" "meta ai" "ai regulation"`).
+
+### Latency-First Execution Rules (mandatory)
+- Execute retrieval + synthesis in one pass and return final output directly.
+- Do not stream internal pipeline progress unless user explicitly calls `/ai_daily_brief status`.
+- Never claim "python tools unavailable" or "manual curation mode". Use Brave grounding + model reasoning directly.
+- If Brave returns sufficient coverage on first query, skip the second query.
+- Prioritize shipping a complete scoped brief quickly over exhaustive long-tail recall.
 
 Example for week of 2026-02-16 to 2026-02-22:
 ```
@@ -152,6 +168,8 @@ Query 2: "openai anthropic google deepmind meta ai AI news 2026-02-16 2026-02-17
    - if any subsequent step fails, update `last_run.status=failed` and `last_run.error=<reason>` before returning
 1. **Collect**:
    - call Brave LLM Context first for AI queries in coverage window
+   - use mode budget caps from this skill (not legacy high-context defaults)
+   - run optional second Brave query only under adaptive fan-out rules
    - if Brave is unavailable, use fallback web search and mark partial mode
 2. **Normalize**: canonical URL, normalized publisher, UTC+COT timestamps.
 3. **Deduplicate**:
@@ -499,8 +517,8 @@ CHECK 7 — TECHNICAL DETAILS: Does every story have a Technical Details line?
 Only send the output after ALL 7 checks pass.
 
 ## Efficiency Constraints
-- Target runtime <90s
-- Max tool calls: 10
+- Target runtime <60s (top5 target <45s)
+- Max tool calls: 8 (top5: 6)
 - Default to concise mode when signal is weak
 - Avoid repeating unchanged stories from last 48h unless materially updated
 - Keep retrieval under configured token budgets; do not request max context for simple factual updates

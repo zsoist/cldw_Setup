@@ -55,10 +55,15 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
 - Brave provider health is checked during runs/on-demand status (no separate scheduled probe).
 
 Recommended context budgets:
-- `full`: `count=20`, `maximum_number_of_tokens=8192`
-- `top5`: `count=12`, `maximum_number_of_tokens=4096`
-- `builder`: `count=15`, `maximum_number_of_tokens=6144`
-- `watchlist`: `count=10`, `maximum_number_of_tokens=3072`
+- `full`: `count=14`, `maximum_number_of_urls=14`, `maximum_number_of_tokens=6144`
+- `top5`: `count=8`, `maximum_number_of_urls=10`, `maximum_number_of_tokens=3072`
+- `builder`: `count=12`, `maximum_number_of_urls=12`, `maximum_number_of_tokens=5120`
+- `watchlist`: `count=8`, `maximum_number_of_urls=8`, `maximum_number_of_tokens=2048`
+- Keep per-url caps conservative for latency: `maximum_number_of_tokens_per_url <= 2048`, `maximum_number_of_snippets_per_url <= 20`
+- Use adaptive Brave query fan-out:
+  - query #1 always
+  - query #2 only if coverage after normalization is weak
+  - hard cap for `top5`: 2 Brave queries
 
 ## Telegram Output Routing
 - State key: `config.output_channel` (preferred), fallback `output_channel` (legacy).
@@ -79,6 +84,11 @@ Recommended context budgets:
 8. **Render** mobile-readable Telegram output.
 9. **Deliver** with retries and split-by-section behavior.
 10. **Persist** run metadata, suppression state, story archive, cost estimate, history entry.
+
+Latency rules:
+- Do not send stage-by-stage pipeline narration unless `/ai_daily_brief status` is explicitly requested.
+- Do not report "manual curation mode" for normal top5 runs.
+- Top5 target runtime: `<45s`; full-mode target runtime: `<60s`.
 
 ## Ranking Policy
 Default weighted score:

@@ -145,6 +145,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
 - Weighted anti-hype ranking (impact 0.28, credibility 0.22, novelty 0.18, relevance 0.14, freshness 0.10, confidence 0.08).
 - Mandatory citations, builder corner, strategic take, and explicit confidence/gaps section.
 - Source references must be clickable markdown hyperlinks (`[Outlet](https://...)`).
+- Brave LLM Context latency profile tuned for speed+coverage (adaptive 1-2 query fan-out instead of fixed multi-query expansion).
 - VPS operational scripts for rollout and smoke-testing:
   - `infrastructure/vps-rollout-aibrief.sh`
   - `infrastructure/aibrief-smoke-test.sh`

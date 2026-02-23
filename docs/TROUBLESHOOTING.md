@@ -428,6 +428,45 @@ docker exec openclaw-openclaw-gateway-1 sh -lc 'echo ${#BRAVE_API_KEY}'
 
 If smoke test reports `BRAVE_API_KEY appears invalid (len=...)`, the key format itself is wrong (commonly a truncated value like length 4). Replace it before debugging anything else.
 
+### `/ai_daily_brief top5` is too slow
+Symptoms:
+- long "pipeline progress" replies instead of final brief
+- repeated broad searches and high latency per run
+
+Fast fix (keep Gemini Pro + Brave LLM Context):
+
+```bash
+cd /root/openclaw-project
+git fetch origin
+git checkout main
+git reset --hard origin/main
+./infrastructure/vps-rollout-aibrief.sh
+```
+
+This rollout now migrates legacy high-latency Brave defaults in state to optimized values:
+- `count=14`, `maximum_number_of_urls=14`, `maximum_number_of_tokens=6144`
+- `maximum_number_of_snippets=30`, `maximum_number_of_tokens_per_url=2048`, `maximum_number_of_snippets_per_url=20`
+- performance defaults: `timeout_seconds=22`, `max_retries=1`, `backoff_seconds=[1,2]`
+
+Verify active runtime state:
+
+```bash
+python3 - <<'PY'
+import json
+p='/root/.openclaw/workspace/logs/ai-brief-state.json'
+with open(p) as f:d=json.load(f)
+cfg=(d.get('config') or {}).get('brave_llm_context') or {}
+perf=(d.get('config') or {}).get('performance') or {}
+print(cfg)
+print(perf)
+PY
+```
+
+Expected behavior after tuning:
+- Top5 runs target `<45s` and avoid verbose stage-by-stage narration.
+- First Brave query runs always; second query runs only when coverage is weak.
+- Model stays on `google/gemini-2.5-pro` for AI Daily Brief synthesis.
+
 ### Gemini routing and fallback checks
 
 If the default Gemini path is not working as expected:

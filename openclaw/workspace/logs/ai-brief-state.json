@@ -1,5 +1,5 @@
 {
-  "version": "2026-02-23-v3",
+  "version": "2026-02-23-v4",
   "timezone": "America/Bogota",
   "config": {
     "morning_hour": 7,
@@ -26,22 +26,21 @@
       "endpoint": "https://api.search.brave.com/res/v1/llm/context",
       "country": "us",
       "search_lang": "en",
-      "count": 20,
-      "maximum_number_of_urls": 20,
-      "maximum_number_of_tokens": 8192,
-      "maximum_number_of_snippets": 50,
-      "maximum_number_of_tokens_per_url": 4096,
-      "maximum_number_of_snippets_per_url": 50,
+      "count": 14,
+      "maximum_number_of_urls": 14,
+      "maximum_number_of_tokens": 6144,
+      "maximum_number_of_snippets": 30,
+      "maximum_number_of_tokens_per_url": 2048,
+      "maximum_number_of_snippets_per_url": 20,
       "context_threshold_mode": "balanced",
       "enable_local": null
     },
     "performance": {
-      "timeout_seconds": 30,
-      "max_retries": 2,
+      "timeout_seconds": 22,
+      "max_retries": 1,
       "backoff_seconds": [
         1,
-        2,
-        4
+        2
       ]
     }
   },

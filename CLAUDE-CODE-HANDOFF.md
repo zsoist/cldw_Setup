@@ -60,6 +60,29 @@ Precedence rule: if historical notes below conflict, treat the **Latest pass (Ge
   - added Google function declaration schema in `sentinel/tools.py`.
   - updated tests/fixtures for dual-provider config and mocks.
 
+### Latest pass (2026-02-23, AI Daily Brief latency + Brave budget optimization)
+
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - switched to latency-first Brave retrieval profile:
+    - full `14/6144`, top5 `8/3072`, builder `12/5120`, watchlist `8/2048`
+  - adaptive Brave fan-out:
+    - query #1 always
+    - query #2 only when coverage is weak (instead of always mandatory)
+  - explicit rule: no verbose pipeline narration unless `/ai_daily_brief status` is requested.
+  - explicit rule: never report "python tools unavailable/manual curation mode" for normal runs.
+  - tightened runtime budget targets (`top5 <45s`, full `<60s`).
+- `openclaw/skills/ai-daily-brief-top5/SKILL.md`
+  - mirrored adaptive fan-out and no-manual-narration/no-python-unavailable rules.
+- `openclaw/workspace/logs/ai-brief-state.json`
+  - default Brave/performance profile updated to optimized values.
+  - state version bumped to `2026-02-23-v4`.
+- `infrastructure/merge-ai-brief-state.sh`
+  - now migrates legacy state defaults (`2026-02-22-v2`/`2026-02-23-v3`) to optimized Brave/performance defaults during rollout, instead of preserving slow legacy budgets forever.
+- `infrastructure/env.template` + `infrastructure/docker-compose.yml`
+  - default AIDB Brave budget env values aligned with optimized profile.
+- docs updates:
+  - `docs/playbooks/ai-daily-brief.md` and `docs/TROUBLESHOOTING.md` now document the latency profile and remediation path for slow top5 runs.
+
 ### Latest pass (2026-02-23, Channel commands + brief quality improvements)
 
 Config version marker: `2026.02.23-channel-commands-v1`

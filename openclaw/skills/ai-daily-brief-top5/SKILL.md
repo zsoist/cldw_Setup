@@ -29,6 +29,10 @@ Compatibility command shim for users invoking `/ai_daily_brief_top5`.
   - Run date-scope hard gate before drafting.
   - REJECT any story whose event date is outside the scope bounds.
   - Do NOT backfill with older stories to reach 5 — fewer is correct.
+- Latency policy for this alias:
+  - Execute retrieval + drafting directly; do not narrate internal pipeline steps.
+  - Never claim "python tools unavailable" or "manual processing mode".
+  - Keep top5 runs under the canonical top5 budget caps.
 
 ## Brave Query Construction (mandatory — date-scoped queries)
 
@@ -44,7 +48,12 @@ directly in the query string `q`. Use these templates:
 **Rules:**
 - Always include explicit calendar dates (YYYY-MM-DD) in every query.
 - Never use a bare query like `"AI news"` without date bounds.
-- Run at least **two** Brave queries per invocation.
+- Adaptive fan-out:
+  - Run query #1 (broad scope) first.
+  - Run query #2 (watchlist-focused) only if coverage is weak after normalization:
+    - fewer than 8 credible candidates, or
+    - fewer than 4 unique Tier-1/2 sources.
+  - Hard cap: 2 Brave queries.
 
 ## Date-Scope Hard Gate (mandatory checkpoint before drafting)
 
