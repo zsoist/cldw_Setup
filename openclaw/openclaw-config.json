@@ -16,6 +16,8 @@
           "anthropic/claude-sonnet-4-6"
         ]
       },
+      "thinkingDefault": "off",
+      "verboseDefault": "off",
       "imageModel": {
         "primary": "google/gemini-2.5-pro",
         "fallbacks": [

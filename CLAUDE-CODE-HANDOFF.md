@@ -29,6 +29,7 @@ Precedence rule: if historical notes below conflict, treat the **Latest pass (Ge
   - `openclaw/skills/ai-daily-brief-status/SKILL.md`
 - `openclaw/openclaw-config.json`
   - explicit compaction mode set to `safeguard` in defaults to keep long chats from drifting/noising outputs.
+  - explicit `thinkingDefault=off` and `verboseDefault=off` to prevent Gemini thinking blocks from leaking as Telegram-visible `Reasoning:` preambles.
 - new operational reset utility:
   - `infrastructure/reset-openclaw-telegram-sessions.sh`
   - backs up non-probe session logs, clears `/root/.openclaw/agents/main/sessions/sessions.json` to `{}`, restarts gateway.

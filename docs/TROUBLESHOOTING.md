@@ -502,6 +502,23 @@ Then retest from Telegram with:
 - `/ai_daily_brief_status`
 - `/ai_daily_brief_top5`
 
+If `/reset` still emits `Reasoning:` preamble after session reset, confirm runtime defaults in `/root/.openclaw/openclaw.json`:
+
+```bash
+python3 - <<'PY'
+import json
+with open('/root/.openclaw/openclaw.json') as f:
+    d=json.load(f)
+defaults=((d.get('agents') or {}).get('defaults') or {})
+print('thinkingDefault=', defaults.get('thinkingDefault'))
+print('verboseDefault=', defaults.get('verboseDefault'))
+PY
+```
+
+Expected:
+- `thinkingDefault=off`
+- `verboseDefault=off`
+
 ### Gemini routing and fallback checks
 
 If the default Gemini path is not working as expected:

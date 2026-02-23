@@ -230,6 +230,7 @@ Manual Telegram validation after rollout:
 - for image-generation routing, `models status --json` should show `imageModel=google/gemini-2.5-pro` and alias `nano-banana-pro`
 - if replies show stale internal narration (`Reasoning:`, "I will now...", "I need to verify..."), reset runtime sessions:
   - `cd /root/openclaw-project && ./infrastructure/reset-openclaw-telegram-sessions.sh`
+- runtime now pins `thinkingDefault=off` to prevent model thinking blocks from being surfaced in Telegram responses
 - avoid `openclaw doctor --fix` during AI brief rollout/troubleshooting because it can rewrite channel config and break token wiring
 
 Configure dedicated AI brief channel (optional):
