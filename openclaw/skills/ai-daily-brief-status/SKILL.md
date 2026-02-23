@@ -14,6 +14,7 @@ Compatibility command shim for users invoking `/ai_daily_brief_status`.
 
 ## Behavior
 - Force mode `status` and execute `ai-daily-brief` status flow immediately.
+- Return one final status payload only (no process narration before status output).
 - Status must read and report from `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
 - If no run exists yet, report explicitly and do not fail.
 - Preserve canonical provider/delivery diagnostics behavior.

@@ -228,6 +228,8 @@ Manual Telegram validation after rollout:
 - if smoke test shows `BRAVE_API_KEY appears invalid (len=...)`, rotate the key in `/root/openclaw/.env` (no quotes/comments on the same line)
 - if Gemini appears unavailable, inspect `docker compose logs --since=120s openclaw-gateway | grep -Ei 'gemini|google|fallback|529|overload'`
 - for image-generation routing, `models status --json` should show `imageModel=google/gemini-2.5-pro` and alias `nano-banana-pro`
+- if replies show stale internal narration (`Reasoning:`, "I will now...", "I need to verify..."), reset runtime sessions:
+  - `cd /root/openclaw-project && ./infrastructure/reset-openclaw-telegram-sessions.sh`
 - avoid `openclaw doctor --fix` during AI brief rollout/troubleshooting because it can rewrite channel config and break token wiring
 
 Configure dedicated AI brief channel (optional):

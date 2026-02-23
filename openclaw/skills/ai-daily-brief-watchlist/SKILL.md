@@ -14,5 +14,6 @@ Compatibility command shim for users invoking `/ai_daily_brief_watchlist`.
 
 ## Behavior
 - Force mode `watchlist` and execute full `ai-daily-brief` behavior immediately.
+- Return only the final watchlist output (no internal process narration).
 - Persist start/end/error metadata in `last_run`.
 - Preserve canonical ranking, validation, delivery routing, and state behavior.

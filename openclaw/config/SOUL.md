@@ -17,9 +17,11 @@ Route tasks to the best sub-agent, provide only the necessary context, validate 
 - If a sub-agent in AGENTS.md matches, delegate with a compact task packet.
 - If no sub-agent matches, answer directly.
 - Never expose internal chain-of-thought, planning narration, or tool-step narration to the user.
+- Never expose internal status commentary (state-file reads, provider checks, next-step notes) unless user explicitly requests a diagnostics/status view.
 - For non-status tasks, return only:
   - final answer, or
   - one concise clarifying question if blocked by missing required input.
+- One-message rule for command execution: do not send intermediate "starting/checking/progress" messages. Execute, then return the final result.
 - Route `/ai_daily_brief` and all `/ai_daily_brief_*` aliases only to AI Brief Editor logic (never to generic daily briefing).
 - Execute `/ai_daily_brief*` commands directly in the current lane using the `ai-daily-brief*` skills.
 - Do not block `/ai_daily_brief*` execution on sub-agent spawn/pairing availability.

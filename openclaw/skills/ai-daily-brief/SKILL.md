@@ -62,6 +62,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled
   - "state file shows..."
   - "I am now calculating..."
 - Never include `Reasoning:` sections, chain-of-thought, or internal checklist text in user-visible output.
+- Never send transitional messages like "starting now", "checking configuration", or "next I will...". Send exactly one final result message per invocation.
 - Do not stream pipeline progress unless the user explicitly requests `/ai_daily_brief status`.
 - If user sends plain `/ai_daily_brief` with no mode, ask exactly one concise question:
   - `Choose mode: morning, evening, top5, builder, watchlist, status, feedback, history, diff, or help.`

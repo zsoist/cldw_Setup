@@ -28,6 +28,9 @@
         },
         "google/gemini-2.5-flash": {}
       },
+      "compaction": {
+        "mode": "safeguard"
+      },
       "workspace": "/home/node/.openclaw/workspace",
       "maxConcurrent": 4
     }

@@ -491,6 +491,17 @@ Expected behavior after tuning:
 - Model stays on `google/gemini-2.5-pro` for AI Daily Brief synthesis.
 - Brave calls respect a 1-second inter-call delay to avoid burst-rate issues.
 
+If verbose narration still appears (for example `Reasoning:` blocks or "I will now..." messages), clear stale runtime sessions and restart the gateway:
+
+```bash
+cd /root/openclaw-project
+./infrastructure/reset-openclaw-telegram-sessions.sh
+```
+
+Then retest from Telegram with:
+- `/ai_daily_brief_status`
+- `/ai_daily_brief_top5`
+
 ### Gemini routing and fallback checks
 
 If the default Gemini path is not working as expected:

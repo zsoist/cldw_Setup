@@ -14,6 +14,27 @@
 
 Precedence rule: if historical notes below conflict, treat the **Latest pass (Gemini integration + cross-provider fallback)** as authoritative.
 
+### Latest pass (2026-02-23, stale-session narration reset hardening)
+
+- `openclaw/config/SOUL.md`
+  - tightened output contract:
+    - no internal status commentary in normal responses,
+    - one-message execution rule (no "starting/checking/progress" preambles).
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - response discipline now explicitly forbids transitional "starting/checking" messages; final-result-only output.
+- alias skills now enforce output-only behavior consistently:
+  - `openclaw/skills/ai-daily-brief-morning/SKILL.md`
+  - `openclaw/skills/ai-daily-brief-builder/SKILL.md`
+  - `openclaw/skills/ai-daily-brief-watchlist/SKILL.md`
+  - `openclaw/skills/ai-daily-brief-status/SKILL.md`
+- `openclaw/openclaw-config.json`
+  - explicit compaction mode set to `safeguard` in defaults to keep long chats from drifting/noising outputs.
+- new operational reset utility:
+  - `infrastructure/reset-openclaw-telegram-sessions.sh`
+  - backs up non-probe session logs, clears `/root/.openclaw/agents/main/sessions/sessions.json` to `{}`, restarts gateway.
+- docs updated:
+  - `docs/TROUBLESHOOTING.md` and `README.md` now include the session-reset remediation step for stale `Reasoning:`/narration leakage.
+
 ### Latest pass (2026-02-23, AI brief response-discipline + natural-language intent normalization)
 
 - `openclaw/config/SOUL.md`
