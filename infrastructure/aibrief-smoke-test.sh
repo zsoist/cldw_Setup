@@ -527,11 +527,16 @@ print((data.get("result") or {}).get("pending_update_count") or 0)
   fi
 
   if [ -n "$TG_TOKEN" ]; then
-    CMDS_MISSING="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds={(c.get("command") or "") for c in (d.get("result") or [])}; required=["ai_daily_brief","ai_daily_brief_morning","ai_daily_brief_evening","ai_daily_brief_top5","ai_daily_brief_builder","ai_daily_brief_watchlist","ai_daily_brief_status"]; missing=[c for c in required if c not in cmds]; print(",".join(missing))' 2>/dev/null || true)"
-    if [ -z "$CMDS_MISSING" ]; then
-      pass "Telegram native AI brief commands are registered (/ai_daily_brief + compatibility aliases)"
+    TG_NATIVE_COMMANDS_ENABLED="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require("fs");const p="/home/node/.openclaw/openclaw.json";try{const d=JSON.parse(fs.readFileSync(p,"utf8"));const tg=((d.channels||{}).telegram||{});const commands=(tg.commands||{});const v=(typeof commands.native==="boolean"?commands.native:true);process.stdout.write(v?"true":"false");}catch{process.stdout.write("true");}' 2>/dev/null || echo true)"
+    if [ "$TG_NATIVE_COMMANDS_ENABLED" = "true" ]; then
+      CMDS_MISSING="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds={(c.get("command") or "") for c in (d.get("result") or [])}; required=["ai_daily_brief","ai_daily_brief_morning","ai_daily_brief_evening","ai_daily_brief_top5","ai_daily_brief_builder","ai_daily_brief_watchlist","ai_daily_brief_status"]; missing=[c for c in required if c not in cmds]; print(",".join(missing))' 2>/dev/null || true)"
+      if [ -z "$CMDS_MISSING" ]; then
+        pass "Telegram native AI brief commands are registered (/ai_daily_brief + compatibility aliases)"
+      else
+        fail "Telegram native AI brief commands missing: ${CMDS_MISSING} (check nativeSkills config + restart)"
+      fi
     else
-      fail "Telegram native AI brief commands missing: ${CMDS_MISSING} (check nativeSkills config + restart)"
+      pass "Telegram native commands intentionally disabled (text-command routing mode)"
     fi
   fi
 

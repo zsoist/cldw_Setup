@@ -33,6 +33,9 @@
 - Bot must be admin in target channel/supergroup with permission to post.
 - For command interaction in a channel context, use a supergroup/discussion chat where users can send bot commands.
 - Add that chat ID to `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` and rerun rollout.
+- If users/admins post as channel identity (no user sender ID), enable compatibility mode:
+  - `OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=1`
+  - `OPENCLAW_TELEGRAM_NATIVE_COMMANDS=0`
 
 ### Channel Command Setup (Step-by-Step)
 
@@ -107,6 +110,25 @@ Test from the registered supergroup:
 # Privacy mode ON (Option B):
 /ai_daily_brief@MangenkyoBot status
 ```
+
+#### Layer 4 — Channel/Anonymous Sender Compatibility (Optional)
+
+If commands are posted as channel identity or anonymous admin and get rejected as unauthorized, enable compatibility mode:
+
+```bash
+cd /root/openclaw
+sed -i '/^OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=/d' .env
+echo 'OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=1' >> .env
+sed -i '/^OPENCLAW_TELEGRAM_NATIVE_COMMANDS=/d' .env
+echo 'OPENCLAW_TELEGRAM_NATIVE_COMMANDS=0' >> .env
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+Notes:
+- Native menu registration (`/commands`) is disabled in this mode.
+- Text command routing remains active (send `/ai_daily_brief ...` in the approved interactive chat).
 
 ## WhatsApp (Not Configured)
 - Status: disabled

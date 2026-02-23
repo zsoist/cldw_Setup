@@ -156,6 +156,8 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
   - gateway container receives `TELEGRAM_BOT_TOKEN`/`OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` from `.env`
   - gateway startup now waits for mounted runtime config readiness and auto-clears Telegram webhooks to force polling mode
   - config sync maps DM authorization from `OPENCLAW_TELEGRAM_ALLOW_FROM` (or fallback `SENTINEL_ALLOWED_USERS`) and sets Telegram `dmPolicy=allowlist` automatically when IDs are present
+  - config sync supports Telegram command toggles via `OPENCLAW_TELEGRAM_NATIVE_COMMANDS` / `OPENCLAW_TELEGRAM_NATIVE_SKILLS`
+  - config sync supports interactive-chat anonymous/channel compatibility via `OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=1` (sets `groups.<chat>.allowFrom=["*"]` for approved interactive chats)
   - config-only rollout now syncs `infrastructure/docker-compose.yml` into `/root/openclaw` before restart
   - rollout now detects active Telegram webhooks via `getWebhookInfo`, clears them, and restarts gateway before final health validation
   - rollout/smoke diagnostics now read gateway auth token from `/root/.openclaw/openclaw.json` first (env fallback only), preventing false `device token mismatch` checks caused by stale `.env` duplicates
@@ -218,6 +220,7 @@ Manual Telegram validation after rollout:
 - send `/ai_daily_brief status`
 - send `/ai_daily_brief top5 12h`
 - send compatibility alias `/ai_daily_brief_top5` (must return equivalent output path)
+- if `OPENCLAW_TELEGRAM_NATIVE_COMMANDS=0`, menu command registration is intentionally disabled; use text commands in approved interactive chat instead.
 - run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
 - if interactive channel commands are required, ensure channel/supergroup ID is present in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`
 - note: `/ai_daily_brief_status` is diagnostic and may not mutate `last_run`; `/ai_daily_brief_top5` should create/update `last_run.run_id/status`

@@ -79,6 +79,25 @@ If smoke test passes but channel commands still fail:
 2. Send a message in the supergroup first so `getUpdates` picks it up.
 3. Check bot privacy mode via BotFather: `/mybots` → select bot → `Bot Settings` → `Group Privacy`.
 
+**Layer 4 — Messages sent as channel / anonymous admin**
+
+If users/admins post as channel identity, Telegram may omit `from.id`, which can break native command auth.
+
+Enable interactive-chat compatibility mode:
+```bash
+cd /root/openclaw
+sed -i '/^OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=/d' .env
+echo 'OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=1' >> .env
+sed -i '/^OPENCLAW_TELEGRAM_NATIVE_COMMANDS=/d' .env
+echo 'OPENCLAW_TELEGRAM_NATIVE_COMMANDS=0' >> .env
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+Result:
+- approved interactive chat can invoke `/ai_daily_brief ...` via text command routing
+- native Telegram command menu registration is intentionally disabled
+
 ### OpenClaw not responding to Telegram
 ```bash
 # Verify container is running
@@ -186,7 +205,9 @@ ssh root@YOUR_VPS_IP "cd /root/openclaw && docker compose logs --since=90s openc
 If command is ignored, verify command registration:
 ```bash
 /root/openclaw-project/infrastructure/aibrief-smoke-test.sh
-# must pass: "Telegram native command /ai_daily_brief is registered"
+# either:
+# - "Telegram native AI brief commands are registered ..."
+# - or "Telegram native commands intentionally disabled (text-command routing mode)"
 ```
 
 ### `/ai_daily_brief` returns generic daily briefing content

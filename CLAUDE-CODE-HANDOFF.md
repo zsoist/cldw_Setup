@@ -14,6 +14,28 @@
 
 Precedence rule: if historical notes below conflict, treat the **Latest pass (Gemini integration + cross-provider fallback)** as authoritative.
 
+### Latest pass (2026-02-23, Telegram interactive channel sender-compatibility)
+
+- `infrastructure/sync-openclaw-config.sh`
+  - added env-controlled Telegram command toggles:
+    - `OPENCLAW_TELEGRAM_NATIVE_COMMANDS` (default `1`)
+    - `OPENCLAW_TELEGRAM_NATIVE_SKILLS` (default `1`, forced `0` when native commands are disabled)
+  - added interactive chat sender-compatibility switch:
+    - `OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=1`
+    - when enabled, each chat in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` gets `groups.<chat>.allowFrom=["*"]` with `requireMention=false`.
+- `infrastructure/env.template`
+  - documents the new Telegram compatibility/toggle vars.
+- `infrastructure/aibrief-smoke-test.sh`
+  - native command registration check is now conditional:
+    - validates `/getMyCommands` only when runtime `channels.telegram.commands.native=true`
+    - reports pass for intentional text-command mode when native commands are disabled.
+- Docs refreshed:
+  - `openclaw/config/CHANNELS.md`
+  - `docs/TROUBLESHOOTING.md`
+  - `docs/DEPLOYMENT.md`
+  - `README.md`
+  - added explicit remediation path for Telegram channel/anonymous sender contexts.
+
 ### Latest pass (2026-02-23, Gemini integration + cross-provider fallback)
 
 - OpenClaw version pin updated to latest stable tag:

@@ -196,6 +196,9 @@ Important:
 - DM invocation is always supported.
 - Channel/supergroup invocation is supported only for IDs present in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`.
 - `set-aibrief-output-channel.sh` auto-adds numeric output channels to `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` for interactive command use.
+- If commands are sent as channel/anonymous identity, enable:
+  - `OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=1`
+  - `OPENCLAW_TELEGRAM_NATIVE_COMMANDS=0`
 
 ## Step 8: Post-deployment
 

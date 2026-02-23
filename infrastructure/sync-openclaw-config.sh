@@ -46,6 +46,9 @@ OPENCLAW_TELEGRAM_ALLOW_FROM="$(
 )"
 OPENCLAW_TELEGRAM_INTERACTIVE_CHATS="$(extract_key OPENCLAW_TELEGRAM_INTERACTIVE_CHATS || true)"
 OPENCLAW_TELEGRAM_DM_POLICY="$(extract_key OPENCLAW_TELEGRAM_DM_POLICY || true)"
+OPENCLAW_TELEGRAM_NATIVE_COMMANDS="$(extract_key OPENCLAW_TELEGRAM_NATIVE_COMMANDS || true)"
+OPENCLAW_TELEGRAM_NATIVE_SKILLS="$(extract_key OPENCLAW_TELEGRAM_NATIVE_SKILLS || true)"
+OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER="$(extract_key OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER || true)"
 OPENCLAW_GATEWAY_BIND="$(extract_key OPENCLAW_GATEWAY_BIND || true)"
 OPENCLAW_GATEWAY_PORT="$(extract_key OPENCLAW_GATEWAY_PORT || true)"
 
@@ -71,6 +74,7 @@ printf '%s' "$OPENCLAW_TELEGRAM_TOKEN" > "$TELEGRAM_TOKEN_FILE_HOST"
 chmod 600 "$TELEGRAM_TOKEN_FILE_HOST"
 export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
 export OPENCLAW_TELEGRAM_ALLOW_FROM OPENCLAW_TELEGRAM_INTERACTIVE_CHATS OPENCLAW_TELEGRAM_DM_POLICY
+export OPENCLAW_TELEGRAM_NATIVE_COMMANDS OPENCLAW_TELEGRAM_NATIVE_SKILLS OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER
 export TELEGRAM_BOT_TOKEN="$OPENCLAW_TELEGRAM_TOKEN"
 export OPENCLAW_TELEGRAM_TOKEN_FILE="$TELEGRAM_TOKEN_FILE_RUNTIME"
 
@@ -81,6 +85,18 @@ import re
 import sys
 
 template_path, output_path = sys.argv[1], sys.argv[2]
+
+def parse_bool(raw, default):
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if not value:
+        return default
+    if value in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
 
 with open(template_path, "r", encoding="utf-8") as f:
     data = json.load(f)
@@ -150,6 +166,14 @@ else:
     data["channels"]["telegram"].pop("allowFrom", None)
     default_account.pop("allowFrom", None)
 
+native_commands = parse_bool(os.environ.get("OPENCLAW_TELEGRAM_NATIVE_COMMANDS"), True)
+native_skills = parse_bool(os.environ.get("OPENCLAW_TELEGRAM_NATIVE_SKILLS"), native_commands)
+if not native_commands:
+    native_skills = False
+interactive_allow_any_sender = parse_bool(
+    os.environ.get("OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER"), False
+)
+
 interactive_chats_raw = (os.environ.get("OPENCLAW_TELEGRAM_INTERACTIVE_CHATS") or "").strip()
 interactive_chats = []
 if interactive_chats_raw:
@@ -178,13 +202,17 @@ for chat in interactive_chats:
     if not isinstance(chat_group, dict):
         chat_group = {}
     chat_group["requireMention"] = False
+    if interactive_allow_any_sender:
+        chat_group["allowFrom"] = ["*"]
+    else:
+        chat_group.pop("allowFrom", None)
     groups[chat] = chat_group
 data["channels"]["telegram"]["groups"] = groups
 
 accounts["default"] = default_account
-data["channels"]["telegram"].setdefault("commands", {})
-data["channels"]["telegram"]["commands"]["native"] = True
-data["channels"]["telegram"]["commands"]["nativeSkills"] = True
+commands = data["channels"]["telegram"].setdefault("commands", {})
+commands["native"] = native_commands
+commands["nativeSkills"] = native_skills
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
