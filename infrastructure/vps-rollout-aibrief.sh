@@ -23,6 +23,25 @@ require_file() {
   fi
 }
 
+sync_system_helpers() {
+  local sentinel_group="root"
+  if getent group sentinel >/dev/null 2>&1; then
+    sentinel_group="sentinel"
+  fi
+
+  if [ -f "$PROJECT_DIR/infrastructure/sync-sentinel-env.sh" ]; then
+    install -o root -g "$sentinel_group" -m 750 \
+      "$PROJECT_DIR/infrastructure/sync-sentinel-env.sh" \
+      /usr/local/sbin/sync-sentinel-env.sh
+  fi
+
+  if [ -f "$PROJECT_DIR/infrastructure/sync-openclaw-config.sh" ]; then
+    install -o root -g root -m 750 \
+      "$PROJECT_DIR/infrastructure/sync-openclaw-config.sh" \
+      /usr/local/sbin/sync-openclaw-config.sh
+  fi
+}
+
 sync_sentinel_runtime() {
   if [ ! -d "$SENTINEL_DIR" ]; then
     log "WARN: Sentinel runtime directory not found at $SENTINEL_DIR; skipping code sync"
@@ -133,6 +152,7 @@ chown -R "${OC_UID}:${OC_GID}" "$OPENCLAW_CFG"
 chmod 600 "$OPENCLAW_CFG/openclaw.json" "$OPENCLAW_CFG/openclaw-config.json"
 
 log "Syncing runtime envs"
+sync_system_helpers
 if [ -x /usr/local/sbin/sync-sentinel-env.sh ]; then
   /usr/local/sbin/sync-sentinel-env.sh
 else

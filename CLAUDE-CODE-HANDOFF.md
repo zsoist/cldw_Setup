@@ -63,6 +63,7 @@ Precedence rule: if historical notes below conflict, treat the **Latest pass (Ge
 ### Latest pass (2026-02-23, VPS stability + Sentinel deployment drift fix)
 
 - `infrastructure/vps-rollout-aibrief.sh`
+  - now refreshes helper scripts in `/usr/local/sbin` from the repo before execution (`sync-sentinel-env.sh`, `sync-openclaw-config.sh`) so runtime sync behavior can't drift from git state.
   - now syncs Sentinel runtime code (`config.py`, `sentinel.py`, `telegram_handler.py`, `tools.py`, `requirements.txt`) into `/opt/sentinel` during config-only rollouts.
   - now refreshes Sentinel Python dependencies when `requirements.txt` changes, preventing stale runtime code after repo updates.
 - `sentinel/sentinel.py`
