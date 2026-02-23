@@ -1,6 +1,6 @@
 # OpenClaw + Sentinel: Cost-Optimized Dual-Bot AI System
 
-A production-ready, budget-conscious deployment of a two-layer AI assistant system on a Hetzner CPX22 VPS. OpenClaw serves as a personal AI gateway accessed via Telegram, while Sentinel acts as an autonomous sysadmin bot managing the infrastructure itself — both powered by the Anthropic Claude API with aggressive cost optimization.
+A production-ready, budget-conscious deployment of a two-layer AI assistant system on a Hetzner CPX22 VPS. OpenClaw serves as a personal AI gateway accessed via Telegram, while Sentinel acts as an autonomous sysadmin bot managing the infrastructure itself — using a Gemini-first model stack with Anthropic fallbacks for resilience and cost control.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ A production-ready, budget-conscious deployment of a two-layer AI assistant syst
                         │  │   OpenClaw Gateway     │  │   Sentinel Bot      │  │
                         │  │   Port 18789 (lo)      │  │   Python + SDK      │  │
                         │  │                        │  │                     │  │
-                        │  │  ┌─────┐  ┌────────┐  │  │   Haiku 4.5 only   │  │
+                        │  │  ┌─────┐  ┌────────┐  │  │   Flash default    │  │
                         │  │  │main │  │  work  │  │  │   8 tool functions  │  │
   Telegram ────────────>│  │  │agent│  │ agent  │  │  │   Strict whitelist  │  │
   (Sentinel Bot)        │  │  │     │  │sandbox │  │  └─────────────────────┘  │
@@ -34,25 +34,26 @@ A production-ready, budget-conscious deployment of a two-layer AI assistant syst
 
 **Tenant-Landlord Model:** OpenClaw is the "tenant" — it handles user-facing tasks (research, scheduling, task management) inside a resource-constrained Docker container. Sentinel is the "landlord" — it monitors the system, manages Docker, runs security audits, and creates backups. Neither can interfere with the other, and Sentinel has a strict command whitelist preventing destructive operations.
 
-**Zero-Trust API Cost Control:** Every design decision prioritizes minimizing LLM API spend without sacrificing utility. The system targets **$18-33/month total** (VPS + API combined).
+**Zero-Trust API Cost Control:** Every design decision prioritizes minimizing LLM API spend without sacrificing utility. The system targets **$14-23/month total** (VPS + API combined).
 
 ## Token Optimization Strategy
 
-This project demonstrates several production-grade techniques for minimizing Anthropic API costs while maintaining a responsive, useful AI assistant.
+This project demonstrates several production-grade techniques for minimizing API costs while maintaining a responsive, useful AI assistant.
 
-### 1. Three-Tier Model Routing
+### 1. Four-Tier Model Routing (Gemini-first)
 
 | Tier | Model | Use Case | Cost Factor |
 |------|-------|----------|-------------|
-| **Default** | Claude Haiku 4.5 | Chat, Q&A, reminders, heartbeat, task tracking | 1x (baseline) |
-| **Escalation** | Claude Sonnet 4.5 | Code generation, research synthesis, multi-step tools | ~5x |
+| **Default** | Gemini 2.5 Flash | Chat, Q&A, reminders, heartbeat, task tracking | ~0.3x |
+| **Standard** | Gemini 2.5 Pro | Code generation, research synthesis, AI brief, multi-step tools | ~2x |
+| **Premium** | Claude Sonnet 4.6 | "Think harder" tasks and production-grade quality rescue | ~5x |
 | **Manual Only** | Claude Opus 4.6 | Architecture decisions, complex analysis | ~60x |
 
-The routing is configured in `openclaw/config/AGENTS.md`. By defaulting to Haiku for ~80% of interactions and only escalating when synthesis or complex reasoning is required, the system reduces average per-interaction cost by an estimated 10-15x compared to running Sonnet as default.
+The routing is configured in `openclaw/config/AGENTS.md`. Default traffic stays on Flash, escalates to Pro when needed, then to Sonnet only when quality requires it.
 
 ### 2. Prompt Cache Alignment
 
-Anthropic's prompt caching has a **60-minute TTL**. The heartbeat interval is set to **55 minutes** — just under the cache expiry. This ensures the system prompt (SOUL.md, ~400 words) remains cached across heartbeat cycles, avoiding redundant input token charges on the static portion of every request.
+The heartbeat interval is set to **55 minutes** to keep recurring prompts cache-friendly and limit repeated static prompt cost.
 
 ```
 Cache TTL:     |-------- 60 min --------|-------- 60 min --------|
@@ -109,7 +110,7 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 
 | # | Job | Schedule | Agent | Model |
 |---|-----|----------|-------|-------|
-| 1 | AI Daily Brief Top5 (Previous Day) | 07:00 daily | Main | Sonnet |
+| 1 | AI Daily Brief Top5 (Previous Day) | 07:00 daily | Main | Gemini Pro |
 
 Everything else runs on-demand via explicit commands.
 
@@ -166,17 +167,36 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
   - `/root/.openclaw/workspace/TOOLS.md`
   - `/root/.openclaw/workspace/HEARTBEAT.md`
 
-### AI Daily Brief VPS Rollout (Fast Path)
+### AI Daily Brief + Gemini VPS Rollout (Fast Path)
 
 ```bash
 ssh root@YOUR_VPS_IP <<'EOF'
 set -euo pipefail
 cd /root/openclaw-project
-# Set Brave key once (required for full AI brief grounding)
+# Pin latest stable OpenClaw build (default in this repo: v2026.2.22)
+sed -i '/^OPENCLAW_REF=/d' /root/openclaw/.env
+echo "OPENCLAW_REF=v2026.2.22" >> /root/openclaw/.env
+# Set keys (Gemini default + Brave grounding)
+sed -i '/^GEMINI_API_KEY=/d' /root/openclaw/.env
+echo "GEMINI_API_KEY=YOUR_REAL_GEMINI_KEY" >> /root/openclaw/.env
 sed -i '/^BRAVE_API_KEY=/d' /root/openclaw/.env
-echo "BRAVE_API_KEY=YOUR_REAL_KEY" >> /root/openclaw/.env
+echo "BRAVE_API_KEY=YOUR_REAL_BRAVE_KEY" >> /root/openclaw/.env
+
+# Optional: verify pinned binary sees google provider/models
+docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs models list --provider google 2>&1 || true
+docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs models auth status --provider google 2>&1 || true
+
+# Rebuild gateway at pinned ref and apply config/skills/docs rollout
+cd /root/openclaw
+docker compose build --pull openclaw-gateway
+docker compose up -d --force-recreate openclaw-gateway
+cd /root/openclaw-project
 ./infrastructure/vps-rollout-aibrief.sh
 ./infrastructure/aibrief-smoke-test.sh
+
+# Verify default + image model routing (nano-banana-pro alias)
+docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs models status --json | \
+  python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({k:d.get(k) for k in ("defaultModel","fallbacks","imageModel","imageFallbacks","aliases")}, indent=2))'
 EOF
 ```
 
@@ -189,6 +209,7 @@ Smoke test must pass these lines before Telegram command validation:
 - `SOUL policy enforces direct in-lane execution for /ai_daily_brief*`
 - `AGENTS policy confirms /ai_daily_brief* does not require sub-agent spawn`
 - `Gateway container has BRAVE_API_KEY in environment` (or explicit fallback warning if intentionally unconfigured)
+- `Gateway container has GEMINI_API_KEY in environment` (or intentional Claude-only fallback mode)
 
 Manual Telegram validation after rollout:
 - send `/ai_daily_brief status`
@@ -199,6 +220,8 @@ Manual Telegram validation after rollout:
 - note: `/ai_daily_brief_status` is diagnostic and may not mutate `last_run`; `/ai_daily_brief_top5` should create/update `last_run.run_id/status`
 - if status reports `provider unconfigured`, re-check `BRAVE_API_KEY` in `/root/openclaw/.env`
 - if smoke test shows `BRAVE_API_KEY appears invalid (len=...)`, rotate the key in `/root/openclaw/.env` (no quotes/comments on the same line)
+- if Gemini appears unavailable, inspect `docker compose logs --since=120s openclaw-gateway | grep -Ei 'gemini|google|fallback|529|overload'`
+- for image-generation routing, `models status --json` should show `imageModel=google/gemini-2.5-pro` and alias `nano-banana-pro`
 - avoid `openclaw doctor --fix` during AI brief rollout/troubleshooting because it can rewrite channel config and break token wiring
 
 Configure dedicated AI brief channel (optional):
@@ -212,7 +235,11 @@ EOF
 
 ## Sentinel: Agentic Sysadmin Bot
 
-Sentinel is built on the **Anthropic SDK's tool_use pattern** — a production implementation of the agentic loop where Claude decides which tools to invoke, processes results, and iterates until it can provide a final answer.
+Sentinel supports **dual providers**:
+- Anthropic (`SENTINEL_PROVIDER=anthropic`, default)
+- Google Gemini (`SENTINEL_PROVIDER=google`)
+
+Both providers run the same safe tool-execution loop with shared whitelist controls.
 
 ### Tool Architecture
 
@@ -244,7 +271,7 @@ Unknown commands are rejected by default. This is a deny-by-default posture — 
 # Simplified flow in sentinel.py
 for _ in range(max_iterations):        # Cap at 5 to prevent infinite loops
     response = client.messages.create(
-        model="claude-haiku-4-5",
+        model="<provider model>",
         tools=TOOLS,
         messages=history,
     )
@@ -307,14 +334,14 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── skills/
 │   │   ├── ai-daily-brief/SKILL.md        # Canonical AI brief command (scoped top5 + full modes)
 │   │   ├── ai-daily-brief-*/SKILL.md      # Compatibility alias shims for /ai_daily_brief_* commands
-│   │   ├── daily-briefing/SKILL.md        # Morning planning briefing (Haiku, scheduled)
-│   │   ├── research-assistant/SKILL.md    # Deep research (Sonnet, on-demand)
-│   │   └── task-tracker/SKILL.md          # Task management (Haiku, triggered)
+│   │   ├── daily-briefing/SKILL.md        # Morning planning briefing (Gemini Flash, scheduled)
+│   │   ├── research-assistant/SKILL.md    # Deep research (Gemini Pro, on-demand)
+│   │   └── task-tracker/SKILL.md          # Task management (Gemini Flash, triggered)
 │   ├── memory/                            # Daily + weekly log storage
 │   │   ├── weekly/                        # Weekly review summaries
 │   │   └── (YYYY-MM-DD.md files)          # Auto-generated daily logs
 │   └── openclaw-config.json               # Gateway runtime config (schema-valid for pinned OpenClaw)
-├── sentinel/                              # Sysadmin Bot (Anthropic SDK + tool_use)
+├── sentinel/                              # Sysadmin Bot (Anthropic/Gemini provider abstraction + tool use)
 │   ├── sentinel.py                        # Agentic loop with tool chaining
 │   ├── tools.py                           # 8 tools + whitelist/blocklist security
 │   ├── config.py                          # Dataclass config with validation
@@ -322,7 +349,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── requirements.txt                   # Python dependencies
 │   ├── sentinel.service                   # systemd unit file
 │   └── tests/
-│       ├── conftest.py                    # Shared fixtures (mocked Anthropic client)
+│       ├── conftest.py                    # Shared fixtures (mocked provider clients)
 │       ├── test_tools.py                  # Whitelist, tool dispatch, Docker mocks
 │       └── test_telegram.py               # Auth, commands, message handling
 ├── infrastructure/                        # Deployment & operations
@@ -377,23 +404,23 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 | Component | Cost |
 |-----------|------|
 | Hetzner CPX22 (3 vCPU, 4GB, 80GB NVMe) | ~$8 |
-| Anthropic API (Haiku-dominant mix) | $10-25 |
-| **Total** | **$18-33** |
+| LLM APIs (Gemini-first + Anthropic fallback) | $6-15 |
+| **Total** | **$14-23** |
 
 ### Per-Interaction Cost Breakdown
 
 | Interaction Type | Model | Estimated Cost |
 |-----------------|-------|----------------|
-| Simple Q&A / chat | Haiku 4.5 | ~$0.001 |
-| Heartbeat cycle | Haiku 4.5 | ~$0.0005 |
-| Daily planning briefing | Haiku 4.5 | ~$0.002 |
-| AI Daily Brief (morning/evening) | Sonnet 4.5 | ~$0.01-0.03 |
-| Research deep dive | Sonnet 4.5 | $0.02-0.05 |
-| Code generation | Sonnet 4.5 | $0.03-0.08 |
-| Sentinel status check | Haiku 4.5 | ~$0.002 |
+| Simple Q&A / chat | Gemini 2.5 Flash | ~$0.0005-0.001 |
+| Heartbeat cycle | Gemini 2.5 Flash | ~$0.0003-0.0008 |
+| Daily planning briefing | Gemini 2.5 Flash | ~$0.001-0.002 |
+| AI Daily Brief (morning/evening) | Gemini 2.5 Pro | ~$0.01-0.03 |
+| Research deep dive | Gemini 2.5 Pro | ~$0.01-0.03 |
+| Code generation | Gemini 2.5 Pro | ~$0.015-0.05 |
+| Sentinel status check | Gemini 2.5 Flash | ~$0.001-0.003 |
 | Complex analysis | Opus 4.6 | $0.10-0.30 |
 
-With ~50-100 daily interactions (mostly Haiku), monthly API cost stays well under $25.
+With ~50-100 daily interactions (mostly Flash), monthly API cost stays within the $6-15 target range.
 
 ## Security Model
 
@@ -445,11 +472,11 @@ pytest tests/ -v
 
 Test coverage includes:
 - **Command whitelist/blocklist logic** — ensures dangerous commands are rejected
-- **Tool schema validation** — all 8 tools have required Anthropic API fields
+- **Tool schema validation** — all 8 tools have required Anthropic and Gemini function declaration fields
 - **Tool execution** — mocked psutil, Docker, subprocess calls
 - **Telegram authorization** — authorized vs unauthorized user handling
 - **Command handlers** — /start, /status, /openclaw, /security, /backup
-- **Config validation** — missing tokens, API keys, user IDs
+- **Config validation** — missing tokens, provider API keys, user IDs
 - **Message handling** — free-text routing through the agentic loop
 - **Config parsing edge cases** — non-numeric/empty/multi-comment user ID parsing
 
@@ -509,20 +536,20 @@ Notes:
 | Decision | Rationale |
 |----------|-----------|
 | CPX22 over CPX32 | 3 vCPU / 4GB is sufficient — OpenClaw is I/O bound (API calls), not compute bound. Saves ~$5/mo. |
-| Haiku as default | 80%+ of interactions are simple enough for Haiku. Sonnet escalation only when needed. |
-| 55-min heartbeat | Aligns with Anthropic's 60-min prompt cache TTL — maximizes cache hits. |
+| Gemini Flash as default | Most interactions are routine; Flash is lower cost and faster for baseline flows. |
+| 55-min heartbeat | Keeps recurring prompt overhead bounded with cache-friendly cadence. |
 | SOUL.md < 500 words | Sent with every request. 100 extra words x 1000 requests = 100K wasted tokens. |
 | Safeguard compaction | Prevents long conversations from inflating input token costs. |
 | Loopback gateway binding | No public exposure — SSH tunnel only. Eliminates need for TLS cert management. |
 | systemd for Sentinel | Lighter than Docker for a single Python process. Auto-restart on crash. |
 | 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping a week of recovery points. |
-| Sentinel on Haiku only | Sysadmin tasks (status, logs, restart) never need Sonnet-level reasoning. |
+| Sentinel provider toggle | Default Anthropic path remains stable; Google provider is available for redundancy/testing. |
 | Silent hours (23:00-07:00) | Reduces proactive API calls while preserving the 07:00 scheduled AI brief run. |
 | Multi-agent (main + work) | Separates personal/professional data, enables sandboxing, reduces context per agent. |
 | Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |
 | No elevated exec | Sandboxing is meaningless if agents can bypass it via host execution. |
 | Channel allowlist + approved interactive chats only | Group chats are the highest prompt injection surface area; only explicit interactive chat IDs are allowed. |
-| 1 cron job, Sonnet for AI brief synthesis | Only one automated run is enabled (07:00 previous-day top stories); everything else is on-demand. |
+| 1 cron job, Gemini Pro for AI brief synthesis | Only one automated run is enabled (07:00 previous-day top stories); everything else is on-demand. |
 | Read/notify before act | Cron jobs that auto-execute risky actions compound errors at scale. |
 | Deep research opt-in only | Auto-triggered deep research is the fastest way to blow through API budget. |
 | Save reusable research to docs/ | Prevents redundant web searches for the same topic. |

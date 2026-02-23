@@ -17,6 +17,11 @@
 - Confirm before any write/delete operation on existing files
 - Truncate tool output to save tokens (max 4000 chars per result)
 
+## Budget Guidance
+- Soft cap per task: $0.25
+- Hard cap per task: $0.75
+- Daily target: <$5.00
+
 ## Constraints
 - Cite sources for factual claims from web search
 - Do not log raw secrets, API keys, or tokens anywhere

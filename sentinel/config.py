@@ -77,8 +77,14 @@ class SentinelConfig:
     )
 
     # Anthropic
+    provider: str = field(
+        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_PROVIDER", "anthropic")).lower() or "anthropic"
+    )
     anthropic_api_key: str = field(
         default_factory=lambda: _clean_env_value(os.getenv("ANTHROPIC_API_KEY", ""))
+    )
+    google_api_key: str = field(
+        default_factory=lambda: _clean_env_value(os.getenv("GEMINI_API_KEY", ""))
     )
     model: str = field(
         default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_MODEL", "claude-haiku-4-5"))
@@ -110,8 +116,12 @@ class SentinelConfig:
             errors.append("SENTINEL_TELEGRAM_TOKEN is not set")
         if not self.allowed_user_ids:
             errors.append("SENTINEL_ALLOWED_USERS is not set (comma-separated Telegram user IDs)")
-        if not self.anthropic_api_key:
-            errors.append("ANTHROPIC_API_KEY is not set")
+        if self.provider not in {"anthropic", "google"}:
+            errors.append("SENTINEL_PROVIDER must be 'anthropic' or 'google'")
+        if self.provider == "anthropic" and not self.anthropic_api_key:
+            errors.append("ANTHROPIC_API_KEY is not set for SENTINEL_PROVIDER=anthropic")
+        if self.provider == "google" and not self.google_api_key:
+            errors.append("GEMINI_API_KEY is not set for SENTINEL_PROVIDER=google")
         if self.rate_limit_max_requests <= 0:
             errors.append("SENTINEL_RATE_LIMIT_MAX_REQUESTS must be > 0")
         if self.rate_limit_window_seconds <= 0:

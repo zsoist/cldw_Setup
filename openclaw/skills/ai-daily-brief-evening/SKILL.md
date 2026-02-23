@@ -3,7 +3,7 @@ name: ai-daily-brief-evening
 description: Compatibility alias for AI Daily Brief evening mode
 triggers:
   - "/ai_daily_brief_evening"
-model: sonnet
+model: google/gemini-2.5-pro
 cost_tier: standard
 ---
 

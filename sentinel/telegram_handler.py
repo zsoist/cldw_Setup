@@ -40,7 +40,7 @@ class SentinelTelegramBot:
             "- `/security` — Security audit\n"
             "- `/backup` — Backup OpenClaw\n"
             "- Or just describe what you need in plain text.\n\n"
-            "All requests go through Claude with tool verification.",
+            "All requests go through the configured LLM provider with tool verification.",
             parse_mode="Markdown"
         )
 

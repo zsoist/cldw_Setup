@@ -10,6 +10,7 @@ def mock_config():
     return SentinelConfig(
         telegram_token="test-token-123",
         allowed_user_ids=[12345],
+        provider="anthropic",
         anthropic_api_key="test-api-key",
         model="claude-haiku-4-5",
     )
@@ -32,3 +33,15 @@ def mock_anthropic_client():
         mock_client.messages.create.return_value = mock_response
 
         yield mock_client
+
+
+@pytest.fixture
+def mock_google_client():
+    """Mocked Gemini client for provider=google tests."""
+    with patch("sentinel.SentinelAgent._init_google_client") as mock_init:
+        mock_model = MagicMock()
+        mock_response = MagicMock()
+        mock_response.candidates = []
+        mock_model.generate_content.return_value = mock_response
+        mock_init.return_value = (MagicMock(), mock_model)
+        yield mock_model

@@ -7,70 +7,60 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 
 | Tier | Model | Role | Cost Factor |
 |------|-------|------|-------------|
-| Heartbeat | Haiku 4.5 | Cron checks, reminders, notifications | 1x |
-| Default | Haiku 4.5 | Chat, Q&A, summaries, file maintenance, task tracking | 1x |
-| Escalation | Sonnet 4.5 | Code, research synthesis, multi-step tools, strategic analysis | ~5x |
-| Manual | Opus 4.6 | Architecture, complex reasoning, ambiguous debugging | ~60x |
-| Web Search | Provider-dependent | Retrieval (separate from reasoning) | Variable |
-| Deep Research | Sonnet/Opus | Expensive retrieval + synthesis (explicit only) | High |
+| Default | Gemini 2.5 Flash (`google/gemini-2.5-flash`) | Chat, Q&A, heartbeat, task tracking | ~0.3x |
+| Standard | Gemini 2.5 Pro (`google/gemini-2.5-pro`) | Research, AI brief synthesis, code, multi-step tools | ~2x |
+| Premium | Claude Sonnet 4.6 (`anthropic/claude-sonnet-4-6`) | "Think harder", production-grade code, nuanced analysis | ~5x |
+| Manual | Claude Opus 4.6 (`anthropic/claude-opus-4-6`) | Architecture, complex reasoning, ambiguous high-stakes tasks | ~60x |
+| Retrieval | Brave LLM Context + web search | Source retrieval and grounding | Variable |
 
 ## Routing Rules
 
 ### 1. Heartbeat / Cron (Routine)
-**Use:** Haiku
-- Due reminders, light system checks, "what changed today"
-- Simple notifications, calendar prep checks
-- Must complete in <30 seconds
+**Use:** Gemini Flash
+- Due reminders, light system checks, and status notifications
+- Must complete quickly with minimal tool usage
 
 ### 2. Routine Assistant Work
-**Use:** Haiku
-- Summarize notes, organize files/docs
-- Draft simple messages, generate checklists
-- Transform text into markdown, task tracking
-- File maintenance, daily log generation
+**Use:** Gemini Flash
+- Summaries, formatting, reminders, task tracking, lightweight file ops
 
-### 3. Research & Synthesis
-**Use:** Sonnet
-- Multi-source research requiring cross-referencing
-- Industry analysis, company research
-- Job search research with competitive analysis
-- TMT sector analysis for Dialectica
+### 3. Research, AI Brief, and Multi-step Work
+**Use:** Gemini Pro
+- Multi-source synthesis
+- AI Daily Brief ranking and drafting
+- Code generation and structured technical analysis
 
-### 4. Complex Reasoning / High-Stakes
-**Use:** Sonnet (or Opus if explicitly requested)
-- Strategic planning, architecture decisions
-- Important client-facing drafts
-- Ambiguous debugging / root cause analysis
-- Decisions affecting money, security, or reputation
+### 4. Production-grade / "Think harder"
+**Use:** Sonnet 4.6
+- User explicitly requests deeper reasoning
+- Gemini Pro output quality is insufficient for production decisions
 
-### 5. Web Search
-**Use:** Search endpoint + Haiku for routine, Sonnet for complex
-- Prefer official docs / primary sources
-- Save reusable findings to docs/research/ with date and source
-- Do NOT repeatedly search the same topic if a recent local doc exists
+### 5. Manual High-Cost Escalation
+**Use:** Opus 4.6 (manual only)
+- Explicit `/model opus` trigger only
+- Confirm before switching and downgrade immediately after completion
 
-### 6. Deep Research (Explicit Only)
-**Trigger:** Only on explicit user request ("deep research", "investigate thoroughly")
-- Save to docs/research/ with date + source notes
-- Provide concise TL;DR + action items
-- Do NOT run automatically in heartbeat or cron
-- Do NOT run unless user explicitly approves cost
+## Cross-Provider Fallback Chain
+1. `google/gemini-2.5-flash` (primary)
+2. `anthropic/claude-haiku-4-5` (cross-provider fallback)
+3. `anthropic/claude-sonnet-4-5` (escalation fallback)
+4. `anthropic/claude-opus-4-6` (manual only)
+
+## Image Routing
+1. `google/gemini-2.5-pro` (image primary)
+2. `google/gemini-2.5-flash` (image fallback)
+3. Alias `nano-banana-pro` maps to `google/gemini-2.5-pro`
 
 ## Escalation Logic
-1. Start with Haiku
-2. Escalate to Sonnet if:
-   - Result quality is inadequate on first pass
-   - Task affects money, security, or reputation
-   - Ambiguity remains after initial attempt
-   - User explicitly asks for best-quality output
-3. Use Opus only when user explicitly requests
-4. Auto-downgrade back to Haiku after complex task completes
+1. Start with Flash.
+2. Escalate to Pro when task complexity requires stronger synthesis/reasoning.
+3. Escalate to Sonnet 4.6 when quality/reliability remains insufficient or user says "think harder".
+4. Never auto-escalate to Opus.
+5. Downgrade after the complex step completes.
 
 ## Cost Controls
-1. Heartbeat: always Haiku
-2. Cron jobs: always Haiku unless complexity demands Sonnet
-3. Web search: only when needed, save reusable results
-4. Deep research: never automatic — explicit trigger only
-5. Compact/summarize old context periodically (safeguard compaction)
-6. Avoid Sonnet/Opus for repetitive tasks
-7. Daily budget ceiling: <$5 (alert at $3)
+1. Keep heartbeat and routine commands on Flash.
+2. Use Pro only for research/brief/code-heavy steps.
+3. Reserve Sonnet for quality-critical steps.
+4. Use Opus only on explicit command.
+5. Daily budget target: `<$5`.

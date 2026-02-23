@@ -3,7 +3,7 @@ name: ai-daily-brief-morning
 description: Compatibility alias for AI Daily Brief morning mode
 triggers:
   - "/ai_daily_brief_morning"
-model: sonnet
+model: google/gemini-2.5-pro
 cost_tier: standard
 ---
 

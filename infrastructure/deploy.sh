@@ -7,7 +7,7 @@ OPENCLAW_DIR="/root/openclaw"
 SENTINEL_DIR="/opt/sentinel"
 OPENCLAW_CONFIG="/root/.openclaw"
 OPENCLAW_REPO="https://github.com/openclaw/openclaw.git"
-OPENCLAW_REF="${OPENCLAW_REF:-58f7b7638a997ebb7da3a4877e6c64c40bc20e7e}"
+OPENCLAW_REF="${OPENCLAW_REF:-v2026.2.22}"
 PROJECT_EXPECTED_REF="${PROJECT_EXPECTED_REF:-}"
 
 hash_file() {

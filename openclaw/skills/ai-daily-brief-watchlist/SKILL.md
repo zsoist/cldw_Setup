@@ -3,7 +3,7 @@ name: ai-daily-brief-watchlist
 description: Compatibility alias for AI Daily Brief watchlist mode
 triggers:
   - "/ai_daily_brief_watchlist"
-model: sonnet
+model: google/gemini-2.5-pro
 cost_tier: standard
 ---
 

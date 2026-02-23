@@ -3,7 +3,7 @@ name: ai-daily-brief-status
 description: Compatibility alias for AI Daily Brief status mode
 triggers:
   - "/ai_daily_brief_status"
-model: haiku
+model: google/gemini-2.5-flash
 cost_tier: standard
 ---
 

@@ -1,6 +1,7 @@
 """Tests for Telegram handler."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+pytest.importorskip("telegram")
 from telegram import Update, User, Message, Chat
 
 from config import SentinelConfig
@@ -13,6 +14,7 @@ def config():
     return SentinelConfig(
         telegram_token="test-token",
         allowed_user_ids=[12345],
+        provider="anthropic",
         anthropic_api_key="test-key",
         model="claude-haiku-4-5",
     )
@@ -24,6 +26,7 @@ def mock_agent():
         config = SentinelConfig(
             telegram_token="test-token",
             allowed_user_ids=[12345],
+            provider="anthropic",
             anthropic_api_key="test-key",
         )
         agent = SentinelAgent(config)
@@ -122,6 +125,7 @@ class TestConfigValidation:
         config = SentinelConfig(
             telegram_token="",
             allowed_user_ids=[12345],
+            provider="anthropic",
             anthropic_api_key="test-key",
         )
         errors = config.validate()
@@ -131,15 +135,37 @@ class TestConfigValidation:
         config = SentinelConfig(
             telegram_token="test-token",
             allowed_user_ids=[12345],
+            provider="anthropic",
             anthropic_api_key="",
         )
         errors = config.validate()
         assert any("ANTHROPIC_API_KEY" in e for e in errors)
 
+    def test_missing_google_api_key_for_google_provider(self):
+        config = SentinelConfig(
+            telegram_token="test-token",
+            allowed_user_ids=[12345],
+            provider="google",
+            google_api_key="",
+        )
+        errors = config.validate()
+        assert any("GEMINI_API_KEY" in e for e in errors)
+
+    def test_google_provider_accepts_gemini_key(self):
+        config = SentinelConfig(
+            telegram_token="test-token",
+            allowed_user_ids=[12345],
+            provider="google",
+            google_api_key="test-google-key",
+        )
+        errors = config.validate()
+        assert not any("GEMINI_API_KEY" in e for e in errors)
+
     def test_allowed_users_parses_inline_comments(self, monkeypatch):
         monkeypatch.setenv("SENTINEL_ALLOWED_USERS", "12345 # me, 67890 # backup")
         config = SentinelConfig(
             telegram_token="test-token",
+            provider="anthropic",
             anthropic_api_key="test-key",
         )
         assert config.allowed_user_ids == [12345, 67890]
@@ -148,6 +174,7 @@ class TestConfigValidation:
         monkeypatch.setenv("SENTINEL_ALLOWED_USERS", "12345, abc, , 67890, -10, 9000x")
         config = SentinelConfig(
             telegram_token="test-token",
+            provider="anthropic",
             anthropic_api_key="test-key",
         )
         assert config.allowed_user_ids == [12345, 67890]
@@ -156,6 +183,7 @@ class TestConfigValidation:
         monkeypatch.setenv("SENTINEL_ALLOWED_USERS", "12345 # owner, 67890 # backup, # trailing")
         config = SentinelConfig(
             telegram_token="test-token",
+            provider="anthropic",
             anthropic_api_key="test-key",
         )
         assert config.allowed_user_ids == [12345, 67890]
@@ -164,6 +192,7 @@ class TestConfigValidation:
         monkeypatch.setenv("SENTINEL_TELEGRAM_TOKEN", "123:abc # bot token")
         config = SentinelConfig(
             allowed_user_ids=[12345],
+            provider="anthropic",
             anthropic_api_key="test-key",
         )
         assert config.telegram_token == "123:abc"
@@ -172,6 +201,7 @@ class TestConfigValidation:
         config = SentinelConfig(
             telegram_token="test-token",
             allowed_user_ids=[],
+            provider="anthropic",
             anthropic_api_key="test-key",
         )
         errors = config.validate()

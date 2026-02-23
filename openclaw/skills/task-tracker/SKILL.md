@@ -8,7 +8,7 @@ triggers:
   - "todo"
   - "priorities"
   - "done"
-model: haiku
+model: google/gemini-2.5-flash
 cost_tier: cheap
 ---
 
@@ -34,7 +34,7 @@ Task management agent that maintains Daniel's to-do list and sends reminders.
 - `"priorities"` → tasks sorted by priority (high/medium/low) with due dates
 
 ## Constraints
-- Use Haiku — simple file operations only
+- Use Gemini Flash — simple file operations only
 - Auto-assign priority based on context: work > academic > personal
 - Warn if a task is overdue (highlight in output)
 - Include task count in daily briefing data

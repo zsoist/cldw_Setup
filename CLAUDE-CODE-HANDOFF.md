@@ -10,7 +10,55 @@
 
 ## Current State
 
-`main` now includes the 2026-02-22 hardening pass plus the 2026-02-23 AI Daily Brief channel-command and quality improvements.
+`main` now includes the 2026-02-22 hardening pass plus the 2026-02-23 AI Daily Brief channel-command/quality improvements and the 2026-02-23 Gemini integration pass.
+
+Precedence rule: if historical notes below conflict, treat the **Latest pass (Gemini integration + cross-provider fallback)** as authoritative.
+
+### Latest pass (2026-02-23, Gemini integration + cross-provider fallback)
+
+- OpenClaw version pin updated to latest stable tag:
+  - `OPENCLAW_REF` defaults in `infrastructure/env.template`, `infrastructure/docker-compose.yml`, `infrastructure/Dockerfile`, and `infrastructure/deploy.sh` now point to `v2026.2.22`.
+- `infrastructure/env.template`
+  - added `GEMINI_API_KEY` and `SENTINEL_PROVIDER` placeholders.
+- `infrastructure/docker-compose.yml`
+  - now injects `GEMINI_API_KEY` into `openclaw-gateway` runtime env.
+- `infrastructure/sync-sentinel-env.sh`
+  - now syncs `SENTINEL_PROVIDER` and `GEMINI_API_KEY` into `/etc/sentinel/sentinel.env`.
+- `openclaw/openclaw-config.json`
+  - model routing updated to:
+    - primary: `google/gemini-2.5-flash`
+    - fallbacks: `anthropic/claude-haiku-4-5`, `anthropic/claude-sonnet-4-5`
+  - image routing + alias:
+    - image primary: `google/gemini-2.5-pro`
+    - image fallback: `google/gemini-2.5-flash`
+    - alias: `nano-banana-pro -> google/gemini-2.5-pro`
+- `openclaw/config/AGENTS.md`
+  - 4-tier routing policy now documents:
+    - default: Gemini Flash
+    - standard: Gemini Pro
+    - premium: Sonnet 4.6
+    - manual: Opus 4.6
+  - fallback chain updated to cross-provider order.
+- `openclaw/config/SOUL.md`
+  - added model escalation policy (Flash -> Pro -> Sonnet; Opus manual-only).
+  - added retry policy (max 1 retry/step, 2/task, no unchanged retries).
+- `openclaw/config/TOOLS.md`
+  - added budget guidance (`$0.25` soft cap/task, `$0.75` hard cap/task, `<$5/day` target).
+- Skills model overrides:
+  - now Flash: `daily-briefing`, `task-tracker`, `ai-daily-brief-status`
+  - now Pro: `ai-daily-brief`, `ai-daily-brief-morning`, `ai-daily-brief-evening`, `ai-daily-brief-top5`, `ai-daily-brief-builder`, `ai-daily-brief-watchlist`, `research-assistant`
+  - `ai-daily-brief` status block now reports Gemini Flash/Pro + Sonnet/Opus hierarchy.
+- Docs updated:
+  - `docs/setup/model-routing-policy.md` rewritten for Gemini-first tiers and fallback chain.
+  - `docs/COST-MANAGEMENT.md` target updated to `$6-15` LLM spend (`$14-23` total monthly).
+  - `docs/DEPLOYMENT.md` now requires `GEMINI_API_KEY` in secrets setup.
+  - `docs/TROUBLESHOOTING.md` now includes Gemini key/fallback/Claude-only checks.
+- Sentinel provider support:
+  - added Google provider option (`SENTINEL_PROVIDER=google`) with Anthropic default.
+  - added Gemini API key validation path.
+  - implemented provider abstraction in `sentinel/sentinel.py` for Anthropic + Gemini function-calling loops.
+  - added Google function declaration schema in `sentinel/tools.py`.
+  - updated tests/fixtures for dual-provider config and mocks.
 
 ### Latest pass (2026-02-23, Channel commands + brief quality improvements)
 

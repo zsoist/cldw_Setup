@@ -3,7 +3,7 @@ name: ai-daily-brief-top5
 description: Compatibility alias for AI Daily Brief top5 mode
 triggers:
   - "/ai_daily_brief_top5"
-model: sonnet
+model: google/gemini-2.5-pro
 cost_tier: standard
 ---
 

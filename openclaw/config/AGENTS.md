@@ -11,7 +11,7 @@
 - **Do NOT use for:** creative writing, code implementation, task management
 - **Input format:** topic + scope + constraints + source preferences
 - **Output format:** summary → key findings → sources → implications → confidence level
-- **Cost tier:** standard (Sonnet)
+- **Cost tier:** standard (Gemini Pro, escalate to Sonnet)
 
 ### Chief of Staff
 - **Role:** Daily operations — briefings, task tracking, scheduling, follow-ups
@@ -20,7 +20,7 @@
 - **Do NOT use for:** deep research, code generation, complex analysis
 - **Input format:** command or time-triggered event
 - **Output format:** structured bullets, checklists, or briefing sections
-- **Cost tier:** cheap (Haiku)
+- **Cost tier:** cheap (Flash)
 
 ### AI Brief Editor
 - **Role:** Curate AI news briefings with source-grounded ranking and deduplication (single scheduled run at 07:00 COT; all other modes on-demand)
@@ -39,7 +39,7 @@
 - **Output format:** Full mode: Executive Snapshot → Top Stories (with YYYY-MM-DD date + technical details) → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
 - **Provider preference:** use Brave LLM Context (`/res/v1/llm/context`) for grounding with state-configured token budgets before generic web search fallback
 - **Delivery routing:** read `/home/node/.openclaw/workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat
-- **Cost tier:** standard (Sonnet); `feedback`/`status`/`history`/`diff`/`help` modes use Haiku
+- **Cost tier:** standard (Gemini Pro); `feedback`/`status`/`history`/`diff`/`help` modes use Flash
 
 ### Command Namespace Safety
 - `/ai_daily_brief` is the canonical AI brief command.
@@ -55,7 +55,7 @@
 - **Do NOT use for:** general research unrelated to career, task management
 - **Input format:** search criteria, application status updates, interview prep requests
 - **Output format:** ranked listings with links, application tracker updates, prep notes
-- **Cost tier:** standard (Sonnet)
+- **Cost tier:** standard (Gemini Pro, escalate to Sonnet)
 
 ### Academic Assistant
 - **Role:** Support ML coursework and thesis preparation
@@ -64,41 +64,44 @@
 - **Do NOT use for:** writing assignments for submission, unrelated research
 - **Input format:** topic or problem + course context
 - **Output format:** explanation → worked examples → key takeaways → further reading
-- **Cost tier:** standard (Sonnet), escalate to Opus for complex proofs or architecture
+- **Cost tier:** standard (Gemini Pro, escalate to Sonnet)
 
 ---
 
 ## Model Routing Policy
 
-### Default: Claude Haiku 4.5 (anthropic/claude-haiku-4-5)
-- General chat, Q&A, simple file operations, formatting, reminders, heartbeat
+### Default: Gemini 2.5 Flash (google/gemini-2.5-flash)
+- General chat, Q&A, formatting, reminders, heartbeat
 - Chief of Staff tasks (briefings, task tracking)
 - Max tokens per response: 2048
 
-### Escalation: Claude Sonnet 4.5 (anthropic/claude-sonnet-4-5)
+### Standard escalation: Gemini 2.5 Pro (google/gemini-2.5-pro)
 - Research synthesis and structured reports
-- Code generation, skill creation, multi-step tool use
-- Technical analysis and writing quality
-- Job search analysis
-- Academic explanations
-- AI Daily Brief clustering/ranking/synthesis
-- **Downgrade back to Haiku once the complex step is complete**
+- AI brief synthesis/ranking and multi-step tool work
+- Code generation and higher-quality technical analysis
+- Job search and academic analysis requiring deeper reasoning
+- **Downgrade back to Flash once the complex step is complete**
+
+### Premium escalation: Claude Sonnet 4.6 (anthropic/claude-sonnet-4-6)
+- "Think harder" requests and production-grade code
+- Nuanced tradeoff analysis when Gemini Pro quality is insufficient
+- **Downgrade back to Gemini Pro/Flash after the complex step is complete**
 
 ### Manual only: Claude Opus 4.6 (anthropic/claude-opus-4-6)
-- Architecture decisions, complex research synthesis
-- Multi-step debugging, ambiguous high-stakes reasoning
-- Triggered via `/model opus` — always confirm before switching
+- Explicit `/model opus` trigger only
+- Confirm before switching
 - **Downgrade immediately after the complex task finishes**
 
 ### Fallback chain
-1. anthropic/claude-haiku-4-5 (primary)
-2. anthropic/claude-sonnet-4-5 (escalation)
-3. anthropic/claude-opus-4-6 (manual only)
+1. google/gemini-2.5-flash (primary)
+2. anthropic/claude-haiku-4-5 (first fallback, cross-provider)
+3. anthropic/claude-sonnet-4-5 (escalation fallback)
+4. anthropic/claude-opus-4-6 (manual only)
 
 ## Token Guardrails
 - Compaction mode: safeguard
 - Max concurrent tasks: 4
 - Max concurrent subagents: 4
-- Heartbeat interval: 55 minutes (aligns with Anthropic 60-min cache TTL)
+- Heartbeat interval: 55 minutes (cache-friendly interval for routine runs)
 - Max tool calls per task: 10
 - Max retries on failure: 2

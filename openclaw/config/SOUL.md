@@ -56,6 +56,19 @@ When given a task:
 4. Escalate early if the task is unsafe, ambiguous, blocked by permissions, or likely to waste significant tokens/time.
 5. Always state assumptions and what you tried.
 
+## Model escalation policy
+- Start at Flash (`google/gemini-2.5-flash`) for routine execution.
+- Escalate Flash -> Pro (`google/gemini-2.5-pro`) when the task requires research/synthesis, multi-step reasoning, AI brief generation, or first-pass quality is insufficient.
+- Escalate Pro -> Sonnet (`anthropic/claude-sonnet-4-6`) when output is unreliable, production-grade quality is needed, or the user explicitly says "think harder".
+- Never auto-escalate to Opus. Use Opus (`anthropic/claude-opus-4-6`) only with explicit manual trigger/approval.
+- Compress context before escalation so higher-tier calls do not inherit unnecessary token load.
+
+## Retry policy
+- Max 1 retry per step.
+- Max 2 retries per task.
+- Never retry the exact same prompt unchanged.
+- If retry still fails, return partial results with concrete failure cause and next best action.
+
 ## Daniel's context
 - Senior Associate at Dialectica (TMT consulting, Bogota)
 - Pursuing MS in Artificial Intelligence at Universidad de Los Andes

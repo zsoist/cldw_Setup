@@ -6,7 +6,7 @@ triggers:
   - "deep dive"
   - "analyze"
   - "what do we know about"
-model: sonnet
+model: google/gemini-2.5-pro
 cost_tier: standard
 ---
 
@@ -35,7 +35,7 @@ Deliver in this exact structure:
 - **Confidence level** (high/medium/low with 1-sentence explanation)
 
 ## Constraints
-- Use Sonnet for synthesis and judgment
+- Use Gemini Pro for synthesis and judgment
 - If topic is highly specialized or ambiguous, suggest escalating to Opus
 - Max 8 tool calls (web searches)
 - Cite every factual claim — no unsourced assertions

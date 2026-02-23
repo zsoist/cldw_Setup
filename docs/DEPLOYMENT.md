@@ -7,6 +7,7 @@ Step-by-step guide for deploying OpenClaw + Sentinel on a Hetzner CPX22 VPS.
 - Hetzner Cloud account
 - SSH key pair generated (`ssh-keygen -t ed25519`)
 - Anthropic API key from console.anthropic.com
+- Gemini API key from Google AI Studio / Google Cloud
 - Brave Search API key from https://api.search.brave.com
 - Two Telegram bots created via @BotFather
 - Your Telegram user ID (get from @userinfobot)
@@ -65,7 +66,7 @@ chmod +x infrastructure/deploy.sh
 ```
 
 This installs Docker, clones OpenClaw, sets up Sentinel's Python venv, and builds the Docker image.
-By default it pins OpenClaw to the commit configured in `OPENCLAW_REF` (see `.env`).
+By default it pins OpenClaw to the ref configured in `OPENCLAW_REF` (default in this repo: `v2026.2.22`).
 
 ## Step 5: Configure secrets
 
@@ -77,6 +78,7 @@ Fill in all placeholder values:
 - `OPENCLAW_GATEWAY_TOKEN` — strong random secret from your preferred secret manager/process
 - `GOG_KEYRING_PASSWORD` — strong random secret from your preferred secret manager/process
 - `ANTHROPIC_API_KEY` — from console.anthropic.com
+- `GEMINI_API_KEY` — from Google AI Studio / Google Cloud (Gemini default routing)
 - `OPENCLAW_TELEGRAM_TOKEN` — from @BotFather (assistant bot)
 - `SENTINEL_TELEGRAM_TOKEN` — from @BotFather (sysadmin bot)
 - `SENTINEL_ALLOWED_USERS` — your Telegram user ID
@@ -197,7 +199,7 @@ Important:
 
 ## Step 8: Post-deployment
 
-1. Set Anthropic spending limit to $25/month
+1. Set provider spending limits (Gemini primary budget, Anthropic fallback budget)
 2. Set up backup cron:
    ```bash
    crontab -e

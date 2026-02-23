@@ -111,6 +111,19 @@ TOOLS = [
 ]
 
 
+def _to_google_function_declaration(tool: dict[str, Any]) -> dict[str, Any]:
+    """Convert Anthropic tool schema to Gemini function declaration format."""
+    return {
+        "name": tool["name"],
+        "description": tool["description"],
+        "parameters": tool["input_schema"],
+    }
+
+
+GOOGLE_FUNCTION_DECLARATIONS = [_to_google_function_declaration(tool) for tool in TOOLS]
+GOOGLE_TOOLS = [{"function_declarations": GOOGLE_FUNCTION_DECLARATIONS}]
+
+
 # --- COMMAND WHITELIST ---
 
 BLOCKED_PATTERNS = [

@@ -3,7 +3,7 @@ name: ai-daily-brief-builder
 description: Compatibility alias for AI Daily Brief builder mode
 triggers:
   - "/ai_daily_brief_builder"
-model: sonnet
+model: google/gemini-2.5-pro
 cost_tier: standard
 ---
 

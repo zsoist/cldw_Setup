@@ -1,7 +1,6 @@
 """Sentinel: Sysadmin bot for OpenClaw VPS management.
 
-Uses Anthropic SDK with tool_use for infrastructure management.
-Accessed via Telegram. Restricted to authorized users only.
+Supports Anthropic and Google Gemini providers with the same tool-execution loop.
 """
 
 from __future__ import annotations
@@ -16,10 +15,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from anthropic import Anthropic
+try:
+    from anthropic import Anthropic
+except ImportError:  # pragma: no cover - dependency may be unavailable in local test envs
+    Anthropic = None
 
 from config import SentinelConfig
-from tools import TOOLS, execute_tool
+from tools import GOOGLE_TOOLS, TOOLS, execute_tool
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,11 +57,26 @@ The VPS runs:
 
 
 class SentinelAgent:
-    """Anthropic-powered sysadmin agent with tool use."""
+    """Provider-backed sysadmin agent with tool use."""
 
     def __init__(self, config: SentinelConfig):
         self.config = config
-        self.client = Anthropic(api_key=config.anthropic_api_key)
+        self.provider = config.provider
+
+        self.client: Any
+        self.google_module: Any | None = None
+        if self.provider == "anthropic":
+            if Anthropic is None:
+                raise RuntimeError(
+                    "SENTINEL_PROVIDER=anthropic requires the anthropic package. "
+                    "Install dependencies from sentinel/requirements.txt"
+                )
+            self.client = Anthropic(api_key=config.anthropic_api_key)
+        elif self.provider == "google":
+            self.google_module, self.client = self._init_google_client()
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
+
         self.conversations: dict[int, list[dict[str, Any]]] = {}
         self._last_activity: dict[int, float] = {}
         self._request_windows: dict[int, deque[float]] = {}
@@ -69,6 +86,46 @@ class SentinelAgent:
         self._audit_prev_hash = ""
         self._prepare_audit_log()
         self._configure_file_logging()
+
+    @staticmethod
+    def _normalize_google_model_name(raw_model: str) -> str:
+        """Normalize aliases and provider-prefixed model ids for Gemini calls."""
+        model = (raw_model or "").strip()
+        alias_map = {
+            "flash": "gemini-2.5-flash",
+            "gemini-flash": "gemini-2.5-flash",
+            "gemini-2.5-flash": "gemini-2.5-flash",
+            "gemini-pro": "gemini-2.5-pro",
+            "pro": "gemini-2.5-pro",
+            "gemini-2.5-pro": "gemini-2.5-pro",
+        }
+        if model in alias_map:
+            return alias_map[model]
+        if model.startswith("google/"):
+            return model.split("/", 1)[1]
+        if "haiku" in model:
+            return "gemini-2.5-flash"
+        if "sonnet" in model or "opus" in model:
+            return "gemini-2.5-pro"
+        return model or "gemini-2.5-flash"
+
+    def _init_google_client(self) -> tuple[Any, Any]:
+        """Initialize Gemini client lazily so Anthropic-only environments still run."""
+        try:
+            import google.generativeai as genai
+        except ImportError as exc:
+            raise RuntimeError(
+                "SENTINEL_PROVIDER=google requires google-generativeai. "
+                "Install dependencies from sentinel/requirements.txt"
+            ) from exc
+
+        genai.configure(api_key=self.config.google_api_key)
+        model_name = self._normalize_google_model_name(self.config.model)
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=SYSTEM_PROMPT,
+        )
+        return genai, model
 
     def _configure_file_logging(self) -> None:
         """Persist operational logs to disk when writable."""
@@ -196,44 +253,97 @@ class SentinelAgent:
         }
         return json.dumps(truncated, ensure_ascii=False), True
 
-    def process_message(self, user_id: int, user_message: str) -> str:
-        """Process a user message through Claude with tool use.
+    @staticmethod
+    def _coerce_mapping(value: Any) -> dict[str, Any]:
+        """Best-effort conversion of SDK map-like objects to plain dicts."""
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if hasattr(value, "to_dict"):
+            converted = value.to_dict()
+            if isinstance(converted, dict):
+                return converted
+        if hasattr(value, "items"):
+            try:
+                return dict(value.items())
+            except Exception:  # pragma: no cover - defensive for SDK internals
+                pass
+        if isinstance(value, (str, bytes, int, float, bool)):
+            return {"value": value}
+        try:
+            converted = json.loads(json.dumps(value))
+            return converted if isinstance(converted, dict) else {"value": converted}
+        except Exception:  # pragma: no cover - defensive for SDK internals
+            return {"value": str(value)}
 
-        Implements the agentic loop: send message -> get tool_use -> execute -> feed back -> repeat.
-        """
-        allowed, retry_after = self._enforce_rate_limit(user_id)
-        if not allowed:
-            self._append_audit_event(
-                user_id,
-                "rate_limited",
-                {"retry_after_seconds": retry_after},
-            )
-            return (
-                "Rate limit reached. "
-                f"Please wait about {retry_after}s before sending another request."
-            )
+    @staticmethod
+    def _truncate_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep the latest conversation window to control token usage."""
+        if len(history) <= 20:
+            return history
+        return history[-20:]
 
-        history = self._prepare_history(user_id)
-        history.append({"role": "user", "content": user_message})
-        self._append_audit_event(
-            user_id,
-            "user_message",
-            {"chars": len(user_message), "preview": user_message[:200]},
+    def _call_anthropic(self, history: list[dict[str, Any]]) -> Any:
+        return self.client.messages.create(
+            model=self.config.model,
+            max_tokens=self.config.max_tokens,
+            system=SYSTEM_PROMPT,
+            tools=TOOLS,
+            messages=history,
         )
 
-        # Trim history to last 10 exchanges (20 messages) to control token usage
-        if len(history) > 20:
-            history = history[-20:]
-            self.conversations[user_id] = history
+    def _call_google(self, history: list[dict[str, Any]]) -> Any:
+        return self.client.generate_content(
+            history,
+            tools=GOOGLE_TOOLS,
+            generation_config={"max_output_tokens": self.config.max_tokens},
+        )
 
+    def _extract_google_response(
+        self,
+        response: Any,
+    ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+        """Extract text and function-calls from a Gemini response."""
+        text_chunks: list[str] = []
+        tool_calls: list[dict[str, Any]] = []
+        assistant_parts: list[dict[str, Any]] = []
+
+        candidates = getattr(response, "candidates", None) or []
+        if candidates:
+            content = getattr(candidates[0], "content", None)
+            role = getattr(content, "role", "model") if content is not None else "model"
+            parts = getattr(content, "parts", None) or []
+        else:
+            role = "model"
+            parts = []
+
+        for part in parts:
+            function_call = getattr(part, "function_call", None)
+            if function_call is not None:
+                name = getattr(function_call, "name", None)
+                args_raw = getattr(function_call, "args", None)
+                args = self._coerce_mapping(args_raw)
+                if name:
+                    tool_calls.append({"name": name, "input": args})
+                    assistant_parts.append({"function_call": {"name": name, "args": args}})
+                continue
+
+            text = getattr(part, "text", None)
+            if text:
+                text_chunks.append(text)
+                assistant_parts.append({"text": text})
+
+        if not assistant_parts:
+            assistant_parts = [{"text": ""}]
+
+        assistant_turn = {"role": role or "model", "parts": assistant_parts}
+        return "".join(text_chunks).strip(), tool_calls, assistant_turn
+
+    def _run_anthropic_loop(self, user_id: int, history: list[dict[str, Any]]) -> str:
+        """Run Anthropic tool-use loop until a final text response is produced."""
         for _ in range(self.config.max_tool_iterations):
-            response = self.client.messages.create(
-                model=self.config.model,
-                max_tokens=self.config.max_tokens,
-                system=SYSTEM_PROMPT,
-                tools=TOOLS,
-                messages=history,
-            )
+            response = self._call_anthropic(history)
 
             if response.stop_reason == "tool_use":
                 assistant_content = response.content
@@ -273,7 +383,7 @@ class SentinelAgent:
                     text_response += block.text
 
             history.append({"role": "assistant", "content": response.content})
-            self.conversations[user_id] = history
+            self.conversations[user_id] = self._truncate_history(history)
             self._append_audit_event(
                 user_id,
                 "assistant_response",
@@ -287,3 +397,95 @@ class SentinelAgent:
             {"limit": self.config.max_tool_iterations},
         )
         return "Reached maximum tool iterations. Something may be stuck. Please try again."
+
+    def _run_google_loop(self, user_id: int, history: list[dict[str, Any]]) -> str:
+        """Run Gemini function-calling loop until a final text response is produced."""
+        for _ in range(self.config.max_tool_iterations):
+            response = self._call_google(history)
+            text_response, tool_calls, assistant_turn = self._extract_google_response(response)
+            history.append(assistant_turn)
+
+            if tool_calls:
+                function_responses = []
+                for call in tool_calls:
+                    tool_name = call["name"]
+                    tool_input = call.get("input", {})
+                    logger.info("Executing tool: %s(%s)", tool_name, json.dumps(tool_input)[:200])
+                    result = execute_tool(tool_name, tool_input)
+                    serialized, truncated = self._serialize_tool_result(result)
+                    self._append_audit_event(
+                        user_id,
+                        "tool_execution",
+                        {
+                            "tool_name": tool_name,
+                            "tool_input": tool_input,
+                            "result_truncated": truncated,
+                            "result_chars": len(serialized),
+                        },
+                    )
+                    function_responses.append(
+                        {
+                            "function_response": {
+                                "name": tool_name,
+                                "response": {"result": serialized},
+                            }
+                        }
+                    )
+
+                history.append({"role": "user", "parts": function_responses})
+                history = self._truncate_history(history)
+                self.conversations[user_id] = history
+                continue
+
+            final_text = text_response or "No response generated."
+            history = self._truncate_history(history)
+            self.conversations[user_id] = history
+            self._append_audit_event(
+                user_id,
+                "assistant_response",
+                {"chars": len(final_text), "preview": final_text[:200]},
+            )
+            return final_text
+
+        self._append_audit_event(
+            user_id,
+            "max_iterations_reached",
+            {"limit": self.config.max_tool_iterations},
+        )
+        return "Reached maximum tool iterations. Something may be stuck. Please try again."
+
+    def process_message(self, user_id: int, user_message: str) -> str:
+        """Process a user message through the configured provider with tool use.
+
+        Implements the agentic loop: send message -> get tool use -> execute -> feed back -> repeat.
+        """
+        allowed, retry_after = self._enforce_rate_limit(user_id)
+        if not allowed:
+            self._append_audit_event(
+                user_id,
+                "rate_limited",
+                {"retry_after_seconds": retry_after},
+            )
+            return (
+                "Rate limit reached. "
+                f"Please wait about {retry_after}s before sending another request."
+            )
+
+        history = self._prepare_history(user_id)
+        if self.provider == "google":
+            history.append({"role": "user", "parts": [{"text": user_message}]})
+        else:
+            history.append({"role": "user", "content": user_message})
+
+        self._append_audit_event(
+            user_id,
+            "user_message",
+            {"chars": len(user_message), "preview": user_message[:200]},
+        )
+
+        history = self._truncate_history(history)
+        self.conversations[user_id] = history
+
+        if self.provider == "google":
+            return self._run_google_loop(user_id, history)
+        return self._run_anthropic_loop(user_id, history)

@@ -6,7 +6,7 @@ triggers:
   - "ai news brief"
   - "/ai_daily_brief"
 schedule: "0 7 * * *"
-model: sonnet
+model: google/gemini-2.5-pro
 cost_tier: standard
 ---
 
@@ -333,22 +333,22 @@ no Technical Details, sources are bare names without URLs.
 - Record user rating (1–5 stars) for the specified run in `feedback[]` in state.
 - Schema: `{ run_id, rating, comment, recorded_at }`
 - Confirm: `Feedback recorded: run <run_id> rated <rating>/5.`
-- Use Haiku model (lightweight state write).
+- Use Gemini Flash model (lightweight state write).
 
 ### `history [n]`
 - Show last N runs from `history[]` in state (default n=5, max 20).
 - Per entry: `run_id | slot | mode | status | started_at | counts | cost_estimate_usd`
-- Use Haiku model.
+- Use Gemini Flash model.
 
 ### `diff`
 - Compare the last two completed runs in `history[]`.
 - Report: new stories (in run N, not N-1), dropped stories, score movements for carried-over stories.
-- Use Haiku model.
+- Use Gemini Flash model.
 
 ### `help`
 - Return the full command reference in Telegram-friendly markdown.
 - Include: all modes, scope args, alias commands, `@BotName` suffix format, channel setup hint.
-- Use Haiku model.
+- Use Gemini Flash model.
 
 ### `status`
 Return:
@@ -364,21 +364,25 @@ Return:
   - token budget for current mode
   - last probe timestamp
 - **System model info (technical):**
-  - Orchestrator: `claude-haiku-4-5` (anthropic/claude-haiku-4-5-20251001)
+  - Orchestrator: `gemini-2.5-flash` (google/gemini-2.5-flash)
     - Architecture: decoder-only transformer, dense attention
-    - Context window: 200K tokens input / 8K output
+    - Context window: provider-managed long context
     - Role: command routing, heartbeat, status, feedback, history, diff, help
-  - Synthesis: `claude-sonnet-4-5` (anthropic/claude-sonnet-4-5)
+  - Synthesis: `gemini-2.5-pro` (google/gemini-2.5-pro)
     - Architecture: decoder-only transformer, dense attention
-    - Context window: 200K tokens input / 8K output
+    - Context window: provider-managed long context
     - Role: AI brief retrieval clustering ranking drafting (morning/evening/top5/builder/watchlist modes)
-  - Escalation: `claude-opus-4-6` (anthropic/claude-opus-4-6)
+  - Escalation: `claude-sonnet-4-6` (anthropic/claude-sonnet-4-6)
     - Architecture: decoder-only transformer, dense attention
     - Context window: 200K tokens input / 8K output
-    - Role: complex analysis, architecture decisions (manual trigger only)
+    - Role: "think harder" production-grade analysis and quality rescue
+  - Manual: `claude-opus-4-6` (anthropic/claude-opus-4-6)
+    - Architecture: decoder-only transformer, dense attention
+    - Context window: 200K tokens input / 8K output
+    - Role: explicit manual-only escalation for highest-complexity tasks
   - Ranking weights: impact=0.28, credibility=0.22, novelty=0.18, relevance=0.14, freshness=0.10, confidence=0.08
   - Brave LLM Context API: `https://api.search.brave.com/res/v1/llm/context`
-  - Prompt cache TTL alignment: heartbeat=55min vs Anthropic cache TTL=60min
+  - Prompt cadence: heartbeat=55min (cache-friendly routine interval)
 - Telegram delivery state (last send path/result)
 - Telegram runtime snapshot when available:
   - `running`

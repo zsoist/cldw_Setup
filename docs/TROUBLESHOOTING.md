@@ -428,11 +428,41 @@ docker exec openclaw-openclaw-gateway-1 sh -lc 'echo ${#BRAVE_API_KEY}'
 
 If smoke test reports `BRAVE_API_KEY appears invalid (len=...)`, the key format itself is wrong (commonly a truncated value like length 4). Replace it before debugging anything else.
 
+### Gemini routing and fallback checks
+
+If the default Gemini path is not working as expected:
+
+```bash
+# Verify key is present in .env (non-empty)
+grep '^GEMINI_API_KEY=' /root/openclaw/.env
+
+# Verify key is injected into container env
+docker exec openclaw-openclaw-gateway-1 sh -lc 'echo ${#GEMINI_API_KEY}'
+
+# Check model/provider traces
+cd /root/openclaw
+docker compose logs --since=120s openclaw-gateway | grep -Ei 'gemini|google|model|fallback|529|overload'
+```
+
+Expected behavior:
+- With `GEMINI_API_KEY` set and valid, routine chat should use `google/gemini-2.5-flash`.
+- If Gemini is unavailable, fallback should proceed to Anthropic (`claude-haiku-4-5`, then Sonnet).
+- If `GEMINI_API_KEY` is unset/invalid, system should continue in Anthropic-only fallback mode.
+
+Claude-only mode (intentional temporary rollback):
+```bash
+cd /root/openclaw
+sed -i '/^GEMINI_API_KEY=/d' .env
+echo 'GEMINI_API_KEY=' >> .env
+/usr/local/sbin/sync-openclaw-config.sh
+docker compose up -d --force-recreate
+```
+
 ### High token usage
-1. Check console.anthropic.com -> Usage for daily breakdown
-2. Verify AGENTS.md has Haiku as default (not Sonnet)
+1. Check provider usage dashboards (Gemini primary + Anthropic fallback) for daily breakdown
+2. Verify AGENTS.md has Gemini Flash as default (not Gemini Pro/Sonnet)
 3. Check if heartbeat is running during silent hours (it shouldn't)
-4. Review conversation logs for unnecessary Sonnet/Opus escalations
+4. Review conversation logs for unnecessary Gemini Pro/Sonnet/Opus escalations
 5. Ensure compaction mode is "safeguard" in openclaw-config.json
 
 ### OpenClaw out of memory (OOM killed)

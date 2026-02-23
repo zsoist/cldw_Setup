@@ -1,7 +1,7 @@
 """Tests for tool definitions and execution."""
 import pytest
 from unittest.mock import patch, MagicMock
-from tools import is_command_allowed, execute_tool, TOOLS
+from tools import GOOGLE_TOOLS, TOOLS, execute_tool, is_command_allowed
 
 
 class TestCommandWhitelist:
@@ -60,6 +60,12 @@ class TestToolDefinitions:
 
     def test_tool_count(self):
         assert len(TOOLS) == 8
+
+    def test_google_function_declarations_exist(self):
+        assert len(GOOGLE_TOOLS) == 1
+        declarations = GOOGLE_TOOLS[0]["function_declarations"]
+        assert len(declarations) == len(TOOLS)
+        assert declarations[0]["name"] == TOOLS[0]["name"]
 
 
 class TestSystemStats:

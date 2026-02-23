@@ -6,7 +6,7 @@ triggers:
   - "daily summary"
   - "start my day"
 schedule: "0 7 * * *"
-model: haiku
+model: google/gemini-2.5-flash
 cost_tier: cheap
 ---
 
@@ -43,7 +43,7 @@ Format: bullet points with links for news items, no prose.
 - Max 5 tool calls
 - Do not duplicate full AI news headlines; delegate to `ai-daily-brief`
 - Do not send if no meaningful content (send: "No major updates. Have a good day.")
-- Use Haiku — this is routine aggregation, not complex reasoning
+- Use Gemini Flash — this is routine aggregation, not complex reasoning
 
 ## Success Criteria
 - All 6 sections present (or explicitly marked N/A)
