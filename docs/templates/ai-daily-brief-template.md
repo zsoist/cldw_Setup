@@ -10,10 +10,17 @@
 - <signal 3>
 
 ## Top Stories
-### 1) <headline with model/product name when known> (score: <0.00>) — <event date>
+### 1) <headline with model/product name when known> (score: <0.00>) — YYYY-MM-DD
 - What happened:
   - <fact bullet>
   - <fact bullet>
+- Technical Details:
+  - Architecture: <e.g., sparse MoE transformer | dense transformer | diffusion | SSM>
+  - Parameters: <count or "not publicly disclosed">
+  - Context: <N tokens>
+  - Key capability delta: <vs prior version or closest competitor>
+  - Benchmarks: <score metric methodology date> (e.g., 82.1% MMLU-Pro 5-shot 2026-02-21)
+  - Training compute: <tier or "not disclosed">
 - Why it matters:
   - <impact bullet>
 - Signal vs Hype:
@@ -21,12 +28,19 @@
 - What to watch next:
   - <watch item>
 - Sources (hyperlinks):
-  - [<source 1>](<url>)
-  - [<source 2>](<url>)
+  - [<Outlet Name>](<https://full-url>)
+  - [<Outlet Name>](<https://full-url>)
 
-### 2) <headline with model/product name when known> (score: <0.00>) — <event date>
+### 2) <headline with model/product name when known> (score: <0.00>) — YYYY-MM-DD
 - What happened:
   - <fact bullet>
+- Technical Details:
+  - Architecture: <type>
+  - Parameters: <count or "not publicly disclosed">
+  - Context: <N tokens>
+  - Key capability delta: <delta>
+  - Benchmarks: <score metric>
+  - Training compute: <tier or "not disclosed">
 - Why it matters:
   - <impact bullet>
 - Signal vs Hype:
@@ -34,11 +48,11 @@
 - What to watch next:
   - <watch item>
 - Sources (hyperlinks):
-  - [<source 1>](<url>)
+  - [<Outlet Name>](<https://full-url>)
 
 ## Quick Hits
-- <short update + source>
-- <short update + source>
+- <short update + [Source](url)>
+- <short update + [Source](url)>
 
 ## Builder / Agent Corner
 - <tooling/API/runtime implication>

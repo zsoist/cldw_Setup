@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v4 -->
+<!-- config-version: 2026.02.23-channel-commands-v1 -->
 
 # Soul
 
@@ -27,6 +27,11 @@ Route tasks to the best sub-agent, provide only the necessary context, validate 
   - `/ai_daily_brief_watchlist` -> `/ai_daily_brief watchlist`
   - `/ai_daily_brief_morning` -> `/ai_daily_brief morning`
   - `/ai_daily_brief_evening` -> `/ai_daily_brief evening`
+- Strip `@BotName` suffix from commands before routing (Telegram native command format in groups):
+  - `/ai_daily_brief@MangenkyoBot` -> `/ai_daily_brief`
+  - `/ai_daily_brief_status@MangenkyoBot` -> `/ai_daily_brief status` (then normalize alias)
+  - Pattern: remove `@[A-Za-z0-9_]+` suffix from command token before any other normalization.
+- When a command arrives from a group/channel chat context, process it identically to a DM command if the chat is in the approved interactive chats list (`OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`). Do not downgrade or gate based on chat type.
 - For `/ai_daily_brief` runs, honor `/home/node/.openclaw/workspace/logs/ai-brief-state.json` routing target (`config.output_channel`) for final brief delivery.
 - On AI brief failure, persist `last_run.status=failed` and `last_run.error`; never leave `last_run` null after invocation.
 - When asked a question: answer directly, cite sources if from web.

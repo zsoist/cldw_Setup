@@ -10,9 +10,76 @@
 
 ## Current State
 
-`main` now includes a full security/ops hardening pass plus AI Daily Brief v4 routing/ops improvements.
+`main` now includes the 2026-02-22 hardening pass plus the 2026-02-23 AI Daily Brief channel-command and quality improvements.
 
-### Latest hotfix (2026-02-22, Telegram AI brief invocation hardening)
+### Latest pass (2026-02-23, Channel commands + brief quality improvements)
+
+Config version marker: `2026.02.23-channel-commands-v1`
+
+#### Channel Command Fix (Item 1)
+- `openclaw/config/CHANNELS.md`
+  - Added 3-layer channel command setup guide (BotFather privacy mode, chat ID discovery, rollout).
+  - Documents `@BotName` suffix format for privacy-mode-ON groups.
+- `openclaw/config/SOUL.md`
+  - Added `@BotName` suffix stripping rule: `/ai_daily_brief@MangenkyoBot` → `/ai_daily_brief`.
+  - Added channel context rule: approved interactive chats treated identically to DM.
+- `openclaw/config/AGENTS.md`
+  - Added all new command modes to AI Brief Editor input format.
+  - Added channel context + `@BotName` stripping note to Command Namespace Safety.
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - Added Channel Context section to Command Contract.
+  - `@BotName` suffix normalization documented as mandatory pre-routing step.
+- `infrastructure/aibrief-smoke-test.sh`
+  - Added check: warns when `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` is empty (channel command invocation disabled).
+- `docs/TROUBLESHOOTING.md`
+  - Added "Channel commands not working" section with 3-layer fix guide, chat ID discovery command, BotFather privacy mode instructions.
+
+#### Date Enforcement (Item 2)
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - Draft step: each story headline MUST include `YYYY-MM-DD` (ISO 8601) event date; `~YYYY-MM-DD (estimated)` allowed when inferred.
+  - Validate step: date gate rejects stories without parseable dates.
+  - Quality Gates: added explicit date gate.
+- `openclaw/skills/ai-daily-brief-top5/SKILL.md`
+  - Mirrored date enforcement rule.
+- `docs/templates/ai-daily-brief-template.md`
+  - Changed `<event date>` placeholder to `YYYY-MM-DD`.
+- `docs/playbooks/ai-daily-brief.md`
+  - Updated quality gates section with date gate.
+
+#### Technical Depth (Item 3)
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - Draft step: mandatory Technical Details subsection per top story (architecture, params, context, capability delta, benchmarks with methodology, compute tier).
+  - Validate step: technical depth gate added.
+  - Status output: System model info block added (Haiku 4.5 / Sonnet 4.5 / Opus 4.6 with architecture + context specs, ranking weights, Brave API endpoint, cache TTL alignment).
+  - Story structure example added (Gemini 2.5 Pro example with full technical details format).
+- `openclaw/skills/ai-daily-brief-top5/SKILL.md`
+  - Added technical one-liner requirement per story.
+- `docs/templates/ai-daily-brief-template.md`
+  - Added Technical Details subsection with all required fields.
+- `docs/playbooks/ai-daily-brief.md`
+  - Updated Output Modes and Quality Gates to require technical depth.
+
+#### New Commands + Improvements (Item 4)
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - Added: `watchlist add/remove`, `feedback`, `history`, `diff`, `help` modes.
+  - Pipeline step 12: story persistence to monthly JSON archive.
+  - Pipeline step 13 (was 12): finalize now writes `cost_estimate`, appends `history[]`, updates `last_probe_at`.
+  - Status output: watchlist topics, feedback summary, cost estimate, interactive chats registered.
+- `openclaw/workspace/logs/ai-brief-state.json`
+  - Schema v3: added `history[]`, `feedback[]`, `cost_estimate` in `last_run`, `last_probe_at` in `providers.brave_llm_context`.
+- `openclaw/config/HEARTBEAT.md`
+  - Task 11: Brave provider health probe every 6h (08:00/14:00/20:00 COT).
+  - State rules: added cost_estimate, history, last_probe_at, story archive writes after each successful run.
+- `openclaw/config/CRON.md`
+  - Added Job 15: Brave Provider Health Probe (every 6h, Haiku, state-only mutation).
+  - Updated Job 14 format note to include YYYY-MM-DD dates and Technical Details.
+- `openclaw/config/AGENTS.md`
+  - Updated AI Brief Editor input format with all new commands and model routing for lightweight modes.
+- `README.md`
+  - Updated AI Daily Brief section with all new commands, state schema v3, story archive, Brave probe, channel setup pointer.
+  - Updated cron table from 14 → 15 jobs.
+
+### Previous pass (2026-02-22, Telegram AI brief invocation hardening)
 - `infrastructure/sync-openclaw-config.sh`
   - now accepts fallback token source `TELEGRAM_BOT_TOKEN` when `OPENCLAW_TELEGRAM_TOKEN` is absent.
   - exports `TELEGRAM_BOT_TOKEN` for runtime parity.
@@ -259,33 +326,50 @@ Marker format:
 
 ## Known Follow-up Items
 
-1. Run full Sentinel test suite in a venv with Telegram dependency installed.
-2. Rotate all exposed secrets immediately if any were ever posted in logs/chat.
-3. Validate real VPS migration path for non-root Sentinel (`sync-sentinel-env.sh` + systemd restart).
-4. Consider adding signed release artifacts if repo integrity is part of threat model.
-5. Monitor AI brief execution quality in Telegram for 24h:
-   - `/ai_daily_brief`
-   - `/ai_daily_brief top5`
-   - `/ai_daily_brief builder`
-   - `/ai_daily_brief status`
-   - confirm that status does not claim pairing/sub-agent blockage unless runtime evidence exists
-6. Validate AI brief channel routing:
-   - set state target with `set-aibrief-output-channel.sh`
-   - ensure OpenClaw bot is channel admin
-   - verify full brief posts to channel and DM gets ACK/status
-7. Validate Brave provider health:
-   - set `BRAVE_API_KEY` in `/root/openclaw/.env`
-   - run `infrastructure/aibrief-smoke-test.sh`
-   - confirm Brave LLM Context probe passes
-8. Validate Telegram ingest runtime:
-   - smoke test must pass `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
-   - smoke test must pass `Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)`
-   - smoke test must pass `Telegram ingest runtime is running`
-   - if smoke test shows `tokenSource=none`, re-run:
-     - `bash /root/openclaw-project/infrastructure/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw-project/openclaw/openclaw-config.json`
-     - then recreate gateway container
-   - if smoke test logs a gateway token mismatch, remove duplicate `OPENCLAW_GATEWAY_TOKEN=` lines from `/root/openclaw/.env` and rerun rollout.
-   - avoid using `openclaw doctor --fix` in rollout flow for AI brief routing
+### From 2026-02-23 pass (channel commands + quality improvements)
+1. **Enable channel commands (VPS runtime):**
+   - Disable BotFather privacy mode OR train users to use `/command@MangenkyoBot` format.
+   - Get supergroup chat ID and set `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` in `.env`.
+   - Run rollout + smoke test: `smoke test must pass "Interactive Telegram chats registered for command invocation"`.
+   - See `openclaw/config/CHANNELS.md` for the complete 3-step guide.
+2. **Test new commands from Telegram after rollout:**
+   - `/ai_daily_brief help` — should return full command reference
+   - `/ai_daily_brief watchlist add "mistral ai"` — confirm state update
+   - `/ai_daily_brief history 3` — confirm last 3 runs shown
+   - `/ai_daily_brief feedback <run_id> 4 good signal-to-noise` — confirm recorded
+   - `/ai_daily_brief diff` — confirm new/dropped story delta reported
+3. **Test channel invocation:**
+   - From registered supergroup: `/ai_daily_brief@MangenkyoBot status` → should return diagnostics
+   - From registered supergroup: `/ai_daily_brief status` (if privacy mode disabled) → should work
+4. **Verify Technical Details in brief output:**
+   - Run `/ai_daily_brief top5 12h` — each story should include Architecture + Context + Benchmarks.
+   - If sources don't expose technical details, `not publicly disclosed` should appear.
+5. **Verify YYYY-MM-DD dates in story headlines:**
+   - Check output of next scheduled run at 07:00 or 19:00 COT.
+   - Any story without a date in the headline is a validation failure — check SKILL.md is loaded in runtime workspace.
+6. **Brave health probe validation:**
+   - After first heartbeat cycle at 08:00 COT: check `providers.brave_llm_context.last_probe_at` in state is non-null.
+7. **Story archive validation:**
+   - After first successful brief run: check `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json` exists.
+8. **Merge state schema v3 into runtime:**
+   - Run `infrastructure/merge-ai-brief-state.sh` to add new fields (`history`, `feedback`, `cost_estimate`) to the live VPS state file without overwriting existing `last_run` / `watchlist` data.
+
+### From 2026-02-22 pass (Telegram invocation hardening)
+9. Run full Sentinel test suite in a venv with Telegram dependency installed.
+10. Rotate all exposed secrets immediately if any were ever posted in logs/chat.
+11. Validate real VPS migration path for non-root Sentinel (`sync-sentinel-env.sh` + systemd restart).
+12. Validate Brave provider health:
+    - set `BRAVE_API_KEY` in `/root/openclaw/.env`
+    - run `infrastructure/aibrief-smoke-test.sh`
+    - confirm Brave LLM Context probe passes
+13. Validate Telegram ingest runtime:
+    - smoke test must pass `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
+    - smoke test must pass `Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)`
+    - smoke test must pass `Telegram ingest runtime is running`
+    - if smoke test shows `tokenSource=none`, re-run:
+      - `bash /root/openclaw-project/infrastructure/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw-project/openclaw/openclaw-config.json`
+      - then recreate gateway container
+    - avoid using `openclaw doctor --fix` in rollout flow for AI brief routing
 
 ---
 

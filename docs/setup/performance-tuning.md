@@ -65,10 +65,10 @@ Heartbeat can batch multiple checks in a single API call and suppress no-op aler
 
 | Approach | API Calls | Cost |
 |----------|-----------|------|
-| 14 separate cron jobs, each making an API call | 14 | High |
+| 15 separate cron jobs, each making an API call | 15 | High |
 | Heartbeat batches checks, reports only actionable items | 1 | Low |
 
-Our 14 cron jobs are designed as heartbeat tasks first. They run within the heartbeat cycle, not as independent API calls, except when isolation is needed.
+Our 15 cron jobs are designed as heartbeat tasks first. They run within the heartbeat cycle, not as independent API calls, except when isolation is needed.
 
 ## 6. Main vs Isolated Cron
 

@@ -13,6 +13,72 @@ docker compose logs openclaw-gateway
 # 3. Docker build failed — rebuild: docker compose build --no-cache
 ```
 
+### Channel commands not working (`@MangenkyoBot /ai_daily_brief status` produces no response)
+
+This is a 3-layer problem. Check each layer in order:
+
+**Layer 1 — Telegram bot privacy mode**
+
+By default, Telegram bots only receive commands addressed by name in group chats. A message like `@MangenkyoBot /ai_daily_brief status` (mention then command) may never be delivered to the bot by Telegram.
+
+Fix option A — Disable privacy mode (recommended for a dedicated supergroup):
+```bash
+# 1. Open Telegram → @BotFather → /setprivacy → select bot → Disable
+# 2. Restart gateway to re-initialize polling:
+cd /root/openclaw && docker compose restart openclaw-gateway
+```
+After this, plain `/ai_daily_brief status` works in the approved supergroup.
+
+Fix option B — Keep privacy mode ON:
+Users must use `/command@BotName` format:
+```
+/ai_daily_brief@MangenkyoBot status
+/ai_daily_brief@MangenkyoBot top5 12h
+```
+The `@BotName` suffix is stripped automatically by the command normalizer before routing.
+
+**Layer 2 — Supergroup chat ID not registered**
+
+The bot ignores group messages unless the chat ID is in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`.
+
+Discover the chat ID:
+```bash
+TG_TOKEN="$(grep '^OPENCLAW_TELEGRAM_TOKEN=' /root/openclaw/.env | tail -n1 | cut -d= -f2-)"
+curl -s "https://api.telegram.org/bot${TG_TOKEN}/getUpdates" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for u in (data.get('result') or []):
+    msg = u.get('message') or u.get('channel_post') or u.get('my_chat_member') or {}
+    chat = msg.get('chat', {})
+    if chat.get('id'):
+        print(f'chat_id={chat[\"id\"]}  type={chat.get(\"type\")}  title={chat.get(\"title\",\"\")}')
+"
+```
+Register it:
+```bash
+cd /root/openclaw
+sed -i '/^OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=/d' .env
+echo 'OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=-1001234567890' >> .env  # replace with real ID
+```
+
+**Layer 3 — Rollout and verify**
+
+```bash
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+Smoke test must pass:
+- `Interactive Telegram chats registered for command invocation`
+- `No active Telegram webhook (polling mode unblocked)`
+- `Telegram ingest runtime is running`
+
+If smoke test passes but channel commands still fail:
+1. Confirm the bot is a member (or admin) of the supergroup.
+2. Send a message in the supergroup first so `getUpdates` picks it up.
+3. Check bot privacy mode via BotFather: `/mybots` → select bot → `Bot Settings` → `Group Privacy`.
+
 ### OpenClaw not responding to Telegram
 ```bash
 # Verify container is running

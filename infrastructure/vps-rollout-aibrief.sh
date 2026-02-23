@@ -8,6 +8,7 @@ OPENCLAW_CFG="${OPENCLAW_CFG:-/root/.openclaw}"
 BRANCH="${BRANCH:-main}"
 WAIT_ATTEMPTS="${WAIT_ATTEMPTS:-18}"
 WAIT_SECONDS="${WAIT_SECONDS:-10}"
+SKIP_GIT="${SKIP_GIT:-0}"
 
 log() {
   printf '[aibrief-rollout] %s\n' "$*"
@@ -21,12 +22,17 @@ require_file() {
   fi
 }
 
-log "Syncing repository to origin/${BRANCH}"
 cd "$PROJECT_DIR"
-git fetch origin
-git checkout "$BRANCH"
-git reset --hard "origin/${BRANCH}"
-CURRENT_REF="$(git rev-parse --short HEAD)"
+if [ "$SKIP_GIT" = "1" ]; then
+  log "SKIP_GIT=1 — skipping git pull, using local working tree"
+  CURRENT_REF="$(git rev-parse --short HEAD)"
+else
+  log "Syncing repository to origin/${BRANCH}"
+  git fetch origin
+  git checkout "$BRANCH"
+  git reset --hard "origin/${BRANCH}"
+  CURRENT_REF="$(git rev-parse --short HEAD)"
+fi
 log "Using project ref: ${CURRENT_REF}"
 
 log "Syncing AI Daily Brief config and skill assets"

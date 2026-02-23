@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v4 -->
+<!-- config-version: 2026.02.23-channel-commands-v1 -->
 
 # Heartbeat Configuration
 
@@ -18,6 +18,7 @@
 8. If first day of month (20:00-20:20): run monthly AI top5 recap for previous month (`ai-daily-brief top5 month <previous-YYYY-MM>`)
 9. If Sunday evening (20:30-21:00): run weekly review
 10. If AI brief repeatedly fails, emit one concise `/ai_daily_brief status` style diagnostic (no spam)
+11. Every 6h (08:00, 14:00, 20:00 COT): probe Brave LLM Context health — update `providers.brave_llm_context.status` and `last_probe_at` in state. Do NOT notify unless status transitions from ok→degraded. No API call if key is absent.
 
 ## Rules
 - Heartbeat should complete in <45 seconds
@@ -38,6 +39,10 @@
   - update slot timestamp
   - append story fingerprints and update flags
   - write output path for traceability
+  - write `last_run.cost_estimate` (input_tokens, output_tokens, model, estimated_usd)
+  - append run summary to `history[]` (cap at 20 entries)
+  - update `providers.brave_llm_context.last_probe_at`
+  - append story metadata to monthly archive `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json`
 
 ## End-of-Day Log (20:00 COT)
 Persist the day's summary to `memory/YYYY-MM-DD.md` with this structure:
