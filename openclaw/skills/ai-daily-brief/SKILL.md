@@ -281,6 +281,41 @@ Example story header format:
 - Each story MUST include a Technical Details line (abbreviated for top5 — one-liner with arch + context + key benchmark).
 - Sources must be clickable Markdown links (not plain outlet names).
 
+#### Top5 Story Format (mandatory structure per story)
+Each top5 story MUST follow this exact structure — do not omit any field:
+```
+### {rank}) {Headline with model/product name} (score: {0.00-1.00}) — {YYYY-MM-DD}
+- What happened:
+  - {fact bullet 1 from sources}
+  - {fact bullet 2 from sources}
+- Technical Details: {architecture} | {context window} | {key benchmark or "not disclosed"}
+- Why it matters: {1-2 sentence strategic significance}
+- Sources: [{Outlet1}](https://url1), [{Outlet2}](https://url2)
+```
+
+#### Top5 Correct vs Incorrect Output Examples
+
+**INCORRECT (real production failure — DO NOT produce this):**
+```
+1. Sam Altman Calls Out "AI Washing" | Feb 22, 2026
+
+• OpenAI CEO warns against blame-shifting
+• Sources: OpenTools, OpenAI official
+```
+Problems: date not ISO 8601, no score, no "What happened"/"Why it matters" structure,
+no Technical Details, sources are bare names without URLs.
+
+**CORRECT (required format):**
+```
+### 1) OpenAI CEO Sam Altman Warns Against "AI Washing" at India AI Summit (score: 0.72) — 2026-02-22
+- What happened:
+  - Sam Altman keynote at India AI Impact Summit criticized companies blaming AI for operational failures
+  - Called for accountability standards separating genuine AI integration from marketing claims
+- Technical Details: not applicable (policy/industry statement, no model release)
+- Why it matters: Signals industry maturity pivot — largest lab CEO publicly distancing from hype cycle
+- Sources: [OpenTools](https://opentools.ai/news/...), [Reuters](https://reuters.com/technology/...)
+```
+
 ### `builder`
 - Builder/agent tooling changes, APIs, evals, infra implications, experiments
 
@@ -411,6 +446,53 @@ These are real failures observed in production. Each one MUST be prevented:
 4. **Missing Technical Details**: Stories presented without architecture/benchmark info.
    - Root cause: Technical depth gate not enforced.
    - Fix: Include the field for every story, even if content is "not yet publicly disclosed."
+
+## Pre-Send Validation Checklist (MANDATORY — execute before delivering ANY top5 output)
+
+Before sending the final top5 output, walk through this checklist line by line.
+If ANY check fails, fix the output before sending. Do NOT send failing output.
+
+```
+CHECK 1 — DATE FORMAT: Does every story headline end with " — YYYY-MM-DD"?
+  ✓ "— 2026-02-22" is valid
+  ✗ "| Feb 22, 2026" is INVALID (wrong format)
+  ✗ "| Feb 2026" is INVALID (no day)
+  ✗ "Feb 16-22, 2026" is INVALID (range, not ISO date — pick the most significant day)
+  → If any story fails: rewrite the headline with ISO 8601 date
+
+CHECK 2 — DATE IN SCOPE: Is every story's event date within scope_start and scope_end?
+  → If any story fails: remove it entirely (do not keep it)
+
+CHECK 3 — SCORE: Does every story headline include "(score: X.XX)"?
+  → If missing: compute and insert the weighted score
+
+CHECK 4 — STRUCTURE: Does every story have ALL of these fields?
+  - "What happened:" with at least 2 fact bullets
+  - "Technical Details:" line (even if "not applicable" or "not disclosed")
+  - "Why it matters:" with 1-2 sentences
+  - "Sources:" with clickable markdown links
+  → If any field is missing: add it
+
+CHECK 5 — SOURCES: Is every source a clickable markdown link [Name](https://url)?
+  ✓ [Reuters](https://reuters.com/technology/...) is valid
+  ✗ "Reuters" alone is INVALID
+  ✗ "Sources: OpenTools, OpenAI official" is INVALID
+  → If any source lacks a URL: find the URL from Brave grounding data, or mark [Outlet](URL not available in grounding)
+
+CHECK 6 — TITLE: Does the title include scope bounds?
+  ✓ "AI Daily Brief — Top 5 | Week of 2026-02-16 to 2026-02-22 (COT)"
+  ✗ "AI Daily Brief — Top 5 Stories (Week Feb 16-22, 2026)" (wrong format)
+  → If wrong: reformat to match the template exactly
+
+CHECK 7 — TECHNICAL DETAILS: Does every story have a Technical Details line?
+  ✓ "Technical Details: Dense transformer | 200K context | 82.1% MMLU-Pro"
+  ✓ "Technical Details: not applicable (policy announcement)"
+  ✓ "Technical Details: not yet publicly disclosed"
+  ✗ (field omitted entirely) is INVALID
+  → If missing: add it
+```
+
+Only send the output after ALL 7 checks pass.
 
 ## Efficiency Constraints
 - Target runtime <90s
