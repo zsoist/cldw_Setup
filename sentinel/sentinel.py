@@ -434,6 +434,7 @@ class SentinelAgent:
         persist_history: bool = True,
     ) -> str:
         """Run Gemini function-calling loop until a final text response is produced."""
+        latest_tool_result = ""
         for _ in range(self.config.max_tool_iterations):
             response = self._call_google(history, client=client)
             text_response, tool_calls, assistant_turn = self._extract_google_response(response)
@@ -447,6 +448,7 @@ class SentinelAgent:
                     logger.info("Executing tool: %s(%s)", tool_name, json.dumps(tool_input)[:200])
                     result = execute_tool(tool_name, tool_input)
                     serialized, truncated = self._serialize_tool_result(result)
+                    latest_tool_result = serialized
                     self._append_audit_event(
                         user_id,
                         "tool_execution",
@@ -472,7 +474,15 @@ class SentinelAgent:
                     self.conversations[user_id] = history
                 continue
 
-            final_text = text_response or "No response generated."
+            if text_response:
+                final_text = text_response
+            elif latest_tool_result:
+                final_text = (
+                    "Tool execution completed; model returned no narrative summary. "
+                    f"Latest tool result: {latest_tool_result[:1200]}"
+                )
+            else:
+                final_text = "No response generated."
             history = self._truncate_history(history)
             if persist_history:
                 self.conversations[user_id] = history
