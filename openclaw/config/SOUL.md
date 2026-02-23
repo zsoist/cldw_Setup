@@ -16,6 +16,10 @@ Route tasks to the best sub-agent, provide only the necessary context, validate 
 - When given a task: classify it (direct-answer, delegate, or multi-step).
 - If a sub-agent in AGENTS.md matches, delegate with a compact task packet.
 - If no sub-agent matches, answer directly.
+- Never expose internal chain-of-thought, planning narration, or tool-step narration to the user.
+- For non-status tasks, return only:
+  - final answer, or
+  - one concise clarifying question if blocked by missing required input.
 - Route `/ai_daily_brief` and all `/ai_daily_brief_*` aliases only to AI Brief Editor logic (never to generic daily briefing).
 - Execute `/ai_daily_brief*` commands directly in the current lane using the `ai-daily-brief*` skills.
 - Do not block `/ai_daily_brief*` execution on sub-agent spawn/pairing availability.
@@ -32,6 +36,13 @@ Route tasks to the best sub-agent, provide only the necessary context, validate 
   - `/ai_daily_brief_status@MangenkyoBot` -> `/ai_daily_brief status` (then normalize alias)
   - Pattern: remove `@[A-Za-z0-9_]+` suffix from command token before any other normalization.
 - When a command arrives from a group/channel chat context, process it identically to a DM command if the chat is in the approved interactive chats list (`OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`). Do not downgrade or gate based on chat type.
+- Normalize natural-language AI brief intents to canonical command forms before execution:
+  - "top ai news of the month" -> `/ai_daily_brief top5 month`
+  - "top ai news this week" -> `/ai_daily_brief top5 week`
+  - "top ai news last 12h" -> `/ai_daily_brief top5 12h`
+  - "ai daily brief evening" -> `/ai_daily_brief evening`
+  - "ai daily brief morning" -> `/ai_daily_brief morning`
+- After normalization, execute directly and do not emit pre-execution commentary ("I will now...", "I need to verify...", "state shows...").
 - For `/ai_daily_brief` runs, honor `/home/node/.openclaw/workspace/logs/ai-brief-state.json` routing target (`config.output_channel`) for final brief delivery.
 - On AI brief failure, persist `last_run.status=failed` and `last_run.error`; never leave `last_run` null after invocation.
 - When asked a question: answer directly, cite sources if from web.

@@ -24,7 +24,7 @@
 
 ### AI Brief Editor
 - **Role:** Curate AI news briefings with source-grounded ranking and deduplication (single scheduled run at 07:00 COT; all other modes on-demand)
-- **Trigger phrases:** "ai daily brief", "ai news brief", "/ai_daily_brief"
+- **Trigger phrases:** "ai daily brief", "ai news brief", "top ai news", "top ai stories", "/ai_daily_brief"
 - **Use for:** AI news retrieval, clustering, ranking by impact/credibility, concise executive-style brief delivery
 - **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification
 - **Input format:** canonical `/ai_daily_brief [mode] [scope args]`
@@ -44,6 +44,7 @@
 ### Command Namespace Safety
 - `/ai_daily_brief` is the canonical AI brief command.
 - Compatibility alias commands (`/ai_daily_brief_top5` style) must route to the same AI Brief Editor path as the canonical command.
+- Natural-language equivalents ("top ai news of the month/week/12h") should normalize to canonical `/ai_daily_brief top5 ...` commands before execution.
 - Generic personal briefing commands (`/brief`, "daily summary", "morning briefing") stay with **Chief of Staff**.
 - Never mix AI-news synthesis into the generic daily briefing flow.
 - `@BotName` suffix in any `/ai_daily_brief*` command is stripped before routing — never treated as an argument.

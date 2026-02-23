@@ -14,6 +14,26 @@
 
 Precedence rule: if historical notes below conflict, treat the **Latest pass (Gemini integration + cross-provider fallback)** as authoritative.
 
+### Latest pass (2026-02-23, AI brief response-discipline + natural-language intent normalization)
+
+- `openclaw/config/SOUL.md`
+  - enforces no internal narration/chain-of-thought in user-visible replies.
+  - adds natural-language AI brief normalization rules:
+    - "top ai news of the month/week/12h" -> canonical `/ai_daily_brief top5 ...`
+    - "ai daily brief evening/morning" -> canonical mode commands.
+  - requires direct execution after normalization (no pre-execution commentary).
+- `openclaw/config/AGENTS.md`
+  - AI Brief trigger phrases expanded with "top ai news"/"top ai stories".
+  - command safety section now explicitly maps natural-language AI brief requests to canonical command forms.
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - adds mandatory response-discipline section:
+    - output-only responses (or one concise clarifying question),
+    - no `Reasoning:`/pipeline narration,
+    - deterministic one-line mode prompt when `/ai_daily_brief` is mode-less,
+    - direct execution for clear natural-language intents.
+- `openclaw/skills/ai-daily-brief-top5/SKILL.md` and `openclaw/skills/ai-daily-brief-evening/SKILL.md`
+  - alias behavior now explicitly forbids internal process narration in user-visible output.
+
 ### Latest pass (2026-02-23, Telegram interactive channel sender-compatibility)
 
 - `infrastructure/sync-openclaw-config.sh`

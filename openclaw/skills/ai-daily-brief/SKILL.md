@@ -4,6 +4,8 @@ description: Produce a source-grounded, stateful AI news briefing for Telegram
 triggers:
   - "ai daily brief"
   - "ai news brief"
+  - "top ai news"
+  - "top ai stories"
   - "/ai_daily_brief"
 schedule: "0 7 * * *"
 model: google/gemini-2.5-pro
@@ -51,6 +53,22 @@ When invoked from a Telegram group with `@BotName` suffix, strip the suffix befo
 
 ## Role
 Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled run is daily at 07:00 COT for previous-day top stories; all other modes are on-demand.
+
+## Response Discipline (mandatory)
+- Output only the final brief/result (or one concise clarifying question if genuinely blocked).
+- Never output process narration such as:
+  - "I will now..."
+  - "I need to verify..."
+  - "state file shows..."
+  - "I am now calculating..."
+- Never include `Reasoning:` sections, chain-of-thought, or internal checklist text in user-visible output.
+- Do not stream pipeline progress unless the user explicitly requests `/ai_daily_brief status`.
+- If user sends plain `/ai_daily_brief` with no mode, ask exactly one concise question:
+  - `Choose mode: morning, evening, top5, builder, watchlist, status, feedback, history, diff, or help.`
+- For natural-language requests, infer mode/scope and execute immediately without asking when intent is clear:
+  - "top ai news of the month" -> `top5 month`
+  - "top ai news this week" -> `top5 week`
+  - "top ai news last 12h" -> `top5 12h`
 
 ## Inputs
 - Local timezone: `America/Bogota`

@@ -14,6 +14,7 @@ Compatibility command shim for users invoking `/ai_daily_brief_top5`.
 
 ## Behavior
 - Force mode `top5` and execute full `ai-daily-brief` behavior immediately.
+- Return only the final top5 output (no internal process narration).
 - Do not ask clarifying questions for mode/slot selection.
 - Accept explicit scope suffixes (`12h`, `week`, `month`, `month YYYY-MM`) and pass through unchanged.
 - Default time scope is current COT week (Monday-Sunday) unless user explicitly requests month scope.
