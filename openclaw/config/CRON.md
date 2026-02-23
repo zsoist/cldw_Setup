@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v4 -->
+<!-- config-version: 2026.02.23-channel-commands-v1 -->
 
 # Cron Job Registry
 
@@ -145,5 +145,14 @@ All scheduled jobs. Each defines: trigger, inputs, action, output, notification 
 - **Output:** `workspace/outputs/summaries/ai-brief-top5-monthly-YYYY-MM.md`
 - **Notify:** Deliver full brief to `config.output_channel`; if invoked inside channel, respond there.
 - **Model:** Sonnet
-- **Format:** Top 5 (month scope in title) | Strategic takeaway | Hyperlinked sources
+- **Format:** Top 5 (month scope in title) | YYYY-MM-DD event dates | Technical Details per story | Strategic takeaway | Hyperlinked sources
 - **Notes:** scheduled trigger equivalent: `/ai_daily_brief top5 month <previous-YYYY-MM>`
+
+### 15. Brave Provider Health Probe
+- **Schedule:** Every 6h during active hours (08:00, 14:00, 20:00 COT)
+- **Reads:** `BRAVE_API_KEY` from env, `providers.brave_llm_context` from state
+- **Action:** Lightweight HEAD/GET probe to Brave LLM Context endpoint; update `providers.brave_llm_context.status` and `last_probe_at` in state
+- **Output:** State file mutation only (no file output)
+- **Notify:** Only when provider status transitions from `ok` → `degraded` (one message, no repeat spam)
+- **Model:** Haiku (lightweight, read-only check)
+- **Notes:** Skip probe when `BRAVE_API_KEY` is absent. Do not run during silent hours (23:00-07:00).

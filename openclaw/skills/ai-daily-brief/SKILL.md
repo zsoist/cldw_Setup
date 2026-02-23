@@ -25,8 +25,14 @@ Optional mode argument (same command):
 - `/ai_daily_brief top5 month`
 - `/ai_daily_brief top5 month YYYY-MM`
 - `/ai_daily_brief builder`
-- `/ai_daily_brief watchlist [topics]`
+- `/ai_daily_brief watchlist`
+- `/ai_daily_brief watchlist add <topic>`
+- `/ai_daily_brief watchlist remove <topic>`
 - `/ai_daily_brief status`
+- `/ai_daily_brief feedback <run_id> <1-5> [comment]`
+- `/ai_daily_brief history [n]`
+- `/ai_daily_brief diff`
+- `/ai_daily_brief help`
 
 Compatibility aliases (accepted):
 - `/ai_daily_brief_morning`
@@ -35,6 +41,13 @@ Compatibility aliases (accepted):
 - `/ai_daily_brief_builder`
 - `/ai_daily_brief_watchlist`
 - `/ai_daily_brief_status`
+
+### Channel Context (Telegram Group/Supergroup)
+When invoked from a Telegram group with `@BotName` suffix, strip the suffix before routing:
+- `/ai_daily_brief@MangenkyoBot status` → `/ai_daily_brief status`
+- `/ai_daily_brief_top5@MangenkyoBot` → `/ai_daily_brief top5` (normalize alias after stripping)
+- Pattern: remove `@[A-Za-z0-9_]+` from the command token before any other normalization. Never treat the suffix as an argument.
+- Commands from approved interactive chats (`OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`) are processed identically to DM commands — no capability or routing restriction applies.
 
 ## Role
 Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimized for Telegram readability and operational decision value.
@@ -131,12 +144,21 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
    - benchmark claims without method context
    - uncorroborated viral/social claims
 7. **Draft**: story-level synthesis with explicit source attribution.
-   - For each top story, include the concrete model/product name in headline or first bullet when available.
-   - If source confirms release but does not disclose model/product name, explicitly say `model name not publicly disclosed`.
+   - **Event date (mandatory):** Each story headline MUST include its precise event date as `YYYY-MM-DD` (ISO 8601). If exact date is unknown from sources, use `~YYYY-MM-DD (estimated)`. Stories without a parseable date are rejected at the validation gate.
+   - **Model/product identifier:** Include the concrete model/product name in the headline or first bullet when available. If source confirms release but does not disclose model/product name, explicitly say `model name not publicly disclosed`.
+   - **Technical details (mandatory for top stories when available):** Include a `Technical Details` subsection with:
+     - Architecture type (e.g., dense transformer, sparse MoE, diffusion, SSM/Mamba, hybrid)
+     - Parameter count or scale tier (if publicly disclosed; mark as `not disclosed` otherwise)
+     - Context window (tokens)
+     - Key capability deltas vs prior version or closest competitor
+     - Benchmark results with methodology context (e.g., `82.1% MMLU-Pro (5-shot, 2026-02-21)`)
+     - Training compute tier or data scale if reported
+   - If no technical details are available from sources, mark `Technical details: not yet publicly disclosed.`
 8. **Validate**:
    - required sections present by mode
    - no duplicate stories in same run
    - each top story has credible source(s)
+   - each top story headline contains a parseable `YYYY-MM-DD` date — reject any without
 9. **Render**: Telegram-safe sections, concise bullets.
    - Every referenced source must be rendered as clickable Markdown link: `[Outlet](https://...)`.
 10. **Deliver**:
@@ -145,10 +167,17 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
    - if command originates in the configured output channel, return full response in that same chat (no DM-only detour).
    - if channel delivery fails, fall back to originating chat and mark failure reason.
 11. **Persist**: run metadata + story fingerprints + suppression state.
-12. **Finalize state (mandatory, last action)**:
+12. **Persist stories** (non-status modes):
+   - Append full story metadata to monthly archive: `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json`
+   - Each entry: `{ run_id, slot, date, headline, score, model_name, architecture, sources, fingerprint }`
+   - This enables trend analysis and thesis research without re-running searches.
+13. **Finalize state (mandatory, last action)**:
    - write `finished_at`
    - write final `status` (`success|partial|failed`)
    - write delivery metadata + `error` field (null on success, explicit string on failure)
+   - write `last_run.cost_estimate`: `{ input_tokens, output_tokens, model, estimated_usd }`
+   - append run summary to `history[]` in state (keep last 20 entries): `{ run_id, slot, mode, status, started_at, finished_at, counts, cost_estimate }`
+   - update `providers.brave_llm_context.last_probe_at` to current timestamp
 
 ## Path Safety Rules (critical)
 - Treat slash commands as commands, never as file paths.
@@ -174,17 +203,35 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 ### Full mode (default, `morning`, `evening`)
 1. Title line with slot + COT timestamp
 2. Executive Snapshot (2-4 bullets)
-3. Ranked Top Stories:
-   - What happened
+3. Ranked Top Stories — per story:
+   - Headline with model/product name + `YYYY-MM-DD` event date + score
+   - What happened (fact bullets)
    - Why it matters
+   - Technical Details (architecture, params, context window, benchmark deltas, compute tier)
    - Signal vs Hype
    - Watch next
-   - Sources
+   - Sources (clickable Markdown links)
 4. Quick Hits
 5. Builder / Agent Corner
 6. Strategic Take
 7. Tomorrow Watchlist
 8. Confidence & Gaps
+
+Example story header format:
+```
+### 1) Google releases Gemini 2.5 Pro (score: 0.95) — 2026-02-21
+- What happened:
+  - Google DeepMind released Gemini 2.5 Pro via Google AI Studio and Vertex AI
+  - 2M token context window; native multimodal (text, image, audio, video, code)
+- Technical Details:
+  - Architecture: Sparse Mixture-of-Experts (MoE) transformer
+  - Parameters: not publicly disclosed
+  - Context: 2,097,152 tokens (2x vs Gemini 2.0 Pro's 1M)
+  - Extended thinking: enabled by default (chain-of-thought reasoning)
+  - Benchmarks: 82.1% MMLU-Pro (5-shot, 2026-02-21); 74.3% GPQA-Diamond
+  - Training compute: not disclosed
+- Why it matters: ...
+```
 
 ### `top5`
 - Title + Top 5 + concise sources + watch-next mini-list
@@ -192,19 +239,48 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
   - `AI Daily Brief — Top 5 | Last 12h through 2026-02-22 19:00 (COT)`
   - `AI Daily Brief — Top 5 | Week of 2026-02-16 to 2026-02-22 (COT)`
   - `AI Daily Brief — Top 5 | Month 2026-02 (COT)`
-- Each story line must include event date and concrete model/product identifier when known.
+- Each story headline MUST include `YYYY-MM-DD` event date and concrete model/product identifier when known.
+- Each story MUST include a Technical Details line (abbreviated for top5 — one-liner with arch + context + key benchmark).
 - Sources must be clickable Markdown links (not plain outlet names).
 
 ### `builder`
 - Builder/agent tooling changes, APIs, evals, infra implications, experiments
 
 ### `watchlist`
+- Current watchlist topics list
 - Watchlist deltas + priority signals + unresolved unknowns
+
+### `watchlist add <topic>` / `watchlist remove <topic>`
+- Mutate `watchlist[]` in state file; confirm the updated list.
+- `add`: append topic (lowercase, deduplicated).
+- `remove`: remove exact match (case-insensitive). Report error if not found.
+
+### `feedback <run_id> <1-5> [comment]`
+- Record user rating (1–5 stars) for the specified run in `feedback[]` in state.
+- Schema: `{ run_id, rating, comment, recorded_at }`
+- Confirm: `Feedback recorded: run <run_id> rated <rating>/5.`
+- Use Haiku model (lightweight state write).
+
+### `history [n]`
+- Show last N runs from `history[]` in state (default n=5, max 20).
+- Per entry: `run_id | slot | mode | status | started_at | counts | cost_estimate_usd`
+- Use Haiku model.
+
+### `diff`
+- Compare the last two completed runs in `history[]`.
+- Report: new stories (in run N, not N-1), dropped stories, score movements for carried-over stories.
+- Use Haiku model.
+
+### `help`
+- Return the full command reference in Telegram-friendly markdown.
+- Include: all modes, scope args, alias commands, `@BotName` suffix format, channel setup hint.
+- Use Haiku model.
 
 ### `status`
 Return:
 - last run + last success (morning/evening)
 - candidate/cluster counts from last completed run
+- last run cost estimate (`input_tokens`, `output_tokens`, `model`, `estimated_usd`)
 - provider health (ok/degraded/unknown)
 - provider diagnostics:
   - `provider` name
@@ -212,6 +288,23 @@ Return:
   - key present (`yes/no`)
   - threshold mode
   - token budget for current mode
+  - last probe timestamp
+- **System model info (technical):**
+  - Orchestrator: `claude-haiku-4-5` (anthropic/claude-haiku-4-5-20251001)
+    - Architecture: decoder-only transformer, dense attention
+    - Context window: 200K tokens input / 8K output
+    - Role: command routing, heartbeat, status, feedback, history, diff, help
+  - Synthesis: `claude-sonnet-4-5` (anthropic/claude-sonnet-4-5)
+    - Architecture: decoder-only transformer, dense attention
+    - Context window: 200K tokens input / 8K output
+    - Role: AI brief retrieval clustering ranking drafting (morning/evening/top5/builder/watchlist modes)
+  - Escalation: `claude-opus-4-6` (anthropic/claude-opus-4-6)
+    - Architecture: decoder-only transformer, dense attention
+    - Context window: 200K tokens input / 8K output
+    - Role: complex analysis, architecture decisions (manual trigger only)
+  - Ranking weights: impact=0.28, credibility=0.22, novelty=0.18, relevance=0.14, freshness=0.10, confidence=0.08
+  - Brave LLM Context API: `https://api.search.brave.com/res/v1/llm/context`
+  - Prompt cache TTL alignment: heartbeat=55min vs Anthropic cache TTL=60min
 - Telegram delivery state (last send path/result)
 - Telegram runtime snapshot when available:
   - `running`
@@ -219,8 +312,11 @@ Return:
   - `lastError`
   - `dmPolicy`
   - `allowFrom` count
+  - interactive chats registered (from `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`)
 - active output channel target
 - state file path + loaded status
+- watchlist topics (current)
+- recent feedback summary (last 3 ratings if present)
 - expected schedule:
   - daily top5 previous 12h: `07:00` and `19:00` COT
   - weekly recap: Sunday `20:00` COT
@@ -239,8 +335,10 @@ Status truth rules:
 - Do not present rumors as facts.
 - Mark conflicting reports explicitly.
 - If no credible stories: `No high-confidence AI updates in this window.`
+- **Date gate:** Reject any top story without a parseable `YYYY-MM-DD` event date in its headline. Use `~YYYY-MM-DD (estimated)` only when source implies the date but does not state it explicitly.
 - In `top5` mode, reject any story outside requested scope.
 - In `top5` mode, reject generic model claims lacking named model/product unless explicitly marked as undisclosed by sources.
+- **Technical depth gate:** Each top story must include a Technical Details entry. If no technical details are publicly available, state `Technical details: not yet publicly disclosed.` — do not omit the field silently.
 - Reject output with non-clickable source references for included stories.
 - If retrieval degraded: send partial brief and list missing coverage.
 - If `BRAVE_API_KEY` is missing: report provider as unconfigured and return setup command.

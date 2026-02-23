@@ -27,5 +27,7 @@ Compatibility command shim for users invoking `/ai_daily_brief_top5`.
 
 ## Output
 - Same output contract as `ai-daily-brief` in `top5` mode.
+- Each story headline MUST include `YYYY-MM-DD` event date (ISO 8601). Use `~YYYY-MM-DD (estimated)` when date is inferred from context. Reject stories without parseable dates.
 - Each story must include explicit model/product name when known, or explicitly mark `model name not publicly disclosed`.
+- Each story must include a Technical Details one-liner (architecture type + context window + key benchmark if available). Mark `not disclosed` if no public data.
 - Sources must be clickable markdown links (`[Outlet](https://...)`).

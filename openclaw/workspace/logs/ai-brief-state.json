@@ -1,5 +1,5 @@
 {
-  "version": "2026-02-22-v2",
+  "version": "2026-02-23-v3",
   "timezone": "America/Bogota",
   "config": {
     "morning_hour": 7,
@@ -66,12 +66,20 @@
       "message_parts": 0,
       "result": null
     },
+    "cost_estimate": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "model": null,
+      "estimated_usd": 0.0
+    },
     "error": null
   },
   "last_output": {
     "morning": null,
     "evening": null
   },
+  "history": [],
+  "feedback": [],
   "watchlist": [
     "openai",
     "anthropic",
@@ -86,6 +94,7 @@
     "brave_llm_context": {
       "status": "unknown",
       "last_check_at": null,
+      "last_probe_at": null,
       "last_error": null
     }
   },

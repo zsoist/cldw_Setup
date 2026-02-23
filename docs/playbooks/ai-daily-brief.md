@@ -1,4 +1,4 @@
-# AI Daily Brief Playbook (v2)
+# AI Daily Brief Playbook (v3)
 
 This playbook defines the production behavior for `ai_daily_brief` in OpenClaw setup.
 
@@ -6,6 +6,7 @@ This playbook defines the production behavior for `ai_daily_brief` in OpenClaw s
 - Deliver high-signal AI news twice daily.
 - Avoid duplicate noise and rumor amplification.
 - Keep runs stateful, auditable, and Telegram-friendly.
+- Provide technical depth sufficient for an AI practitioner / MS-AI student.
 
 ## Command Namespace
 - Canonical command: `/ai_daily_brief`
@@ -18,8 +19,14 @@ This playbook defines the production behavior for `ai_daily_brief` in OpenClaw s
   - `/ai_daily_brief top5 month`
   - `/ai_daily_brief top5 month YYYY-MM`
   - `/ai_daily_brief builder`
-  - `/ai_daily_brief watchlist [topics]`
+  - `/ai_daily_brief watchlist`
+  - `/ai_daily_brief watchlist add <topic>`
+  - `/ai_daily_brief watchlist remove <topic>`
   - `/ai_daily_brief status`
+  - `/ai_daily_brief feedback <run_id> <1-5> [comment]`
+  - `/ai_daily_brief history [n]`
+  - `/ai_daily_brief diff`
+  - `/ai_daily_brief help`
 - Compatibility aliases:
   - `/ai_daily_brief_morning`
   - `/ai_daily_brief_evening`
@@ -27,6 +34,7 @@ This playbook defines the production behavior for `ai_daily_brief` in OpenClaw s
   - `/ai_daily_brief_builder`
   - `/ai_daily_brief_watchlist`
   - `/ai_daily_brief_status`
+- Channel context: `/ai_daily_brief@BotName` → `@BotName` suffix stripped before routing; approved group chats treated identically to DM.
 
 Rule: canonical command path is preferred; compatibility aliases must resolve to the same `ai-daily-brief` behavior.
 
@@ -46,6 +54,7 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
   - state: `config.brave_llm_context` in `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
 - Default threshold mode: `balanced`
 - Fallback behavior: if Brave is unavailable, run partial brief with fallback web search and explicit confidence downgrade.
+- Brave provider health probe: runs every 6h and updates `providers.brave_llm_context.status` and `last_probe_at` proactively.
 
 Recommended context budgets:
 - `full`: `count=20`, `maximum_number_of_tokens=8192`
@@ -67,11 +76,11 @@ Recommended context budgets:
 3. **Deduplicate** using URL canonicalization + title similarity + state history.
 4. **Cluster** by event/topic.
 5. **Rank** with weighted scoring.
-6. **Draft** sectioned brief.
-7. **Validate** required sections/sources/dupes.
+6. **Draft** sectioned brief — including `YYYY-MM-DD` event date and Technical Details per story.
+7. **Validate** required sections/sources/dates/technical-depth.
 8. **Render** mobile-readable Telegram output.
 9. **Deliver** with retries and split-by-section behavior.
-10. **Persist** run metadata and suppression state.
+10. **Persist** run metadata, suppression state, story archive, cost estimate, history entry.
 
 ## Ranking Policy
 Default weighted score:
@@ -95,11 +104,18 @@ Anti-hype penalties apply when:
 
 Top stories require at least one primary or Tier-1/2 source.
 
+## Quality Gates
+- **Date gate:** Each top story headline must contain a parseable `YYYY-MM-DD` date. Reject any without.
+- **Technical depth gate:** Each top story must include a Technical Details section covering architecture type, parameter count (or disclosure status), context window, capability delta, and benchmark with methodology. Mark `not publicly disclosed` when unavailable.
+- **Source gate:** Each top story needs at least one clickable `[Outlet](https://...)` link.
+- **Scope gate (top5):** Reject any story outside requested time scope.
+- **Model identity gate (top5):** Reject generic model claims without named model/product.
+
 ## Output Modes
 ### Full
 - Title
 - Executive Snapshot
-- Ranked Top Stories (what happened, why it matters, signal-vs-hype, watch next, sources)
+- Ranked Top Stories (date, what happened, technical details, why it matters, signal-vs-hype, watch next, sources)
 - Quick Hits
 - Builder/Agent Corner
 - Strategic Take
@@ -107,27 +123,65 @@ Top stories require at least one primary or Tier-1/2 source.
 - Confidence & Gaps
 
 ### Top5
-- Top 5 with minimal commentary + sources
+- Top 5 with date + technical one-liner + sources
 - Enforce requested scope exactly (`12h`, `week`, or `month`)
-- Story headlines should name the concrete model/product when known
+- Story headlines must name the concrete model/product and include `YYYY-MM-DD` date
 - Every source must be a clickable markdown link `[Outlet](https://...)`
 
 ### Builder
 - Builder/agent tools and infra implications only
 
 ### Watchlist
+- Current watchlist topics
 - Watchlist-specific updates and unknowns
 
+### Watchlist Management
+- `watchlist add <topic>`: append to `watchlist[]` in state (lowercase, deduplicated)
+- `watchlist remove <topic>`: remove from `watchlist[]` (case-insensitive match)
+
+### Feedback
+- `feedback <run_id> <1-5> [comment]`: record rating in `feedback[]` in state
+- Enables adaptive ranking weight tuning based on historical ratings
+
+### History
+- `history [n]`: show last N runs from `history[]` in state (default 5, max 20)
+- Per entry: run_id, slot, mode, status, started_at, counts, cost_estimate_usd
+
+### Diff
+- Compare last two completed runs: new stories, dropped stories, score movements
+
+### Help
+- Return full command reference in Telegram-friendly markdown
+
 ### Status
-Return run-health metadata only:
+Return run-health metadata plus technical system info:
 - last run and last success
 - counts (candidates/clusters/included)
-- provider status
-- provider diagnostics (provider name, endpoint, threshold mode, key-present boolean)
+- last run cost estimate (tokens + model + USD)
+- provider status and diagnostics
+- system model info (orchestrator, synthesis, escalation models with architecture/context specs)
+- ranking weights
 - delivery status
-- active output channel target
+- active output channel target and interactive chats registered
+- watchlist topics
+- recent feedback summary
 - state file path
 - expected cron schedule
+
+## State Schema (key fields)
+```json
+{
+  "last_run": {
+    "cost_estimate": { "input_tokens": 0, "output_tokens": 0, "model": "", "estimated_usd": 0.0 }
+  },
+  "history": [ { "run_id": "", "slot": "", "mode": "", "status": "", "started_at": "", "finished_at": "", "counts": {}, "cost_estimate": {} } ],
+  "feedback": [ { "run_id": "", "rating": 0, "comment": "", "recorded_at": "" } ],
+  "watchlist": [ "openai", "anthropic", "google deepmind", "meta ai", "ai regulation" ],
+  "providers": {
+    "brave_llm_context": { "status": "unknown", "last_check_at": null, "last_probe_at": null }
+  }
+}
+```
 
 ## State and Duplicate Suppression
 State file: `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
@@ -135,6 +189,13 @@ State file: `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
 - Track recent story fingerprints
 - Suppress unchanged stories for at least 48h (configurable)
 - Mark materially changed repeats as `update_to_prior_story=true`
+- `history[]` capped at 20 entries (rolling)
+- `feedback[]` unbounded (append-only)
+
+## Story Archive (Research)
+- Monthly JSON archive: `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json`
+- Per story: `{ run_id, slot, date, headline, score, model_name, architecture, sources, fingerprint }`
+- Enables trend analysis across time for thesis research without re-running searches.
 
 ## Failure Handling
 - If partial source failure: send partial brief and list missing coverage.

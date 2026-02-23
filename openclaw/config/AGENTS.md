@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.22-ai-brief-v4 -->
+<!-- config-version: 2026.02.23-channel-commands-v1 -->
 
 # Agent Registry & Model Routing
 
@@ -27,20 +27,26 @@
 - **Trigger phrases:** "ai daily brief", "ai news brief", "/ai_daily_brief"
 - **Use for:** AI news retrieval, clustering, ranking by impact/credibility, concise executive-style brief delivery
 - **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification
-- **Input format:** canonical `/ai_daily_brief [morning|evening|top5|builder|watchlist|status] [scope args]`
-- **Top5 scope args:** `week` (default) | `month` | `month YYYY-MM`
+- **Input format:** canonical `/ai_daily_brief [mode] [scope args]`
+- **Modes:** `morning` | `evening` | `top5` | `builder` | `watchlist` | `status` | `feedback` | `history` | `diff` | `help`
+- **Top5 scope args:** `12h` | `week` (default) | `month` | `month YYYY-MM`
+- **Feedback args:** `/ai_daily_brief feedback <run_id> <1-5> [comment]`
+- **Watchlist management:** `/ai_daily_brief watchlist add <topic>` | `/ai_daily_brief watchlist remove <topic>`
+- **History args:** `/ai_daily_brief history [n]` — show last N runs (default 5)
 - **Compatibility aliases:** `/ai_daily_brief_morning`, `/ai_daily_brief_evening`, `/ai_daily_brief_top5`, `/ai_daily_brief_builder`, `/ai_daily_brief_watchlist`, `/ai_daily_brief_status`
 - **Execution mode:** direct skill execution in the current lane; do not require sub-agent spawning for `/ai_daily_brief*` slash commands
-- **Output format:** Full mode: Executive Snapshot → Top Stories → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
+- **Channel context:** strip `@BotName` suffix before routing (e.g. `/ai_daily_brief@MangenkyoBot status` → `/ai_daily_brief status`); treat approved group/channel chats identically to DM
+- **Output format:** Full mode: Executive Snapshot → Top Stories (with YYYY-MM-DD date + technical details) → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
 - **Provider preference:** use Brave LLM Context (`/res/v1/llm/context`) for grounding with state-configured token budgets before generic web search fallback
 - **Delivery routing:** read `/home/node/.openclaw/workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat
-- **Cost tier:** standard (Sonnet)
+- **Cost tier:** standard (Sonnet); `feedback`/`status`/`history`/`diff`/`help` modes use Haiku
 
 ### Command Namespace Safety
 - `/ai_daily_brief` is the canonical AI brief command.
 - Compatibility alias commands (`/ai_daily_brief_top5` style) must route to the same AI Brief Editor path as the canonical command.
 - Generic personal briefing commands (`/brief`, "daily summary", "morning briefing") stay with **Chief of Staff**.
 - Never mix AI-news synthesis into the generic daily briefing flow.
+- `@BotName` suffix in any `/ai_daily_brief*` command is stripped before routing — never treated as an argument.
 
 ### Job Search Agent
 - **Role:** Monitor and support Daniel's AI job search

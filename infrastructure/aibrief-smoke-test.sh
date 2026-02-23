@@ -610,6 +610,15 @@ PY
   fi
 fi
 
+if [ -f "$ENV_FILE" ]; then
+  TG_INTERACTIVE_CHATS_ENV="$(grep '^OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+  if [ -n "$TG_INTERACTIVE_CHATS_ENV" ]; then
+    pass "Interactive Telegram chats registered for command invocation (${TG_INTERACTIVE_CHATS_ENV})"
+  else
+    warn "OPENCLAW_TELEGRAM_INTERACTIVE_CHATS is not set — channel/supergroup command invocation is disabled. To enable: add the supergroup chat ID to .env, then rerun rollout."
+  fi
+fi
+
 if ls -1 /root/.openclaw/workspace/outputs/summaries/ai-brief-*.md >/dev/null 2>&1; then
   LATEST="$(ls -1t /root/.openclaw/workspace/outputs/summaries/ai-brief-*.md | head -n 1)"
   pass "AI brief output exists ($LATEST)"

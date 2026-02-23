@@ -105,7 +105,7 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 
 ### 8. Cron Job Architecture
 
-12 scheduled jobs defined in `openclaw/config/CRON.md`, split between personal and business:
+15 scheduled jobs defined in `openclaw/config/CRON.md`, split between personal and business:
 
 | # | Job | Schedule | Agent | Model |
 |---|-----|----------|-------|-------|
@@ -123,31 +123,38 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 | 12 | Security Hygiene | Mon 09:00 | Work | Haiku |
 | 13 | AI Weekly Top5 Recap | Sun 20:00 | Main | Sonnet |
 | 14 | AI Monthly Top5 Recap (prev month) | Day 1 20:00 | Main | Sonnet |
+| 15 | Brave Provider Health Probe | 08:00/14:00/20:00 | Main | Haiku |
 
 Every job follows the read → analyze → notify pattern. Deep research and destructive actions never run automatically.
 
 ### 9. AI Daily Brief Capability
 
-The new `ai-daily-brief` skill delivers a source-grounded AI briefing twice daily:
+The `ai-daily-brief` skill delivers a source-grounded AI briefing twice daily with technical depth:
 
 - Canonical command: `/ai_daily_brief` (single stable command path).
 - Slot/mode selection via arguments:
   - `/ai_daily_brief morning|evening|top5|builder|watchlist|status`
   - `/ai_daily_brief top5 12h|week|month|month YYYY-MM`
+- Extended commands:
+  - `/ai_daily_brief watchlist add <topic>` / `watchlist remove <topic>` — manage watchlist dynamically
+  - `/ai_daily_brief feedback <run_id> <1-5> [comment]` — rate briefs for adaptive tuning
+  - `/ai_daily_brief history [n]` — show last N runs with status + cost
+  - `/ai_daily_brief diff` — compare last two runs (new/dropped/moved stories)
+  - `/ai_daily_brief help` — full command reference in Telegram-friendly format
 - Compatibility aliases are also supported:
-  - `/ai_daily_brief_morning`
-  - `/ai_daily_brief_evening`
-  - `/ai_daily_brief_top5`
-  - `/ai_daily_brief_builder`
-  - `/ai_daily_brief_watchlist`
-  - `/ai_daily_brief_status`
-- Canonical command remains preferred; aliases route to the same handler.
+  - `/ai_daily_brief_morning`, `/ai_daily_brief_evening`, `/ai_daily_brief_top5`, `/ai_daily_brief_builder`, `/ai_daily_brief_watchlist`, `/ai_daily_brief_status`
+- Channel context: `/ai_daily_brief@BotName status` strips `@BotName` suffix automatically; approved group/supergroup chats treated identically to DM.
 - Execution policy: `/ai_daily_brief*` runs directly in-lane (skill-first), not via mandatory sub-agent spawn.
 - Deduplication and update suppression using `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
+- State schema v3: adds `history[]` (last 20 runs), `feedback[]`, `cost_estimate` per run, `last_probe_at` on Brave provider.
+- Story output enforces **precise `YYYY-MM-DD` event dates** per story — vague or undated stories are rejected.
+- Story output includes **Technical Details** per top story: architecture type, parameter count (or disclosure status), context window, capability delta vs prior version, benchmarks with methodology.
 - Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
+- Brave provider health probed every 6h (08:00/14:00/20:00 COT); status cached in state proactively.
+- Monthly story archive: `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json` for trend analysis / thesis research.
 - Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
-- Commands can be accepted in approved channel/supergroup chats by setting `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` (in addition to DM).
-- Weighted anti-hype ranking (impact, credibility, novelty, relevance, freshness, confidence).
+- Channel command setup: set `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` + configure BotFather privacy mode — see `openclaw/config/CHANNELS.md` for step-by-step guide.
+- Weighted anti-hype ranking (impact 0.28, credibility 0.22, novelty 0.18, relevance 0.14, freshness 0.10, confidence 0.08).
 - Mandatory citations, builder corner, strategic take, and explicit confidence/gaps section.
 - Source references must be clickable markdown hyperlinks (`[Outlet](https://...)`).
 - VPS operational scripts for rollout and smoke-testing:
