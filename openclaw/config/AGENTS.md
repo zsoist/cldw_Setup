@@ -23,7 +23,7 @@
 - **Cost tier:** cheap (Haiku)
 
 ### AI Brief Editor
-- **Role:** Curate AI news briefings with source-grounded ranking and deduplication (single scheduled run at 06:00 COT; all other modes on-demand)
+- **Role:** Curate AI news briefings with source-grounded ranking and deduplication (single scheduled run at 07:00 COT; all other modes on-demand)
 - **Trigger phrases:** "ai daily brief", "ai news brief", "/ai_daily_brief"
 - **Use for:** AI news retrieval, clustering, ranking by impact/credibility, concise executive-style brief delivery
 - **Do NOT use for:** general reminders, calendar planning, infrastructure operations, speculative rumor amplification

@@ -68,7 +68,7 @@ With a single scheduled job, cron-driven cost is already low.
 | 1 scheduled cron job/day | 1 | Low |
 | On-demand commands for everything else | Usage-based | Controlled |
 
-Current policy: one daily AI brief at 06:00 COT; everything else is on-demand.
+Current policy: one daily AI brief at 07:00 COT; everything else is on-demand.
 
 ## 6. Main vs Isolated Cron
 
@@ -120,4 +120,4 @@ Periodic performance review:
 - [ ] No browser automation for tasks achievable with web_search/web_fetch
 - [ ] `/compact` run on any session older than 2 hours of active use
 - [ ] Response token caps enforced (2048 OpenClaw, 1024 Sentinel)
-- [ ] Silent hours active (23:00-06:00 COT)
+- [ ] Silent hours active (23:00-07:00 COT)

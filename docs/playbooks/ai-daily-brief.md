@@ -40,7 +40,7 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
 
 ## Slot Rules
 - Timezone: `America/Bogota`
-- Scheduled slot: 06:00 COT (Top 5, previous calendar day)
+- Scheduled slot: 07:00 COT (Top 5, previous calendar day)
 - Weekly/monthly/top5 variants are on-demand only (no automatic schedule)
 - Auto slot cutoff: 13:00 COT (`<13:00` => morning)
 

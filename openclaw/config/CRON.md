@@ -14,7 +14,7 @@ All other actions are on-demand via Telegram commands.
 ---
 
 ### 1. AI Daily Brief Top5 (Previous Day)
-- **Schedule:** Daily 06:00 COT
+- **Schedule:** Daily 07:00 COT
 - **Reads:** trusted AI sources from the previous calendar day in COT (`00:00` to `23:59`), `/home/node/.openclaw/workspace/logs/ai-brief-state.json`, optional watchlist topics
 - **Action:** Retrieve, dedupe, cluster, rank, and summarize Top 5 AI stories for the full previous day
 - **Output:** `workspace/outputs/summaries/ai-brief-top5-previous-day-YYYY-MM-DD.md`

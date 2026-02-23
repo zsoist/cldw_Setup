@@ -5,7 +5,7 @@ triggers:
   - "ai daily brief"
   - "ai news brief"
   - "/ai_daily_brief"
-schedule: "0 6 * * *"
+schedule: "0 7 * * *"
 model: sonnet
 cost_tier: standard
 ---
@@ -50,7 +50,7 @@ When invoked from a Telegram group with `@BotName` suffix, strip the suffix befo
 - Commands from approved interactive chats (`OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`) are processed identically to DM commands — no capability or routing restriction applies.
 
 ## Role
-Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled run is daily at 06:00 COT for previous-day top stories; all other modes are on-demand.
+Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled run is daily at 07:00 COT for previous-day top stories; all other modes are on-demand.
 
 ## Inputs
 - Local timezone: `America/Bogota`
@@ -64,7 +64,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled
   - fallback: `output_channel` (legacy key)
   - accepted formats: `@channel_username`, `channel_username`, or numeric chat id
 - Coverage window:
-  - Scheduled daily run (`06:00` COT): previous calendar day (`00:00` to `23:59` COT)
+  - Scheduled daily run (`07:00` COT): previous calendar day (`00:00` to `23:59` COT)
   - Morning: previous evening run or last 12-16h
   - Evening: previous morning run or last 10-14h
   - Top5 `12h`: rolling previous 12 hours from execution time in COT
@@ -392,7 +392,7 @@ Return:
 - watchlist topics (current)
 - recent feedback summary (last 3 ratings if present)
 - expected schedule:
-  - daily top5 previous calendar day: `06:00` COT
+  - daily top5 previous calendar day: `07:00` COT
   - all other reports: on-demand only
 
 Status truth rules:

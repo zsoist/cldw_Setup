@@ -74,7 +74,7 @@ The OpenClaw config uses `"compaction": {"mode": "safeguard"}`, which automatica
 
 ### 5. Silent Hours Optimization
 
-No proactive messages are sent between 23:00-06:00 COT. This reduces unnecessary API calls while preserving the single scheduled AI brief run at 06:00.
+No proactive messages are sent between 23:00-07:00 COT. This reduces unnecessary API calls while preserving the single scheduled AI brief run at 07:00.
 
 ### 6. Response Token Caps
 
@@ -109,7 +109,7 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 
 | # | Job | Schedule | Agent | Model |
 |---|-----|----------|-------|-------|
-| 1 | AI Daily Brief Top5 (Previous Day) | 06:00 daily | Main | Sonnet |
+| 1 | AI Daily Brief Top5 (Previous Day) | 07:00 daily | Main | Sonnet |
 
 Everything else runs on-demand via explicit commands.
 
@@ -136,7 +136,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
 - Story output enforces **precise `YYYY-MM-DD` event dates** per story — vague or undated stories are rejected.
 - Story output includes **Technical Details** per top story: architecture type, parameter count (or disclosure status), context window, capability delta vs prior version, benchmarks with methodology.
 - Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
-- Scheduled automation is limited to one run at `06:00` COT for previous-day top stories.
+- Scheduled automation is limited to one run at `07:00` COT for previous-day top stories.
 - All other modes/reports run only on-demand.
 - Monthly story archive: `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json` for trend analysis / thesis research.
 - Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
@@ -517,12 +517,12 @@ Notes:
 | systemd for Sentinel | Lighter than Docker for a single Python process. Auto-restart on crash. |
 | 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping a week of recovery points. |
 | Sentinel on Haiku only | Sysadmin tasks (status, logs, restart) never need Sonnet-level reasoning. |
-| Silent hours (23:00-06:00) | Reduces proactive API calls while preserving the 06:00 scheduled AI brief run. |
+| Silent hours (23:00-07:00) | Reduces proactive API calls while preserving the 07:00 scheduled AI brief run. |
 | Multi-agent (main + work) | Separates personal/professional data, enables sandboxing, reduces context per agent. |
 | Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |
 | No elevated exec | Sandboxing is meaningless if agents can bypass it via host execution. |
 | Channel allowlist + approved interactive chats only | Group chats are the highest prompt injection surface area; only explicit interactive chat IDs are allowed. |
-| 1 cron job, Sonnet for AI brief synthesis | Only one automated run is enabled (06:00 previous-day top stories); everything else is on-demand. |
+| 1 cron job, Sonnet for AI brief synthesis | Only one automated run is enabled (07:00 previous-day top stories); everything else is on-demand. |
 | Read/notify before act | Cron jobs that auto-execute risky actions compound errors at scale. |
 | Deep research opt-in only | Auto-triggered deep research is the fastest way to blow through API budget. |
 | Save reusable research to docs/ | Prevents redundant web searches for the same topic. |
