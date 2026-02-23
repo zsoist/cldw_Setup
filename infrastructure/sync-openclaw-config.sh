@@ -85,6 +85,21 @@ template_path, output_path = sys.argv[1], sys.argv[2]
 with open(template_path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
+existing = {}
+if os.path.exists(output_path):
+    try:
+        with open(output_path, "r", encoding="utf-8") as f:
+            existing = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        existing = {}
+
+# Preserve runtime-managed plugin registry when template omits it.
+existing_plugins = existing.get("plugins")
+if isinstance(existing_plugins, dict) and existing_plugins:
+    template_plugins = data.get("plugins")
+    if not isinstance(template_plugins, dict) or not template_plugins:
+        data["plugins"] = existing_plugins
+
 data.setdefault("gateway", {})
 data["gateway"]["mode"] = "local"
 data["gateway"]["bind"] = os.environ["OPENCLAW_GATEWAY_BIND"]
