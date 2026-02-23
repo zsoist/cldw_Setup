@@ -83,6 +83,21 @@ Precedence rule: if historical notes below conflict, treat the **Latest pass (Ge
 - docs updates:
   - `docs/playbooks/ai-daily-brief.md` and `docs/TROUBLESHOOTING.md` now document the latency profile and remediation path for slow top5 runs.
 
+### Latest pass (2026-02-23, Brave LLM Context capability alignment)
+
+- AI brief provider contract now explicitly aligns with Brave LLM Context API constraints/capabilities:
+  - GET/POST support (POST preferred), query/parameter range guardrails, threshold mode policy by mode.
+  - optional `goggles` support for source re-ranking.
+  - local recall policy (`enable_local`) documented for explicit location-based use only.
+  - mixed snippet handling (plain text + JSON-serialized structured blocks).
+  - 1-second inter-query delay guidance to respect Brave sliding-window behavior.
+- State schema advanced to `2026-02-23-v5` with Brave controls:
+  - `request_method`, `goggles`, `threshold_by_mode`, `query_constraints`, `min_inter_query_delay_seconds`.
+- `infrastructure/merge-ai-brief-state.sh`
+  - now migrates older runtime state (`v2/v3/v4`) to `v5` and backfills new Brave config keys safely.
+- `infrastructure/aibrief-smoke-test.sh`
+  - now validates Brave config ranges/modes against Brave API limits and uses POST for LLM Context probe.
+
 ### Latest pass (2026-02-23, Channel commands + brief quality improvements)
 
 Config version marker: `2026.02.23-channel-commands-v1`

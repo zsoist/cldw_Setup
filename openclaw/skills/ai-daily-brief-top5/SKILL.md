@@ -33,6 +33,7 @@ Compatibility command shim for users invoking `/ai_daily_brief_top5`.
   - Execute retrieval + drafting directly; do not narrate internal pipeline steps.
   - Never claim "python tools unavailable" or "manual processing mode".
   - Keep top5 runs under the canonical top5 budget caps.
+  - Use Brave POST requests by default (JSON body), unless transport constraints require GET.
 
 ## Brave Query Construction (mandatory — date-scoped queries)
 
@@ -41,9 +42,9 @@ directly in the query string `q`. Use these templates:
 
 | Scope | Query template |
 |-------|---------------|
-| `12h` | `"AI artificial intelligence news developments {YYYY-MM-DD}"` — run two queries: target date + day before. |
-| `week` | `"AI artificial intelligence top stories week of {MON_DATE} to {SUN_DATE} {YYYY} latest developments launches releases"` — run two queries: one broad, one with watchlist terms. |
-| `month` | `"AI artificial intelligence major developments {MONTH_NAME} {YYYY} launches releases breakthroughs"` — run two queries: one broad, one watchlist-focused. |
+| `12h` | `"AI artificial intelligence news developments {YYYY-MM-DD}"` — run one query first; optional day-before overlap query if coverage is weak. |
+| `week` | `"AI artificial intelligence top stories week of {MON_DATE} to {SUN_DATE} {YYYY} latest developments launches releases"` — run one broad query first; optional watchlist query if needed. |
+| `month` | `"AI artificial intelligence major developments {MONTH_NAME} {YYYY} launches releases breakthroughs"` — run one broad query first; optional watchlist query if needed. |
 
 **Rules:**
 - Always include explicit calendar dates (YYYY-MM-DD) in every query.
@@ -54,6 +55,7 @@ directly in the query string `q`. Use these templates:
     - fewer than 8 credible candidates, or
     - fewer than 4 unique Tier-1/2 sources.
   - Hard cap: 2 Brave queries.
+- Respect Brave rate-limit guidance: keep at least 1 second between Brave requests.
 
 ## Date-Scope Hard Gate (mandatory checkpoint before drafting)
 

@@ -42,6 +42,22 @@ OPTIMIZED_BRAVE_DEFAULTS = {
     "context_threshold_mode": "balanced",
 }
 
+OPTIMIZED_BRAVE_EXTRAS = {
+    "request_method": "POST",
+    "goggles": None,
+    "threshold_by_mode": {
+        "top5": "strict",
+        "full": "balanced",
+        "builder": "balanced",
+        "watchlist": "strict",
+    },
+    "query_constraints": {
+        "max_chars": 400,
+        "max_words": 50,
+    },
+    "min_inter_query_delay_seconds": 1,
+}
+
 LEGACY_PERFORMANCE_DEFAULTS = {
     "timeout_seconds": 30,
     "max_retries": 2,
@@ -76,8 +92,8 @@ def normalize_ai_brief_config(state: Any) -> Any:
     if not isinstance(state, dict):
         return state
 
-    if state.get("version") in {"2026-02-22-v2", "2026-02-23-v3"}:
-        state["version"] = "2026-02-23-v4"
+    if state.get("version") in {"2026-02-22-v2", "2026-02-23-v3", "2026-02-23-v4"}:
+        state["version"] = "2026-02-23-v5"
 
     config = state.get("config")
     if not isinstance(config, dict):
@@ -93,6 +109,27 @@ def normalize_ai_brief_config(state: Any) -> Any:
         legacy = LEGACY_BRAVE_DEFAULTS.get(key)
         if current in (None, "") or current == legacy:
             brave_cfg[key] = optimized_value
+
+    if not isinstance(brave_cfg.get("threshold_by_mode"), dict):
+        brave_cfg["threshold_by_mode"] = dict(OPTIMIZED_BRAVE_EXTRAS["threshold_by_mode"])
+    else:
+        for mode, value in OPTIMIZED_BRAVE_EXTRAS["threshold_by_mode"].items():
+            if brave_cfg["threshold_by_mode"].get(mode) in (None, ""):
+                brave_cfg["threshold_by_mode"][mode] = value
+
+    if not isinstance(brave_cfg.get("query_constraints"), dict):
+        brave_cfg["query_constraints"] = dict(OPTIMIZED_BRAVE_EXTRAS["query_constraints"])
+    else:
+        for key, value in OPTIMIZED_BRAVE_EXTRAS["query_constraints"].items():
+            if brave_cfg["query_constraints"].get(key) in (None, ""):
+                brave_cfg["query_constraints"][key] = value
+
+    for key in ("request_method", "min_inter_query_delay_seconds"):
+        if brave_cfg.get(key) in (None, ""):
+            brave_cfg[key] = OPTIMIZED_BRAVE_EXTRAS[key]
+
+    if "goggles" not in brave_cfg:
+        brave_cfg["goggles"] = OPTIMIZED_BRAVE_EXTRAS["goggles"]
 
     perf_cfg = config.get("performance")
     if not isinstance(perf_cfg, dict):

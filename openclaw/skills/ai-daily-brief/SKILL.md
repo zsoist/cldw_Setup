@@ -79,7 +79,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled
 ## Brave LLM Context Provider Contract
 - Primary retrieval endpoint: `https://api.search.brave.com/res/v1/llm/context`
 - Auth header: `X-Subscription-Token: ${BRAVE_API_KEY}`
-- Prefer POST with JSON body for predictable parameter control.
+- Supported methods: GET and POST. Prefer **POST** with JSON body for predictable parameter control.
 - Required request fields:
   - `q` (query)
   - `count` (from mode profile; never exceed profile cap)
@@ -91,12 +91,38 @@ Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled
     - `maximum_number_of_snippets`
     - `maximum_number_of_tokens_per_url`
     - `maximum_number_of_snippets_per_url`
+- Parameter validity guardrails (enforce before request):
+  - `q`: 1-400 chars, <= 50 words
+  - `count`: 1-50
+  - `maximum_number_of_urls`: 1-50
+  - `maximum_number_of_tokens`: 1024-32768
+  - `maximum_number_of_snippets`: 1-100
+  - `maximum_number_of_tokens_per_url`: 512-8192
+  - `maximum_number_of_snippets_per_url`: 1-100
+- Optional fields:
+  - `enable_local` (`true|false|null`) for local recall override
+  - `goggles` (URL or inline definition) for custom source re-ranking
 - Parse from `grounding.generic`, and include `grounding.map` / `grounding.poi` only when relevant.
+- `snippets` can contain plain text or JSON-serialized structured blocks (tables/code/schema); preserve both.
 - Keep `sources` metadata so every top story can cite URLs and hostnames.
 - If provider errors or returns empty grounding:
   - mark provider degraded in run status
   - continue with fallback web search only as partial brief
   - never fabricate source-backed claims
+
+### Brave Mode Policy
+- **Default request style:** single-search first, then optional second query only if coverage is weak.
+- Threshold policy by mode:
+  - `top5`: `strict` (precision > recall)
+  - `full`: `balanced`
+  - `builder`: `balanced`
+  - `watchlist`: `strict`
+- Local recall policy:
+  - For AI news/briefing (default), keep `enable_local=null` and do not send location headers.
+  - Use `enable_local=true` only for explicit location-based requests.
+- Goggles policy:
+  - If `config.brave_llm_context.goggles` is configured, include it on every Brave request.
+  - Use goggles to prioritize trusted sources and suppress low-value domains.
 
 ### Brave Query/Token Budget Defaults
 - `full` mode: `count=14`, `maximum_number_of_urls=14`, `maximum_number_of_tokens=6144`, `maximum_number_of_snippets=30`
@@ -115,9 +141,9 @@ correct window. Use these templates exactly:
 
 | Scope | Query template (fill placeholders) |
 |-------|------------------------------------|
-| `12h` | `"AI artificial intelligence news developments {YYYY-MM-DD}" site:reuters.com OR site:bloomberg.com OR site:theverge.com OR site:techcrunch.com` — run **two** queries: one for the target date, one for the day before (to catch timezone overlap). |
-| `week` | `"AI artificial intelligence top stories week of {MON_DATE} to {SUN_DATE} {YYYY}" latest developments launches releases` — run **two** queries: one broad week query, one narrowed to watchlist terms + date range. |
-| `month` | `"AI artificial intelligence major developments {MONTH_NAME} {YYYY}" launches releases breakthroughs` — run **two** queries: one broad, one watchlist-focused. |
+| `12h` | `"AI artificial intelligence news developments {YYYY-MM-DD}" site:reuters.com OR site:bloomberg.com OR site:theverge.com OR site:techcrunch.com` — run one query first; run second (day-before overlap) only if coverage remains weak. |
+| `week` | `"AI artificial intelligence top stories week of {MON_DATE} to {SUN_DATE} {YYYY}" latest developments launches releases` — run one broad query first; optional watchlist query if needed. |
+| `month` | `"AI artificial intelligence major developments {MONTH_NAME} {YYYY}" launches releases breakthroughs` — run one broad query first; optional watchlist query if needed. |
 
 **Critical rules:**
 - Always include the **explicit calendar dates** (YYYY-MM-DD) in every query.
@@ -131,6 +157,7 @@ correct window. Use these templates exactly:
     - fewer than 4 unique Tier-1/2 sources, or
     - obvious watchlist coverage gap.
   - Hard cap for `top5`: 2 Brave queries.
+- Respect Brave rate-limit guidance: keep at least 1 second between Brave requests.
 - Watchlist-focused query: append watchlist terms from state (e.g., `openai anthropic "google deepmind" "meta ai" "ai regulation"`).
 
 ### Latency-First Execution Rules (mandatory)

@@ -47,10 +47,20 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
 ## Provider Grounding (Brave LLM Context)
 - Primary provider: Brave LLM Context API (`/res/v1/llm/context`)
 - Auth: `X-Subscription-Token: ${BRAVE_API_KEY}`
+- Request method: prefer `POST` with JSON body (GET is fallback)
 - Config source:
   - `.env`: `BRAVE_API_KEY`
   - state: `config.brave_llm_context` in `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
 - Default threshold mode: `balanced`
+- Mode threshold policy:
+  - `top5`: `strict`
+  - `full`: `balanced`
+  - `builder`: `balanced`
+  - `watchlist`: `strict`
+- Local recall policy:
+  - AI news runs should keep `enable_local=null` unless query is explicitly location-based.
+- Goggles:
+  - Optional `config.brave_llm_context.goggles` can enforce source re-ranking for trusted domains.
 - Fallback behavior: if Brave is unavailable, run partial brief with fallback web search and explicit confidence downgrade.
 - Brave provider health is checked during runs/on-demand status (no separate scheduled probe).
 
@@ -64,6 +74,7 @@ Recommended context budgets:
   - query #1 always
   - query #2 only if coverage after normalization is weak
   - hard cap for `top5`: 2 Brave queries
+- Respect Brave rate-limit guidance with at least 1 second between Brave calls in the same run.
 
 ## Telegram Output Routing
 - State key: `config.output_channel` (preferred), fallback `output_channel` (legacy).

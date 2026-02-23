@@ -114,7 +114,16 @@ brave_cfg = ((data.get('config') or {}).get('brave_llm_context') or {})
 print('Provider:', provider)
 print('Brave endpoint:', brave_cfg.get('endpoint'))
 print('Brave threshold mode:', brave_cfg.get('context_threshold_mode'))
+print('Brave method:', brave_cfg.get('request_method'))
+print('Brave count:', brave_cfg.get('count'))
+print('Brave max urls:', brave_cfg.get('maximum_number_of_urls'))
 print('Brave max tokens:', brave_cfg.get('maximum_number_of_tokens'))
+print('Brave max snippets:', brave_cfg.get('maximum_number_of_snippets'))
+print('Brave max tokens per url:', brave_cfg.get('maximum_number_of_tokens_per_url'))
+print('Brave max snippets per url:', brave_cfg.get('maximum_number_of_snippets_per_url'))
+print('Brave goggles configured:', 'yes' if brave_cfg.get('goggles') else 'no')
+print('Brave enable_local:', brave_cfg.get('enable_local'))
+print('Brave min inter-query delay:', brave_cfg.get('min_inter_query_delay_seconds'))
 print('Output channel target:', target)
 print(target or "")
 PY
@@ -124,6 +133,89 @@ PY
     pass "State provider is set to brave_llm_context"
   else
     warn "State provider is not brave_llm_context (check config.provider in state file)"
+  fi
+  BRAVE_VALIDATION="$(python3 - <<'PY' "$STATE_FILE"
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+cfg = ((data.get('config') or {}).get('brave_llm_context') or {})
+
+errors = []
+warnings = []
+
+def bounded_int(name, min_v, max_v):
+    value = cfg.get(name)
+    if value is None:
+        warnings.append(f"{name} missing (will use skill defaults)")
+        return
+    if not isinstance(value, int):
+        errors.append(f"{name} must be int (got {type(value).__name__})")
+        return
+    if value < min_v or value > max_v:
+        errors.append(f"{name} out of range [{min_v},{max_v}] (got {value})")
+
+bounded_int("count", 1, 50)
+bounded_int("maximum_number_of_urls", 1, 50)
+bounded_int("maximum_number_of_tokens", 1024, 32768)
+bounded_int("maximum_number_of_snippets", 1, 100)
+bounded_int("maximum_number_of_tokens_per_url", 512, 8192)
+bounded_int("maximum_number_of_snippets_per_url", 1, 100)
+
+method = cfg.get("request_method")
+if method not in (None, "", "GET", "POST"):
+    errors.append(f"request_method must be GET or POST (got {method})")
+
+mode = cfg.get("context_threshold_mode")
+if mode not in ("strict", "balanced", "lenient", "disabled"):
+    errors.append(f"context_threshold_mode invalid (got {mode})")
+
+threshold_by_mode = cfg.get("threshold_by_mode")
+if threshold_by_mode is not None:
+    if not isinstance(threshold_by_mode, dict):
+        errors.append("threshold_by_mode must be object")
+    else:
+        for key in ("top5", "full", "builder", "watchlist"):
+            value = threshold_by_mode.get(key)
+            if value not in (None, "", "strict", "balanced", "lenient", "disabled"):
+                errors.append(f"threshold_by_mode.{key} invalid (got {value})")
+
+delay = cfg.get("min_inter_query_delay_seconds")
+if delay is not None:
+    if not isinstance(delay, int):
+        errors.append("min_inter_query_delay_seconds must be int")
+    elif delay < 1:
+        warnings.append("min_inter_query_delay_seconds < 1 may hit Brave burst limits")
+
+if errors:
+    print("ERROR")
+    for item in errors:
+        print(item)
+elif warnings:
+    print("WARN")
+    for item in warnings:
+        print(item)
+else:
+    print("OK")
+PY
+)"
+  BRAVE_VALIDATION_STATUS="$(echo "$BRAVE_VALIDATION" | sed -n '1p')"
+  if [ "$BRAVE_VALIDATION_STATUS" = "ERROR" ]; then
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      [ "$line" = "ERROR" ] && continue
+      fail "Brave state config invalid: $line"
+    done <<<"$BRAVE_VALIDATION"
+  elif [ "$BRAVE_VALIDATION_STATUS" = "WARN" ]; then
+    while IFS= read -r line; do
+      [ -z "$line" ] && continue
+      [ "$line" = "WARN" ] && continue
+      warn "Brave state config warning: $line"
+    done <<<"$BRAVE_VALIDATION"
+  else
+    pass "Brave state config ranges and modes are valid"
   fi
   OUTPUT_TARGET="$(echo "$STATE_INFO" | tail -n1 | tr -d '\r')"
   if [ -n "$OUTPUT_TARGET" ]; then
@@ -538,17 +630,14 @@ PY
       fail "Gateway container BRAVE_API_KEY is empty (runtime provider will be unconfigured)"
     fi
 
-    BRAVE_HTTP_CODE="$(curl -sS --max-time 30 --compressed \
+    BRAVE_HTTP_CODE="$(curl -sS --max-time 30 --compressed -X POST \
       -o /tmp/aibrief-brave-context.json \
       -w '%{http_code}' \
       -H 'accept: application/json' \
       -H 'Accept-Encoding: gzip' \
       -H "X-Subscription-Token: ${BRAVE_API_KEY}" \
-      --get \
-      --data-urlencode 'q=latest ai model release updates' \
-      --data-urlencode 'count=5' \
-      --data-urlencode 'maximum_number_of_tokens=2048' \
-      --data-urlencode 'context_threshold_mode=balanced' \
+      -H 'Content-Type: application/json' \
+      -d '{"q":"latest ai model release updates","count":5,"maximum_number_of_tokens":2048,"context_threshold_mode":"balanced"}' \
       'https://api.search.brave.com/res/v1/llm/context' \
       2>/tmp/aibrief-brave-context.err || true)"
     if [ "$BRAVE_HTTP_CODE" = "200" ]; then
@@ -576,6 +665,7 @@ except Exception:
     print('no-json-error-body')
 PY
 )"
+      sleep 1
       BRAVE_WEB_CODE="$(curl -sS --max-time 20 \
         -o /tmp/aibrief-brave-web.json \
         -w '%{http_code}' \

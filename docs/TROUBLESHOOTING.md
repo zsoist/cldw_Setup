@@ -447,6 +447,8 @@ This rollout now migrates legacy high-latency Brave defaults in state to optimiz
 - `count=14`, `maximum_number_of_urls=14`, `maximum_number_of_tokens=6144`
 - `maximum_number_of_snippets=30`, `maximum_number_of_tokens_per_url=2048`, `maximum_number_of_snippets_per_url=20`
 - performance defaults: `timeout_seconds=22`, `max_retries=1`, `backoff_seconds=[1,2]`
+- method/filters defaults: `request_method=POST`, mode thresholds (`top5=strict`, `full=balanced`)
+- optional controls: `goggles` (source re-ranking), `enable_local` (leave null for global AI news)
 
 Verify active runtime state:
 
@@ -466,6 +468,7 @@ Expected behavior after tuning:
 - Top5 runs target `<45s` and avoid verbose stage-by-stage narration.
 - First Brave query runs always; second query runs only when coverage is weak.
 - Model stays on `google/gemini-2.5-pro` for AI Daily Brief synthesis.
+- Brave calls respect a 1-second inter-call delay to avoid burst-rate issues.
 
 ### Gemini routing and fallback checks
 

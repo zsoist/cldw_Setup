@@ -1,5 +1,5 @@
 {
-  "version": "2026-02-23-v4",
+  "version": "2026-02-23-v5",
   "timezone": "America/Bogota",
   "config": {
     "morning_hour": 7,
@@ -33,7 +33,20 @@
       "maximum_number_of_tokens_per_url": 2048,
       "maximum_number_of_snippets_per_url": 20,
       "context_threshold_mode": "balanced",
-      "enable_local": null
+      "enable_local": null,
+      "request_method": "POST",
+      "goggles": null,
+      "threshold_by_mode": {
+        "top5": "strict",
+        "full": "balanced",
+        "builder": "balanced",
+        "watchlist": "strict"
+      },
+      "query_constraints": {
+        "max_chars": 400,
+        "max_words": 50
+      },
+      "min_inter_query_delay_seconds": 1
     },
     "performance": {
       "timeout_seconds": 22,
