@@ -43,7 +43,7 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 ## Cross-Provider Fallback Chain
 1. `google/gemini-2.5-flash` (primary)
 2. `anthropic/claude-haiku-4-5` (cross-provider fallback)
-3. `anthropic/claude-sonnet-4-5` (escalation fallback)
+3. `anthropic/claude-sonnet-4-6` (escalation fallback)
 4. `anthropic/claude-opus-4-6` (manual only)
 
 ## Image Routing

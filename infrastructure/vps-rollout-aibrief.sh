@@ -5,6 +5,7 @@ set -euo pipefail
 PROJECT_DIR="${PROJECT_DIR:-/root/openclaw-project}"
 OPENCLAW_DIR="${OPENCLAW_DIR:-/root/openclaw}"
 OPENCLAW_CFG="${OPENCLAW_CFG:-/root/.openclaw}"
+SENTINEL_DIR="${SENTINEL_DIR:-/opt/sentinel}"
 BRANCH="${BRANCH:-main}"
 WAIT_ATTEMPTS="${WAIT_ATTEMPTS:-18}"
 WAIT_SECONDS="${WAIT_SECONDS:-10}"
@@ -19,6 +20,47 @@ require_file() {
   if [ ! -f "$path" ]; then
     echo "Missing required file: $path" >&2
     exit 1
+  fi
+}
+
+sync_sentinel_runtime() {
+  if [ ! -d "$SENTINEL_DIR" ]; then
+    log "WARN: Sentinel runtime directory not found at $SENTINEL_DIR; skipping code sync"
+    return
+  fi
+
+  local changed=0
+  local requirements_changed=0
+  local file src dst
+  for file in config.py sentinel.py telegram_handler.py tools.py requirements.txt; do
+    src="$PROJECT_DIR/sentinel/$file"
+    dst="$SENTINEL_DIR/$file"
+    if [ ! -f "$src" ]; then
+      log "WARN: missing source sentinel file $src (skipping)"
+      continue
+    fi
+    if ! cmp -s "$src" "$dst" 2>/dev/null; then
+      install -o sentinel -g sentinel -m 640 "$src" "$dst"
+      changed=1
+      if [ "$file" = "requirements.txt" ]; then
+        requirements_changed=1
+      fi
+    fi
+  done
+
+  if [ "$requirements_changed" = "1" ]; then
+    if [ ! -x "$SENTINEL_DIR/venv/bin/pip" ]; then
+      echo "Missing Sentinel virtualenv pip at $SENTINEL_DIR/venv/bin/pip" >&2
+      exit 1
+    fi
+    log "Refreshing Sentinel dependencies (requirements changed)"
+    "$SENTINEL_DIR/venv/bin/pip" install -r "$SENTINEL_DIR/requirements.txt"
+  fi
+
+  if [ "$changed" = "1" ]; then
+    log "Synced Sentinel runtime code in $SENTINEL_DIR"
+  else
+    log "Sentinel runtime code already up to date"
   fi
 }
 
@@ -96,6 +138,7 @@ if [ -x /usr/local/sbin/sync-sentinel-env.sh ]; then
 else
   log "WARN: /usr/local/sbin/sync-sentinel-env.sh missing; skipping Sentinel env sync"
 fi
+sync_sentinel_runtime
 
 if [ -f "/root/openclaw/.env" ]; then
   BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' /root/openclaw/.env | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"

@@ -95,7 +95,7 @@
 ### Fallback chain
 1. google/gemini-2.5-flash (primary)
 2. anthropic/claude-haiku-4-5 (first fallback, cross-provider)
-3. anthropic/claude-sonnet-4-5 (escalation fallback)
+3. anthropic/claude-sonnet-4-6 (escalation fallback)
 4. anthropic/claude-opus-4-6 (manual only)
 
 ## Token Guardrails

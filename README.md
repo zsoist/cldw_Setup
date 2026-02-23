@@ -161,6 +161,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
   - rollout/smoke diagnostics now read gateway auth token from `/root/.openclaw/openclaw.json` first (env fallback only), preventing false `device token mismatch` checks caused by stale `.env` duplicates
   - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`), tokenFile readability, webhook conflict absence, direct in-lane AI brief policy markers in workspace SOUL/AGENTS, and container-visible Brave key
   - smoke test now fails hard when `dmPolicy=pairing` with empty `allowFrom` because DM commands are gated until pairing approval
+  - config-only rollout now syncs Sentinel runtime code into `/opt/sentinel` (and refreshes deps when `requirements.txt` changes) to avoid deployment drift between repo and systemd runtime
   - `set-aibrief-output-channel.sh` now also updates `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` when target is numeric chat ID
 - Runtime bootstrap files used by command routing are loaded from:
   - `/root/.openclaw/workspace/AGENTS.md`

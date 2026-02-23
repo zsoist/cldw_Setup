@@ -27,7 +27,7 @@ Precedence rule: if historical notes below conflict, treat the **Latest pass (Ge
 - `openclaw/openclaw-config.json`
   - model routing updated to:
     - primary: `google/gemini-2.5-flash`
-    - fallbacks: `anthropic/claude-haiku-4-5`, `anthropic/claude-sonnet-4-5`
+    - fallbacks: `anthropic/claude-haiku-4-5`, `anthropic/claude-sonnet-4-6`
   - image routing + alias:
     - image primary: `google/gemini-2.5-pro`
     - image fallback: `google/gemini-2.5-flash`
@@ -59,6 +59,19 @@ Precedence rule: if historical notes below conflict, treat the **Latest pass (Ge
   - implemented provider abstraction in `sentinel/sentinel.py` for Anthropic + Gemini function-calling loops.
   - added Google function declaration schema in `sentinel/tools.py`.
   - updated tests/fixtures for dual-provider config and mocks.
+
+### Latest pass (2026-02-23, VPS stability + Sentinel deployment drift fix)
+
+- `infrastructure/vps-rollout-aibrief.sh`
+  - now syncs Sentinel runtime code (`config.py`, `sentinel.py`, `telegram_handler.py`, `tools.py`, `requirements.txt`) into `/opt/sentinel` during config-only rollouts.
+  - now refreshes Sentinel Python dependencies when `requirements.txt` changes, preventing stale runtime code after repo updates.
+- `sentinel/sentinel.py`
+  - added provider failover logic for recoverable primary-provider errors:
+    - when primary provider is unavailable/auth-failing/rate-limited, Sentinel falls back to the other initialized provider for that request.
+    - adds 5-minute primary-provider backoff to avoid repeated slow failures.
+  - keeps configured primary preference, but improves uptime under upstream provider incidents and invalid key states.
+- `sentinel/tests/test_provider_fallback.py`
+  - adds coverage for Anthropic->Gemini fallback, fallback backoff behavior, and non-recoverable error pass-through.
 
 ### Latest pass (2026-02-23, AI Daily Brief latency + Brave budget optimization)
 

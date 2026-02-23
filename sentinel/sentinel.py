@@ -64,22 +64,44 @@ class SentinelAgent:
         self.provider = config.provider
 
         self.client: Any
+        self.anthropic_client: Any | None = None
         self.google_module: Any | None = None
-        if self.provider == "anthropic":
+        self.google_client: Any | None = None
+
+        if Anthropic is not None and config.anthropic_api_key:
+            self.anthropic_client = Anthropic(api_key=config.anthropic_api_key)
+        elif self.provider == "anthropic":
             if Anthropic is None:
                 raise RuntimeError(
                     "SENTINEL_PROVIDER=anthropic requires the anthropic package. "
                     "Install dependencies from sentinel/requirements.txt"
                 )
-            self.client = Anthropic(api_key=config.anthropic_api_key)
+            raise RuntimeError("SENTINEL_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
+
+        if config.google_api_key:
+            try:
+                self.google_module, self.google_client = self._init_google_client()
+            except Exception:
+                if self.provider == "google":
+                    raise
+                logger.exception("Google fallback initialization failed; continuing without fallback")
         elif self.provider == "google":
-            self.google_module, self.client = self._init_google_client()
+            raise RuntimeError("SENTINEL_PROVIDER=google requires GEMINI_API_KEY")
+
+        if self.provider == "anthropic":
+            self.client = self.anthropic_client
+        elif self.provider == "google":
+            self.client = self.google_client
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
+
+        if self.client is None:
+            raise RuntimeError(f"Configured provider '{self.provider}' could not be initialized")
 
         self.conversations: dict[int, list[dict[str, Any]]] = {}
         self._last_activity: dict[int, float] = {}
         self._request_windows: dict[int, deque[float]] = {}
+        self._provider_backoff_until: dict[str, float] = {}
         self._state_lock = threading.Lock()
 
         self._audit_log_path = Path(self.config.audit_log_file)
@@ -285,7 +307,9 @@ class SentinelAgent:
         return history[-20:]
 
     def _call_anthropic(self, history: list[dict[str, Any]]) -> Any:
-        return self.client.messages.create(
+        if self.anthropic_client is None:
+            raise RuntimeError("Anthropic client is not initialized")
+        return self.anthropic_client.messages.create(
             model=self.config.model,
             max_tokens=self.config.max_tokens,
             system=SYSTEM_PROMPT,
@@ -293,8 +317,11 @@ class SentinelAgent:
             messages=history,
         )
 
-    def _call_google(self, history: list[dict[str, Any]]) -> Any:
-        return self.client.generate_content(
+    def _call_google(self, history: list[dict[str, Any]], client: Any | None = None) -> Any:
+        active_client = client or self.google_client
+        if active_client is None:
+            raise RuntimeError("Google client is not initialized")
+        return active_client.generate_content(
             history,
             tools=GOOGLE_TOOLS,
             generation_config={"max_output_tokens": self.config.max_tokens},
@@ -340,7 +367,7 @@ class SentinelAgent:
         assistant_turn = {"role": role or "model", "parts": assistant_parts}
         return "".join(text_chunks).strip(), tool_calls, assistant_turn
 
-    def _run_anthropic_loop(self, user_id: int, history: list[dict[str, Any]]) -> str:
+    def _run_anthropic_loop(self, user_id: int, history: list[dict[str, Any]], persist_history: bool = True) -> str:
         """Run Anthropic tool-use loop until a final text response is produced."""
         for _ in range(self.config.max_tool_iterations):
             response = self._call_anthropic(history)
@@ -383,7 +410,8 @@ class SentinelAgent:
                     text_response += block.text
 
             history.append({"role": "assistant", "content": response.content})
-            self.conversations[user_id] = self._truncate_history(history)
+            if persist_history:
+                self.conversations[user_id] = self._truncate_history(history)
             self._append_audit_event(
                 user_id,
                 "assistant_response",
@@ -398,10 +426,16 @@ class SentinelAgent:
         )
         return "Reached maximum tool iterations. Something may be stuck. Please try again."
 
-    def _run_google_loop(self, user_id: int, history: list[dict[str, Any]]) -> str:
+    def _run_google_loop(
+        self,
+        user_id: int,
+        history: list[dict[str, Any]],
+        client: Any | None = None,
+        persist_history: bool = True,
+    ) -> str:
         """Run Gemini function-calling loop until a final text response is produced."""
         for _ in range(self.config.max_tool_iterations):
-            response = self._call_google(history)
+            response = self._call_google(history, client=client)
             text_response, tool_calls, assistant_turn = self._extract_google_response(response)
             history.append(assistant_turn)
 
@@ -434,12 +468,14 @@ class SentinelAgent:
 
                 history.append({"role": "user", "parts": function_responses})
                 history = self._truncate_history(history)
-                self.conversations[user_id] = history
+                if persist_history:
+                    self.conversations[user_id] = history
                 continue
 
             final_text = text_response or "No response generated."
             history = self._truncate_history(history)
-            self.conversations[user_id] = history
+            if persist_history:
+                self.conversations[user_id] = history
             self._append_audit_event(
                 user_id,
                 "assistant_response",
@@ -453,6 +489,78 @@ class SentinelAgent:
             {"limit": self.config.max_tool_iterations},
         )
         return "Reached maximum tool iterations. Something may be stuck. Please try again."
+
+    def _get_fallback_provider(self) -> str | None:
+        if self.provider == "anthropic" and self.google_client is not None:
+            return "google"
+        if self.provider == "google" and self.anthropic_client is not None:
+            return "anthropic"
+        return None
+
+    @staticmethod
+    def _is_recoverable_provider_error(exc: Exception) -> bool:
+        details = f"{type(exc).__name__}: {exc}".lower()
+        markers = (
+            "authentication_error",
+            "invalid x-api-key",
+            "status code: 401",
+            "status code: 429",
+            "status code: 529",
+            "rate limit",
+            "overload",
+            "timeout",
+            "connection",
+            "temporarily unavailable",
+        )
+        return any(marker in details for marker in markers)
+
+    def _set_provider_backoff(self, provider: str, seconds: int = 300) -> None:
+        deadline = time.monotonic() + max(1, seconds)
+        with self._state_lock:
+            self._provider_backoff_until[provider] = deadline
+
+    def _clear_provider_backoff(self, provider: str) -> None:
+        with self._state_lock:
+            self._provider_backoff_until.pop(provider, None)
+
+    def _provider_in_backoff(self, provider: str) -> bool:
+        with self._state_lock:
+            deadline = self._provider_backoff_until.get(provider, 0.0)
+        return time.monotonic() < deadline
+
+    def _process_with_provider(
+        self,
+        provider: str,
+        user_id: int,
+        user_message: str,
+        *,
+        persist_history: bool,
+        use_existing_history: bool,
+    ) -> str:
+        history = self._prepare_history(user_id) if use_existing_history else []
+
+        if provider == "google":
+            history.append({"role": "user", "parts": [{"text": user_message}]})
+        else:
+            history.append({"role": "user", "content": user_message})
+
+        self._append_audit_event(
+            user_id,
+            "user_message",
+            {
+                "provider": provider,
+                "chars": len(user_message),
+                "preview": user_message[:200],
+            },
+        )
+
+        history = self._truncate_history(history)
+        if persist_history:
+            self.conversations[user_id] = history
+
+        if provider == "google":
+            return self._run_google_loop(user_id, history, client=self.google_client, persist_history=persist_history)
+        return self._run_anthropic_loop(user_id, history, persist_history=persist_history)
 
     def process_message(self, user_id: int, user_message: str) -> str:
         """Process a user message through the configured provider with tool use.
@@ -471,21 +579,70 @@ class SentinelAgent:
                 f"Please wait about {retry_after}s before sending another request."
             )
 
-        history = self._prepare_history(user_id)
-        if self.provider == "google":
-            history.append({"role": "user", "parts": [{"text": user_message}]})
-        else:
-            history.append({"role": "user", "content": user_message})
+        fallback_provider = self._get_fallback_provider()
+        if fallback_provider and self._provider_in_backoff(self.provider):
+            logger.warning(
+                "Primary provider %s is in backoff; using fallback %s",
+                self.provider,
+                fallback_provider,
+            )
+            return self._process_with_provider(
+                fallback_provider,
+                user_id,
+                user_message,
+                persist_history=False,
+                use_existing_history=False,
+            )
 
-        self._append_audit_event(
-            user_id,
-            "user_message",
-            {"chars": len(user_message), "preview": user_message[:200]},
-        )
+        try:
+            response = self._process_with_provider(
+                self.provider,
+                user_id,
+                user_message,
+                persist_history=True,
+                use_existing_history=True,
+            )
+            self._clear_provider_backoff(self.provider)
+            return response
+        except Exception as primary_exc:
+            if not fallback_provider or not self._is_recoverable_provider_error(primary_exc):
+                raise
 
-        history = self._truncate_history(history)
-        self.conversations[user_id] = history
+            self._set_provider_backoff(self.provider)
+            logger.warning(
+                "Primary provider %s failed (%s). Falling back to %s.",
+                self.provider,
+                type(primary_exc).__name__,
+                fallback_provider,
+            )
+            self._append_audit_event(
+                user_id,
+                "provider_fallback",
+                {
+                    "primary_provider": self.provider,
+                    "fallback_provider": fallback_provider,
+                    "error_type": type(primary_exc).__name__,
+                    "error_preview": str(primary_exc)[:200],
+                },
+            )
 
-        if self.provider == "google":
-            return self._run_google_loop(user_id, history)
-        return self._run_anthropic_loop(user_id, history)
+            try:
+                return self._process_with_provider(
+                    fallback_provider,
+                    user_id,
+                    user_message,
+                    persist_history=False,
+                    use_existing_history=False,
+                )
+            except Exception as fallback_exc:
+                self._append_audit_event(
+                    user_id,
+                    "provider_fallback_failed",
+                    {
+                        "primary_provider": self.provider,
+                        "fallback_provider": fallback_provider,
+                        "primary_error_type": type(primary_exc).__name__,
+                        "fallback_error_type": type(fallback_exc).__name__,
+                    },
+                )
+                raise
