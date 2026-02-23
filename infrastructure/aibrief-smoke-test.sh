@@ -271,6 +271,8 @@ PY
   fi
   SENTINEL_TG_TOKEN="$(grep '^SENTINEL_TELEGRAM_TOKEN=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
   BRAVE_API_KEY="$(grep '^BRAVE_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
+  GEMINI_API_KEY="$(grep '^GEMINI_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
+  ANTHROPIC_API_KEY="$(grep '^ANTHROPIC_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
 
   TG_CFG_RUNTIME="$(python3 - <<'PY'
 import json
@@ -696,6 +698,51 @@ PY
 )"
         fail "Brave API probes failed (llm/context HTTP ${BRAVE_HTTP_CODE}: ${BRAVE_ERROR}; web/search HTTP ${BRAVE_WEB_CODE}: ${BRAVE_WEB_ERROR}; key_len=${BRAVE_KEY_LEN})"
       fi
+    fi
+  fi
+
+  if [ -z "$GEMINI_API_KEY" ] || [[ "$GEMINI_API_KEY" == REPLACE_* ]]; then
+    warn "GEMINI_API_KEY missing/placeholder (Flash/Pro routing may degrade to Anthropic-only)"
+  elif [ "${#GEMINI_API_KEY}" -lt 20 ]; then
+    fail "GEMINI_API_KEY appears invalid (len=${#GEMINI_API_KEY}); update /root/openclaw/.env with a real Gemini key"
+  else
+    GEMINI_ENV_VISIBLE="$(docker exec openclaw-openclaw-gateway-1 sh -lc 'if [ -n "${GEMINI_API_KEY:-}" ]; then echo yes; else echo no; fi' 2>/dev/null || echo no)"
+    if [ "$GEMINI_ENV_VISIBLE" = "yes" ]; then
+      pass "Gateway container has GEMINI_API_KEY in environment"
+    else
+      fail "Gateway container GEMINI_API_KEY is empty (Gemini primary routing unavailable)"
+    fi
+  fi
+
+  if [ -z "$ANTHROPIC_API_KEY" ] || [[ "$ANTHROPIC_API_KEY" == REPLACE_* ]]; then
+    warn "ANTHROPIC_API_KEY missing/placeholder (Sonnet/Opus escalation unavailable)"
+  elif [ "${#ANTHROPIC_API_KEY}" -lt 20 ]; then
+    warn "ANTHROPIC_API_KEY appears invalid (len=${#ANTHROPIC_API_KEY}); Sonnet/Opus escalation likely unavailable"
+  else
+    ANTHROPIC_HTTP_CODE="$(curl -sS --max-time 20 \
+      -o /tmp/aibrief-anthropic-check.json \
+      -w '%{http_code}' \
+      -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+      -H 'anthropic-version: 2023-06-01' \
+      -H 'content-type: application/json' \
+      -d '{"model":"claude-haiku-4-5","max_tokens":8,"messages":[{"role":"user","content":"ping"}]}' \
+      'https://api.anthropic.com/v1/messages' \
+      2>/tmp/aibrief-anthropic-check.err || true)"
+    if [ "$ANTHROPIC_HTTP_CODE" = "200" ]; then
+      pass "Anthropic API key accepted (Sonnet/Opus escalation path available)"
+    else
+      ANTHROPIC_ERROR="$(python3 - <<'PY'
+import json
+try:
+    with open('/tmp/aibrief-anthropic-check.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    msg = ((data.get('error') or {}).get('message')) or data.get('message') or str(data)
+    print(str(msg)[:220])
+except Exception:
+    print('no-json-error-body')
+PY
+)"
+      warn "Anthropic key check failed (HTTP ${ANTHROPIC_HTTP_CODE}: ${ANTHROPIC_ERROR}); Sonnet/Opus escalation may fail until key rotation"
     fi
   fi
 fi
