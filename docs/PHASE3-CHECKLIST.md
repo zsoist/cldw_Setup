@@ -50,8 +50,7 @@
 - [ ] Verify backup excludes .env/.pem/.key files
 
 ## Verification — Cron Jobs
-- [ ] Verify daily brief fires at 07:00 COT (or trigger manually)
-- [ ] Verify EOD review fires at 20:00 COT (or trigger manually)
+- [ ] Verify AI top stories brief fires at 06:00 COT (previous day scope)
 - [ ] Confirm cron results append to workspace/logs/cron-job-results.md
 
 ## Post-verification

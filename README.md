@@ -74,7 +74,7 @@ The OpenClaw config uses `"compaction": {"mode": "safeguard"}`, which automatica
 
 ### 5. Silent Hours Optimization
 
-No proactive messages are sent between 23:00-07:00 COT. This eliminates ~33% of potential heartbeat cycles, directly reducing API calls. The heartbeat task list is priority-ordered so the cheapest checks (unread messages, pending tasks) run first, and expensive operations (web search for news) only trigger during morning briefing windows.
+No proactive messages are sent between 23:00-06:00 COT. This reduces unnecessary API calls while preserving the single scheduled AI brief run at 06:00.
 
 ### 6. Response Token Caps
 
@@ -105,31 +105,17 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 
 ### 8. Cron Job Architecture
 
-15 scheduled jobs defined in `openclaw/config/CRON.md`, split between personal and business:
+1 scheduled job defined in `openclaw/config/CRON.md`:
 
 | # | Job | Schedule | Agent | Model |
 |---|-----|----------|-------|-------|
-| 1 | Daily Planning Brief | 07:00 daily | Main | Haiku |
-| 2 | AI Daily Brief Top5 (12h, Morning) | 07:00 daily | Main | Sonnet |
-| 3 | AI Daily Brief Top5 (12h, Evening) | 19:00 daily | Main | Sonnet |
-| 4 | EOD Review | 20:00 daily | Main | Haiku |
-| 5 | Weekly Personal Review | Sun 20:30 | Main | Haiku |
-| 6 | Calendar Prep Watch | Every 4h | Main | Haiku |
-| 7 | Knowledge Capture | Mon/Wed/Fri 19:00 | Main | Haiku |
-| 8 | Business Daily Snapshot | Weekdays 08:00 | Work | Haiku |
-| 9 | Meeting Prep Generator | Hourly (work hours) | Work | Haiku/Sonnet |
-| 10 | Pipeline Stale Check | Weekdays 16:00 | Work | Haiku |
-| 11 | Weekly KPI Digest | Fri 17:00 | Work | Haiku |
-| 12 | Security Hygiene | Mon 09:00 | Work | Haiku |
-| 13 | AI Weekly Top5 Recap | Sun 20:00 | Main | Sonnet |
-| 14 | AI Monthly Top5 Recap (prev month) | Day 1 20:00 | Main | Sonnet |
-| 15 | Brave Provider Health Probe | 08:00/14:00/20:00 | Main | Haiku |
+| 1 | AI Daily Brief Top5 (Previous Day) | 06:00 daily | Main | Sonnet |
 
-Every job follows the read → analyze → notify pattern. Deep research and destructive actions never run automatically.
+Everything else runs on-demand via explicit commands.
 
 ### 9. AI Daily Brief Capability
 
-The `ai-daily-brief` skill delivers a source-grounded AI briefing twice daily with technical depth:
+The `ai-daily-brief` skill delivers a source-grounded AI briefing with one scheduled daily run and on-demand modes:
 
 - Canonical command: `/ai_daily_brief` (single stable command path).
 - Slot/mode selection via arguments:
@@ -150,7 +136,8 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing twice daily wi
 - Story output enforces **precise `YYYY-MM-DD` event dates** per story — vague or undated stories are rejected.
 - Story output includes **Technical Details** per top story: architecture type, parameter count (or disclosure status), context window, capability delta vs prior version, benchmarks with methodology.
 - Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
-- Brave provider health probed every 6h (08:00/14:00/20:00 COT); status cached in state proactively.
+- Scheduled automation is limited to one run at `06:00` COT for previous-day top stories.
+- All other modes/reports run only on-demand.
 - Monthly story archive: `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json` for trend analysis / thesis research.
 - Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
 - Channel command setup: set `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` + configure BotFather privacy mode — see `openclaw/config/CHANNELS.md` for step-by-step guide.
@@ -289,7 +276,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │   ├── IDENTITY.md                    # Persona tone + style
 │   │   ├── BOOTSTRAP.md                   # First-run behavior (retires after setup)
 │   │   ├── BOOT.md                        # Startup health checks (runs every boot)
-│   │   ├── CRON.md                        # Full cron job registry (14 jobs)
+│   │   ├── CRON.md                        # Cron registry (single daily AI brief job)
 │   │   ├── CHANNELS.md                    # Channel security policy + allowlists
 │   │   └── SANDBOX.md                     # Sandbox policy + agent isolation rules
 │   ├── agents/
@@ -530,12 +517,12 @@ Notes:
 | systemd for Sentinel | Lighter than Docker for a single Python process. Auto-restart on crash. |
 | 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping a week of recovery points. |
 | Sentinel on Haiku only | Sysadmin tasks (status, logs, restart) never need Sonnet-level reasoning. |
-| Silent hours (23:00-07:00) | Eliminates ~33% of heartbeat API calls with zero utility loss. |
+| Silent hours (23:00-06:00) | Reduces proactive API calls while preserving the 06:00 scheduled AI brief run. |
 | Multi-agent (main + work) | Separates personal/professional data, enables sandboxing, reduces context per agent. |
 | Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |
 | No elevated exec | Sandboxing is meaningless if agents can bypass it via host execution. |
 | Channel allowlist + approved interactive chats only | Group chats are the highest prompt injection surface area; only explicit interactive chat IDs are allowed. |
-| 15 cron jobs, Haiku-default with Sonnet for AI briefs | Most schedules are repetitive and cheap; twice-daily AI news synthesis is the intentional Sonnet exception. |
+| 1 cron job, Sonnet for AI brief synthesis | Only one automated run is enabled (06:00 previous-day top stories); everything else is on-demand. |
 | Read/notify before act | Cron jobs that auto-execute risky actions compound errors at scale. |
 | Deep research opt-in only | Auto-triggered deep research is the fastest way to blow through API budget. |
 | Save reusable research to docs/ | Prevents redundant web searches for the same topic. |

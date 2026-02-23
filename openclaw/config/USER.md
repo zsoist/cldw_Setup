@@ -34,4 +34,4 @@
 - Risk tolerance: moderate — prefer safe defaults, but allow bounded initiative
 - Cost sensitivity: high — optimize for token efficiency, warn if task >$0.50
 - Notification style: Telegram for summaries/alerts, not for long reports
-- Silent hours: 23:00-07:00 COT (no proactive messages)
+- Silent hours: 23:00-06:00 COT (no proactive messages)

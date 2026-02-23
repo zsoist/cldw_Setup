@@ -3,7 +3,7 @@
 This playbook defines the production behavior for `ai_daily_brief` in OpenClaw setup.
 
 ## Objective
-- Deliver high-signal AI news twice daily.
+- Deliver high-signal AI news once daily (scheduled) and on-demand when requested.
 - Avoid duplicate noise and rumor amplification.
 - Keep runs stateful, auditable, and Telegram-friendly.
 - Provide technical depth sufficient for an AI practitioner / MS-AI student.
@@ -40,10 +40,8 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
 
 ## Slot Rules
 - Timezone: `America/Bogota`
-- Morning slot: 07:00 COT (Top 5, previous 12h)
-- Evening slot: 19:00 COT
-- Weekly recap slot: Sunday 20:00 COT (`top5 week`)
-- Monthly recap slot: day 1, 20:00 COT (`top5 month <previous-YYYY-MM>`)
+- Scheduled slot: 06:00 COT (Top 5, previous calendar day)
+- Weekly/monthly/top5 variants are on-demand only (no automatic schedule)
 - Auto slot cutoff: 13:00 COT (`<13:00` => morning)
 
 ## Provider Grounding (Brave LLM Context)
@@ -54,7 +52,7 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
   - state: `config.brave_llm_context` in `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
 - Default threshold mode: `balanced`
 - Fallback behavior: if Brave is unavailable, run partial brief with fallback web search and explicit confidence downgrade.
-- Brave provider health probe: runs every 6h and updates `providers.brave_llm_context.status` and `last_probe_at` proactively.
+- Brave provider health is checked during runs/on-demand status (no separate scheduled probe).
 
 Recommended context budgets:
 - `full`: `count=20`, `maximum_number_of_tokens=8192`

@@ -16,9 +16,8 @@
 - OpenClaw + Sentinel VPS infrastructure (Hetzner CPX22)
 
 ## Standard Operating Procedures
-- Morning briefing at 07:00 COT via Telegram
-- End-of-day summary at 20:00 COT — persist to `memory/YYYY-MM-DD.md`
-- Weekly review Sunday 20:30 COT — persist to `memory/weekly/YYYY-WXX.md`
+- AI top stories brief at 06:00 COT (previous day scope) via Telegram
+- End-of-day summaries and weekly reviews are on-demand
 - GitHub backup daily at 03:00 COT (no secrets in repo)
 - Heartbeat every 55 minutes during active hours to keep cache warm
 
@@ -26,7 +25,7 @@
 - VPS: Hetzner CPX22 (4 vCPU, 8GB RAM, 80GB disk)
 - Default model: Haiku (cost control). Sonnet for quality. Opus manual-only.
 - Token cost target: <$5/day
-- Silent hours: 23:00-07:00 COT
+- Silent hours: 23:00-06:00 COT
 
 ## Recent Lessons
 - (populated by end-of-day logs — new entries go here)

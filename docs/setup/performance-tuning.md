@@ -59,16 +59,16 @@ This ensures the system prompt (SOUL.md + tools + metadata) remains cached acros
 
 **Do not change the heartbeat interval** without understanding the cache TTL implications.
 
-## 5. Heartbeat Batching over Many Cron Jobs
+## 5. Heartbeat with Minimal Cron
 
-Heartbeat can batch multiple checks in a single API call and suppress no-op alerts (`HEARTBEAT_OK`).
+With a single scheduled job, cron-driven cost is already low.
 
 | Approach | API Calls | Cost |
 |----------|-----------|------|
-| 15 separate cron jobs, each making an API call | 15 | High |
-| Heartbeat batches checks, reports only actionable items | 1 | Low |
+| 1 scheduled cron job/day | 1 | Low |
+| On-demand commands for everything else | Usage-based | Controlled |
 
-Our 15 cron jobs are designed as heartbeat tasks first. They run within the heartbeat cycle, not as independent API calls, except when isolation is needed.
+Current policy: one daily AI brief at 06:00 COT; everything else is on-demand.
 
 ## 6. Main vs Isolated Cron
 
@@ -79,7 +79,7 @@ Two execution modes for scheduled jobs:
 | **Main-session** | Adds to next heartbeat, shares context | Inherits session model | Cheap checks, context-dependent tasks |
 | **Isolated** | Full separate turn, clean context | Can use cheaper model | Batch pipelines, independent analysis |
 
-Our cron jobs (CRON.md) default to main-session mode. Use isolated mode for:
+Our single cron job (CRON.md) defaults to main-session mode. Use isolated mode for:
 - Jobs that don't need prior conversation context
 - Jobs where a cheaper model (Haiku) is sufficient regardless of session model
 - Batch processing that should not pollute the main session
@@ -116,8 +116,8 @@ Periodic performance review:
 - [ ] SOUL.md under 500 words (`wc -w openclaw/config/SOUL.md`)
 - [ ] Run `/context list` — no single item > 20% of context
 - [ ] Heartbeat interval is 55 min (cache-aligned)
-- [ ] Cron jobs use main-session mode unless isolation is needed
+- [ ] The single cron job uses main-session mode unless isolation is needed
 - [ ] No browser automation for tasks achievable with web_search/web_fetch
 - [ ] `/compact` run on any session older than 2 hours of active use
 - [ ] Response token caps enforced (2048 OpenClaw, 1024 Sentinel)
-- [ ] Silent hours active (23:00-07:00 COT)
+- [ ] Silent hours active (23:00-06:00 COT)
