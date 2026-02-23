@@ -103,6 +103,32 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
 - `builder` mode: bias to tooling queries, `count=15`, `maximum_number_of_tokens=6144`
 - `watchlist` mode: narrow watchlist terms, `count=10`, `maximum_number_of_tokens=3072`
 
+### Brave Query Construction (mandatory — date-scoped queries)
+
+The Brave LLM Context API has NO native date filter. You MUST embed date bounds
+directly in the query string `q` so the search engine biases results toward the
+correct window. Use these templates exactly:
+
+| Scope | Query template (fill placeholders) |
+|-------|------------------------------------|
+| `12h` | `"AI artificial intelligence news developments {YYYY-MM-DD}" site:reuters.com OR site:bloomberg.com OR site:theverge.com OR site:techcrunch.com` — run **two** queries: one for the target date, one for the day before (to catch timezone overlap). |
+| `week` | `"AI artificial intelligence top stories week of {MON_DATE} to {SUN_DATE} {YYYY}" latest developments launches releases` — run **two** queries: one broad week query, one narrowed to watchlist terms + date range. |
+| `month` | `"AI artificial intelligence major developments {MONTH_NAME} {YYYY}" launches releases breakthroughs` — run **two** queries: one broad, one watchlist-focused. |
+
+**Critical rules:**
+- Always include the **explicit calendar dates** (YYYY-MM-DD) in every query.
+- Never use a bare query like `"AI news"` or `"AI news February 2026"` without specific day/week bounds.
+- For `week` scope: compute the Monday and Sunday dates of the target week in COT before constructing the query.
+- For `12h` scope: compute the exact start hour in COT and include the calendar date.
+- Run at least **two** Brave queries per top5 invocation to improve recall and cross-validate.
+- Watchlist-focused query: append watchlist terms from state (e.g., `openai anthropic "google deepmind" "meta ai" "ai regulation"`).
+
+Example for week of 2026-02-16 to 2026-02-22:
+```
+Query 1: "AI artificial intelligence top stories week of 2026-02-16 to 2026-02-22 latest developments launches releases"
+Query 2: "openai anthropic google deepmind meta ai AI news 2026-02-16 2026-02-17 2026-02-18 2026-02-19 2026-02-20 2026-02-21 2026-02-22"
+```
+
 ### Top5 Time-Scope Contract (mandatory)
 - For `/ai_daily_brief top5 12h`, scope is strict rolling previous 12 hours.
 - Default scope for `/ai_daily_brief top5` is the **current week** in `America/Bogota`:
@@ -143,6 +169,18 @@ Produce a high-signal, low-noise AI news briefing for Daniel twice daily, optimi
    - single low-tier source only
    - benchmark claims without method context
    - uncorroborated viral/social claims
+6b. **Date-scope hard gate (top5 only — mandatory checkpoint before drafting)**:
+   - Compute the scope bounds as concrete ISO 8601 dates:
+     - `12h`: `scope_start = now - 12h`, `scope_end = now` (in COT)
+     - `week`: `scope_start = Monday 00:00 COT`, `scope_end = Sunday 23:59 COT`
+     - `month`: `scope_start = YYYY-MM-01 00:00 COT`, `scope_end = last day 23:59 COT`
+   - For EVERY candidate story, extract or infer the event date from source text.
+   - **Hard reject** any story whose event date is before `scope_start` or after `scope_end`.
+   - If a story has no determinable date from sources, reject it.
+   - If an event spans multiple dates (e.g., "announced Feb 18, shipped Feb 20"), use the most recent date.
+   - After filtering: if fewer than 5 stories remain, that is correct — do NOT backfill with out-of-scope stories.
+   - Log: `"Date gate: {N} candidates passed, {M} rejected as out-of-scope"` in internal reasoning.
+   - This gate is NON-NEGOTIABLE. A story from Feb 6 MUST NOT appear in a "Week of Feb 16-22" brief.
 7. **Draft**: story-level synthesis with explicit source attribution.
    - **Event date (mandatory):** Each story headline MUST include its precise event date as `YYYY-MM-DD` (ISO 8601). If exact date is unknown from sources, use `~YYYY-MM-DD (estimated)`. Stories without a parseable date are rejected at the validation gate.
    - **Model/product identifier:** Include the concrete model/product name in the headline or first bullet when available. If source confirms release but does not disclose model/product name, explicitly say `model name not publicly disclosed`.
@@ -335,16 +373,44 @@ Status truth rules:
 - Do not present rumors as facts.
 - Mark conflicting reports explicitly.
 - If no credible stories: `No high-confidence AI updates in this window.`
-- **Date gate:** Reject any top story without a parseable `YYYY-MM-DD` event date in its headline. Use `~YYYY-MM-DD (estimated)` only when source implies the date but does not state it explicitly.
-- In `top5` mode, reject any story outside requested scope.
+- **Date gate (STRICT — zero tolerance):**
+  - Reject any top story without a parseable `YYYY-MM-DD` event date in its headline.
+  - Use `~YYYY-MM-DD (estimated)` only when source implies the date but does not state it explicitly.
+  - **Vague dates are NOT acceptable.** "Feb 2026" without a day is not a valid date — you must find the actual day from sources or reject the story.
+  - A date like `| Feb 2, 2026` in a "Week of Feb 16-22" brief is a hard failure. That story MUST be rejected.
+- **Scope gate (STRICT — zero tolerance):**
+  - In `top5` mode, reject any story whose event date falls outside the requested scope bounds.
+  - "Outside scope" means: event_date < scope_start OR event_date > scope_end.
+  - Do NOT include an older story just because it's important. Importance does not override scope.
+  - If this leaves fewer than 5 stories, that is the correct output. Add: `Coverage limited by requested time scope.`
+  - Example: scope is "Week of 2026-02-16 to 2026-02-22". A story dated 2026-02-06 is REJECTED regardless of significance.
 - In `top5` mode, reject generic model claims lacking named model/product unless explicitly marked as undisclosed by sources.
 - **Technical depth gate:** Each top story must include a Technical Details entry. If no technical details are publicly available, state `Technical details: not yet publicly disclosed.` — do not omit the field silently.
-- Reject output with non-clickable source references for included stories.
+- **Source link gate:** Reject output with non-clickable source references. Every source must be `[Outlet](https://url)`, never a bare outlet name.
 - If retrieval degraded: send partial brief and list missing coverage.
 - If `BRAVE_API_KEY` is missing: report provider as unconfigured and return setup command.
 - If target channel is configured but unreachable (forbidden/not admin):
   - send concise failure notice to originating chat
   - do not silently drop brief output
+
+### Common Failure Modes (prevent these)
+These are real failures observed in production. Each one MUST be prevented:
+
+1. **Old stories in weekly brief**: Stories from Feb 2 or Feb 6 appearing in "Week of Feb 16-22".
+   - Root cause: Brave query was too broad, and date gate was not applied.
+   - Fix: Use date-scoped queries (see "Brave Query Construction") + apply step 6b hard gate.
+
+2. **Vague dates**: Headlines showing "Feb 2026" instead of "2026-02-18".
+   - Root cause: Date not extracted from source text.
+   - Fix: Search source content for the specific date. If truly not findable, use `~YYYY-MM-DD (estimated)`.
+
+3. **Plain-text sources**: "Sources: LLM Stats, HuMAI, MarketingProfs" with no URLs.
+   - Root cause: Source URLs from Brave response were discarded.
+   - Fix: Preserve URLs from `grounding.generic[].url` and render as clickable markdown.
+
+4. **Missing Technical Details**: Stories presented without architecture/benchmark info.
+   - Root cause: Technical depth gate not enforced.
+   - Fix: Include the field for every story, even if content is "not yet publicly disclosed."
 
 ## Efficiency Constraints
 - Target runtime <90s
