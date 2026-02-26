@@ -10,9 +10,53 @@
 
 ## Current State
 
-`main` is current through **2026-02-26 evening pass** (VPS sync + config hardening). All services healthy on VPS.
+`main` is current through **2026-02-26 (Job Radar + AI Daily Brief audit)**. All services healthy on VPS.
 
-Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-26 VPS sync + config hardening)** as authoritative.
+Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-26, Job Radar + AI Daily Brief audit)** as authoritative.
+
+### Latest pass (2026-02-26, Job Radar + AI Daily Brief audit)
+
+Full runtime audit of both subsystems. All fixes applied to VPS and committed/pushed to `main`.
+
+**Job Radar — status: ALL HEALTHY (no changes required)**
+- Health endpoint: all checks OK (`database`, `brave_api`, `anthropic_api`, `telegram_bot`, `openclaw_gateway`)
+- AM digest sent at 13:00 UTC on 2026-02-26: 5 jobs, `message_id=87`, delivered to `-1003826801947`
+- DB: 69 jobs, all with `company_name` populated, all scored (0 unscored)
+- `BRAVE_CONTEXT_MAX_TOKENS=3072` confirmed in `/root/job-radar/.env`
+- Digest schedule confirmed: AM=13:00 UTC (08:00 COT), PM=23:00 UTC (18:00 COT)
+- No code or config changes needed
+
+**AI Daily Brief — CRITICAL FIXES APPLIED:**
+
+1. **`ai-brief-state.json` corrupted JSON** — `providers` block was closed with `]` instead of `}` at line 416. Caused by the cron job timing out mid-write at 60s. Fixed with Python string replacement:
+   ```python
+   old = '    }\n  ],\n  "recent_story_fingerprints"'
+   new = '    }\n  },\n  "recent_story_fingerprints"'
+   ```
+   Verified with `json.loads()` before saving. File is now valid (16 history entries, 5 fingerprints, schema_version `2026-02-24-v7`).
+
+2. **Stale `last_run.status="running"` lock** — run `top5-week-20260226-0710` was left `running` with `finished_at: null` (3282 seconds stale). Cleared via:
+   ```bash
+   bash /root/openclaw-project/infrastructure/reconcile-ai-brief-state.sh \
+     /root/.openclaw/workspace/logs/ai-brief-state.json
+   # RECOVERED run_id=top5-week-20260226-0710 reason=stale_age_seconds=3282
+   ```
+
+3. **Skills directory owned by `root:root`** — `rsync` ran as root and reset ownership. Fixed:
+   ```bash
+   chown -R sentinel:systemd-journal /root/.openclaw/skills/
+   ```
+
+**Expected self-healing on next cron run (2026-02-27 12:10 UTC):**
+- `lastRunStatus: "error"`, `consecutiveErrors: 2` — will auto-reset on first successful run
+- History shows last 6 runs as "failed" (all pre-fix failures from before 2026-02-26)
+- `timeoutSeconds: 120` is now in effect — brief should complete within budget
+
+**Files changed on VPS (not in git):**
+- `/root/.openclaw/workspace/logs/ai-brief-state.json` — corrupted JSON fixed, stale lock cleared
+- `/root/.openclaw/skills/` — ownership corrected to `sentinel:systemd-journal`
+
+---
 
 ### Latest pass (2026-02-26, VPS sync + config hardening)
 
@@ -691,6 +735,11 @@ Marker format:
 ---
 
 ## Known Follow-up Items
+
+### From 2026-02-26 Job Radar + AI Daily Brief audit
+1. **Confirm AI brief cron self-heals** — next run at 2026-02-27 12:10 UTC. After run, verify `lastRunStatus: "success"` and `consecutiveErrors: 0` in `jobs.json`, and `last_run.status: "completed"` in `ai-brief-state.json`.
+2. **Monitor ai-brief-state.json for future corruption** — the JSON corruption pattern (cron timeout mid-write) will recur if the brief ever exceeds 120s again. If it does, increase `timeoutSeconds` incrementally (try 150). The reconcile script handles stale locks; the JSON fix requires manual Python edit.
+3. **Job Radar PM digest** — PM digest at 23:00 UTC (18:00 COT) not directly verified in this session (no log review for it). Verify delivery in channel after the next PM digest window.
 
 ### From 2026-02-26 pass (VPS sync + config hardening)
 1. **Migrate Sentinel to `google.genai` SDK** — `sentinel.py` uses the deprecated `google.generativeai` package. The FutureWarning appears on every Sentinel startup. Migration requires updating imports and API call patterns in `sentinel.py`. Not urgent (still works), but should be done before the package is removed.

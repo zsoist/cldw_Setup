@@ -137,6 +137,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
 - Channel context: `/ai_daily_brief@BotName status` strips `@BotName` suffix automatically; approved group/supergroup chats treated identically to DM.
 - Execution policy: `/ai_daily_brief*` runs directly in-lane (skill-first), not via mandatory sub-agent spawn.
 - Deduplication and update suppression using `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
+- **State file resilience:** if cron times out mid-write, `ai-brief-state.json` can be left with malformed JSON (e.g. `]` instead of `}` closing the `providers` block). Fix with Python string replacement and verify with `json.loads()`. Stale `last_run.status="running"` locks (finished_at=null) are cleared by `infrastructure/reconcile-ai-brief-state.sh`.
 - State schema v5: includes `history[]` (last 20 runs), `feedback[]`, `cost_estimate` per run, `last_probe_at` on Brave provider, plus Brave request controls (`request_method`, `threshold_by_mode`, `query_constraints`, `min_inter_query_delay_seconds`).
 - Story output enforces **precise `YYYY-MM-DD` event dates** per story — vague or undated stories are rejected.
 - Story output includes **Technical Details** per top story: architecture type, parameter count (or disclosure status), context window, capability delta vs prior version, benchmarks with methodology.

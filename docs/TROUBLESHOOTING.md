@@ -467,6 +467,50 @@ Notes:
 - `vps-rollout-aibrief.sh` now runs this reconcile step automatically.
 - stale threshold defaults to 900s (override with `STALE_AFTER_SECONDS=...` if needed).
 
+### `ai-brief-state.json` is invalid JSON after cron timeout
+
+**Symptom:** Any command that reads `ai-brief-state.json` fails silently or with a parse error. Python validation shows:
+```
+json.decoder.JSONDecodeError: Expecting ',' delimiter: line NNN column 3
+```
+
+**Cause:** The cron job timed out mid-write. A partial flush left the `providers` block closed with `]` instead of `}`, producing:
+```json
+    "providers": {
+        "brave_llm_context": { ... }
+    ],   ← should be }
+    "recent_story_fingerprints": ...
+```
+
+**Fix:**
+```python
+import json
+
+path = '/root/.openclaw/workspace/logs/ai-brief-state.json'
+text = open(path).read()
+
+# Fix the malformed closing brace
+old = '    }\n  ],\n  "recent_story_fingerprints"'
+new = '    }\n  },\n  "recent_story_fingerprints"'
+
+if old in text:
+    fixed = text.replace(old, new)
+    json.loads(fixed)   # validate before saving
+    open(path, 'w').write(fixed)
+    print('Fixed OK')
+else:
+    print('Pattern not found — inspect file manually')
+    # Try: python3 -m json.tool ai-brief-state.json to find the error location
+```
+
+After fixing, run the reconcile script to clear any stale running lock:
+```bash
+bash /root/openclaw-project/infrastructure/reconcile-ai-brief-state.sh \
+  /root/.openclaw/workspace/logs/ai-brief-state.json
+```
+
+**Prevention:** Keep `timeoutSeconds` in `jobs.json` at `120` or above. If the brief is still timing out at 120s, raise to `150` — but do not go above `180` (causes zombie runs).
+
 ### Commands reach bot but AI brief never invokes (`last_run` stays null)
 If `/ai_daily_brief*` returns generic replies and `last_run.run_id/mode/status` remain null, verify DM authorization:
 
