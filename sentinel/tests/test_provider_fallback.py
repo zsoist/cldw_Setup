@@ -85,6 +85,27 @@ def test_backoff_skips_primary_provider_after_failure(tmp_path):
         assert google_model.generate_content.call_count == 2
 
 
+def test_recoverable_primary_failure_does_not_persist_orphan_user_turn(tmp_path):
+    config = _build_config(tmp_path)
+
+    with patch("sentinel.Anthropic") as mock_anthropic, patch(
+        "sentinel.SentinelAgent._init_google_client"
+    ) as mock_google_init:
+        anthropic_client = MagicMock()
+        anthropic_client.messages.create.side_effect = RuntimeError("invalid x-api-key")
+        mock_anthropic.return_value = anthropic_client
+
+        google_model = MagicMock()
+        google_model.generate_content.return_value = _google_text_response("fallback ok")
+        mock_google_init.return_value = (MagicMock(), google_model)
+
+        agent = SentinelAgent(config)
+        result = agent.process_message(12345, "status")
+
+        assert result == "fallback ok"
+        assert agent.conversations.get(12345, []) == []
+
+
 def test_non_recoverable_primary_error_does_not_fallback(tmp_path):
     config = _build_config(tmp_path)
 

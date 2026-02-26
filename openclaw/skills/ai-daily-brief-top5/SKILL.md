@@ -20,6 +20,9 @@ Compatibility command shim for users invoking `/ai_daily_brief_top5`.
 - Default time scope is current COT week (Monday-Sunday) unless user explicitly requests month scope.
 - If user asks "top stories of the month" (or similar), force monthly scope.
 - Persist state for this invocation:
+  - before writing new run state, recover stale prior locks:
+    - if previous `last_run.status=running` and (`started_at` missing/invalid OR age >= 900s), set previous run to `failed` with `finished_at` and explicit interruption error.
+    - if previous `last_run.status=running` and age < 900s, do not overwrite; return concise "already running" notice.
   - set `last_run.started_at` + `status=running` at start
   - set `last_run.finished_at` + final `status` (`success|partial|failed`) at end
   - set `last_run.error` on failures (never leave null if failed)

@@ -547,7 +547,8 @@ class SentinelAgent:
         persist_history: bool,
         use_existing_history: bool,
     ) -> str:
-        history = self._prepare_history(user_id) if use_existing_history else []
+        base_history = self._prepare_history(user_id) if use_existing_history else []
+        history = list(base_history)
 
         if provider == "google":
             history.append({"role": "user", "parts": [{"text": user_message}]})
@@ -565,8 +566,6 @@ class SentinelAgent:
         )
 
         history = self._truncate_history(history)
-        if persist_history:
-            self.conversations[user_id] = history
 
         if provider == "google":
             return self._run_google_loop(user_id, history, client=self.google_client, persist_history=persist_history)

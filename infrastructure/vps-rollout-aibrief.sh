@@ -136,6 +136,8 @@ done
 bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \
   "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" \
   "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
+bash "$PROJECT_DIR/infrastructure/reconcile-ai-brief-state.sh" \
+  "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
 
 require_file "$OPENCLAW_CFG/openclaw.json"
 require_file "$OPENCLAW_CFG/openclaw-config.json"

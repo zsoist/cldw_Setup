@@ -113,6 +113,8 @@ copy_checked "$PROJECT_DIR/openclaw/workspace/logs/cron-job-results.md" "$OPENCL
 bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \
     "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" \
     "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
+bash "$PROJECT_DIR/infrastructure/reconcile-ai-brief-state.sh" \
+    "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
 if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
     while IFS= read -r -d '' skill_file; do
         rel_path="${skill_file#$PROJECT_DIR/openclaw/skills/}"

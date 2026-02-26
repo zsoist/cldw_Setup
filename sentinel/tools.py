@@ -369,7 +369,8 @@ def is_command_allowed(command: str) -> tuple[bool, str]:
 
 def execute_system_stats() -> dict[str, Any]:
     """Get system resource usage."""
-    cpu_percent = psutil.cpu_percent(interval=1)
+    # Keep this lightweight; 250ms sampling is enough for chat diagnostics.
+    cpu_percent = psutil.cpu_percent(interval=0.25)
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
     boot_time = psutil.boot_time()
@@ -481,15 +482,21 @@ def execute_check_security() -> dict[str, Any]:
     except Exception:
         checks["ufw"] = "Could not check UFW"
 
-    # Failed SSH attempts (last 20)
+    # Failed SSH attempts from recent auth log window.
+    # Avoid scanning the full auth.log on every invocation.
     try:
-        auth = subprocess.run(
-            ["grep", "Failed password", "/var/log/auth.log"],
-            capture_output=True, text=True, timeout=10
+        auth_tail = subprocess.run(
+            ["tail", "-n", "5000", "/var/log/auth.log"],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
-        lines = auth.stdout.strip().split("\n")
-        checks["failed_ssh_attempts"] = len([line for line in lines if line.strip()])
-        checks["last_failed_ssh"] = lines[-1][:200] if lines and lines[0] else "None"
+        failed_lines = [
+            line for line in auth_tail.stdout.splitlines()
+            if "Failed password" in line
+        ]
+        checks["failed_ssh_attempts"] = len(failed_lines)
+        checks["last_failed_ssh"] = failed_lines[-1][:200] if failed_lines else "None"
     except Exception:
         checks["failed_ssh_attempts"] = "Could not check"
 
@@ -506,7 +513,11 @@ def execute_check_security() -> dict[str, Any]:
             ["systemctl", "list-units", "--type=service", "--state=running", "--no-pager"],
             capture_output=True, text=True, timeout=10
         )
-        checks["running_services_count"] = services.stdout.count("running")
+        running_units = [
+            line for line in services.stdout.splitlines()
+            if " loaded active running " in line
+        ]
+        checks["running_services_count"] = len(running_units)
     except Exception:
         checks["running_services_count"] = "Could not check"
 

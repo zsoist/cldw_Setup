@@ -13,7 +13,7 @@
 #   bash /root/openclaw-project/infrastructure/vps-activate-channel-commands.sh
 #
 # Optional env overrides:
-#   BRANCH=claude/add-channel-commands-TKUN7   (default)
+#   BRANCH=main                                 (default)
 #   PROJECT_DIR=/root/openclaw-project          (default)
 #   OPENCLAW_DIR=/root/openclaw                 (default)
 #   ENV_FILE=/root/openclaw/.env                (default)
@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-BRANCH="${BRANCH:-claude/add-channel-commands-TKUN7}"
+BRANCH="${BRANCH:-main}"
 PROJECT_DIR="${PROJECT_DIR:-/root/openclaw-project}"
 OPENCLAW_DIR="${OPENCLAW_DIR:-/root/openclaw}"
 ENV_FILE="${ENV_FILE:-/root/openclaw/.env}"
