@@ -183,6 +183,8 @@ def test_google_empty_response_falls_back_to_anthropic(tmp_path):
         assert result == "anthropic fallback ok"
         assert google_model.generate_content.call_count >= 2
         assert anthropic_client.messages.create.call_count == 1
+        anthropic_call = anthropic_client.messages.create.call_args
+        assert anthropic_call.kwargs["model"] == "claude-haiku-4-5"
 
 
 def test_google_empty_response_without_fallback_returns_retry_message(tmp_path):

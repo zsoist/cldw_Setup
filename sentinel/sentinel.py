@@ -142,6 +142,39 @@ class SentinelAgent:
             return "gemini-2.5-pro"
         return model or "gemini-2.5-flash"
 
+    @staticmethod
+    def _normalize_anthropic_model_name(raw_model: str) -> str:
+        """Normalize aliases/provider-prefixed model ids for Anthropic calls."""
+        model = (raw_model or "").strip()
+        alias_map = {
+            "haiku": "claude-haiku-4-5",
+            "claude-haiku-4-5": "claude-haiku-4-5",
+            "claude-haiku-4-6": "claude-haiku-4-5",
+            "sonnet": "claude-sonnet-4-5",
+            "claude-sonnet-4-5": "claude-sonnet-4-5",
+            "claude-sonnet-4-6": "claude-sonnet-4-5",
+            "opus": "claude-opus-4-6",
+            "claude-opus-4-6": "claude-opus-4-6",
+        }
+        if model in alias_map:
+            return alias_map[model]
+        if model.startswith("anthropic/"):
+            stripped = model.split("/", 1)[1]
+            return alias_map.get(stripped, stripped)
+        if model.startswith("google/") or "gemini" in model:
+            if "pro" in model:
+                return "claude-sonnet-4-5"
+            return "claude-haiku-4-5"
+        return model or "claude-haiku-4-5"
+
+    def _resolve_model_for_provider(self, provider: str) -> str:
+        """Select a model id valid for the target provider."""
+        if provider == "google":
+            return self._normalize_google_model_name(self.config.model)
+        if provider == "anthropic":
+            return self._normalize_anthropic_model_name(self.config.model)
+        return self.config.model
+
     def _init_google_client(self) -> tuple[Any, Any]:
         """Initialize Gemini client lazily so Anthropic-only environments still run."""
         try:
@@ -371,11 +404,11 @@ class SentinelAgent:
                 output_tokens = max(0, total_tokens - input_tokens)
         return max(input_tokens, 0), max(output_tokens, 0)
 
-    def _call_anthropic(self, history: list[dict[str, Any]]) -> Any:
+    def _call_anthropic(self, history: list[dict[str, Any]], model_name: str) -> Any:
         if self.anthropic_client is None:
             raise RuntimeError("Anthropic client is not initialized")
         return self.anthropic_client.messages.create(
-            model=self.config.model,
+            model=model_name,
             max_tokens=self.config.max_tokens,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
@@ -432,15 +465,22 @@ class SentinelAgent:
         assistant_turn = {"role": role or "model", "parts": assistant_parts}
         return "".join(text_chunks).strip(), tool_calls, assistant_turn
 
-    def _run_anthropic_loop(self, user_id: int, history: list[dict[str, Any]], persist_history: bool = True) -> str:
+    def _run_anthropic_loop(
+        self,
+        user_id: int,
+        history: list[dict[str, Any]],
+        persist_history: bool = True,
+        model_name: str | None = None,
+    ) -> str:
         """Run Anthropic tool-use loop until a final text response is produced."""
+        active_model = model_name or self._resolve_model_for_provider("anthropic")
         for _ in range(self.config.max_tool_iterations):
             try:
-                response = self._call_anthropic(history)
+                response = self._call_anthropic(history, model_name=active_model)
             except Exception as exc:
                 self._record_api_usage(
                     provider="anthropic",
-                    model=self.config.model,
+                    model=active_model,
                     status="error",
                     user_id=user_id,
                     error=exc,
@@ -450,7 +490,7 @@ class SentinelAgent:
             input_tokens, output_tokens = self._extract_anthropic_usage(response)
             self._record_api_usage(
                 provider="anthropic",
-                model=self.config.model,
+                model=active_model,
                 status="success",
                 user_id=user_id,
                 input_tokens=input_tokens,
@@ -517,11 +557,12 @@ class SentinelAgent:
         history: list[dict[str, Any]],
         client: Any | None = None,
         persist_history: bool = True,
+        model_name: str | None = None,
     ) -> str:
         """Run Gemini function-calling loop until a final text response is produced."""
         latest_tool_result = ""
         blank_response_retries = 0
-        google_model = self._normalize_google_model_name(self.config.model)
+        google_model = model_name or self._resolve_model_for_provider("google")
         for _ in range(self.config.max_tool_iterations):
             try:
                 response = self._call_google(history, client=client)
@@ -696,8 +737,21 @@ class SentinelAgent:
         history = self._truncate_history(history)
 
         if provider == "google":
-            return self._run_google_loop(user_id, history, client=self.google_client, persist_history=persist_history)
-        return self._run_anthropic_loop(user_id, history, persist_history=persist_history)
+            model_name = self._resolve_model_for_provider("google")
+            return self._run_google_loop(
+                user_id,
+                history,
+                client=self.google_client,
+                persist_history=persist_history,
+                model_name=model_name,
+            )
+        model_name = self._resolve_model_for_provider("anthropic")
+        return self._run_anthropic_loop(
+            user_id,
+            history,
+            persist_history=persist_history,
+            model_name=model_name,
+        )
 
     def process_message(self, user_id: int, user_message: str) -> str:
         """Process a user message through the configured provider with tool use.
