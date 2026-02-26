@@ -9,11 +9,13 @@ cost_tier: standard
 
 # AI Daily Brief Evening Alias
 
-## Role
-Compatibility command shim for users invoking `/ai_daily_brief_evening`.
+## STOP — No Shell Scripts Exist
+- **NEVER** use `exec` to run `.sh`, `.py`, or any binary. None exist in this skill directory.
+- **NEVER** run `/ai_daily_brief` as a shell command. It is a gateway slash command, not an executable.
+- To perform this skill: use `read` (state file), `web_search` (Brave API), `message` (Telegram delivery).
 
 ## Behavior
-- Force slot `evening` in full mode and execute `ai-daily-brief` behavior immediately.
+- Force slot `evening` in full mode and follow the `ai-daily-brief` pipeline immediately.
 - Return only the final evening brief output (no internal process narration).
 - Apply canonical stale-lock recovery before new run state:
   - stale `last_run.status=running` (>=900s or invalid `started_at`) -> finalize prior run as failed.

@@ -14,11 +14,17 @@ cost_tier: standard
 
 # AI Daily Brief Skill
 
-## Execution Model (READ THIS FIRST)
-This is a **prompt-based** skill. There are NO shell scripts to execute.
-- Do NOT run `exec ai-daily-brief.sh` or any `.sh` file — none exist.
-- Do NOT run `exec /ai_daily_brief` — this is a gateway command, not a binary.
-- Instead: follow the pipeline steps below using gateway tools: `read` (state file), `web_search` (Brave API), `message` (Telegram delivery).
+## STOP — Exec Prohibition (READ THIS FIRST)
+This is a **prompt-based** skill. There are NO shell scripts, NO Python scripts, NO executables.
+- **NEVER** use `exec` with any file from this skill directory. Attempting `exec ai-daily-brief.sh`, `exec ai-daily-brief.py`, `exec python3 ...`, or `exec /ai_daily_brief` will ALWAYS fail.
+- **NEVER** try to run `/ai_daily_brief` as a shell command — it is a gateway slash command, not a binary.
+- The `exec` tool is ONLY allowed for `curl` commands to external APIs.
+
+### Correct tool usage for this skill:
+1. `read` → load state file (`/home/node/.openclaw/workspace/logs/ai-brief-state.json`)
+2. `web_search` → query Brave API for AI news
+3. `message` → send the final brief to Telegram
+4. `exec curl ...` → ONLY for Brave LLM Context API POST requests if web_search is unavailable
 
 ## Command Contract (canonical)
 Use a single stable command to avoid routing ambiguity:

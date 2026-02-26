@@ -39,8 +39,20 @@
         "runTimeoutSeconds": 90,
         "archiveAfterMinutes": 30
       },
+      "heartbeat": {
+        "every": 55,
+        "model": "google/gemini-2.5-flash",
+        "target": "gateway",
+        "ackMaxChars": 100,
+        "activeHours": {
+          "start": "07:00",
+          "end": "23:00",
+          "timezone": "America/Bogota"
+        }
+      },
+      "timeoutSeconds": 300,
       "workspace": "/home/node/.openclaw/workspace",
-      "contextTokens": 262144,
+      "contextTokens": 131072,
       "maxConcurrent": 4
     }
   },
@@ -56,7 +68,35 @@
       "groups": {
         "*": {
           "requireMention": true
+        },
+        "-1003826801947": {
+          "requireMention": false,
+          "allowFrom": [
+            "*"
+          ]
         }
+      },
+      "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "botToken": "REPLACE_WITH_TELEGRAM_BOT_TOKEN",
+          "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
+          "dmPolicy": "allowlist",
+          "allowFrom": [
+            "6182588021"
+          ]
+        }
+      },
+      "allowFrom": [
+        "6182588021"
+      ]
+    }
+  },
+  "plugins": {
+    "entries": {
+      "telegram": {
+        "enabled": true
       }
     }
   }

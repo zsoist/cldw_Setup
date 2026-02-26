@@ -9,11 +9,13 @@ cost_tier: cheap
 
 # AI Daily Brief Watchlist Alias
 
-## Role
-Compatibility command shim for users invoking `/ai_daily_brief_watchlist`.
+## STOP — No Shell Scripts Exist
+- **NEVER** use `exec` to run `.sh`, `.py`, or any binary. None exist in this skill directory.
+- **NEVER** run `/ai_daily_brief` as a shell command. It is a gateway slash command, not an executable.
+- To perform this skill: use `read` (state file), `web_search` (Brave API), `message` (Telegram delivery).
 
 ## Behavior
-- Force mode `watchlist` and execute full `ai-daily-brief` behavior immediately.
+- Force mode `watchlist` and follow the `ai-daily-brief` pipeline immediately.
 - Return only the final watchlist output (no internal process narration).
 - Apply canonical stale-lock recovery before new run state:
   - stale `last_run.status=running` (>=900s or invalid `started_at`) -> finalize prior run as failed.

@@ -9,11 +9,16 @@ cost_tier: standard
 
 # AI Daily Brief Top5 Alias
 
+## STOP — No Shell Scripts Exist
+- **NEVER** use `exec` to run `.sh`, `.py`, or any binary. None exist in this skill directory.
+- **NEVER** run `/ai_daily_brief` as a shell command. It is a gateway slash command, not an executable.
+- To perform this skill: use `read` (state file), `web_search` (Brave API), `message` (Telegram delivery).
+
 ## Role
 Compatibility command shim for users invoking `/ai_daily_brief_top5`.
 
 ## Behavior
-- Force mode `top5` and execute full `ai-daily-brief` behavior immediately.
+- Force mode `top5` and follow the `ai-daily-brief` pipeline immediately.
 - Return only the final top5 output (no internal process narration).
 - Do not ask clarifying questions for mode/slot selection.
 - Accept explicit scope suffixes (`12h`, `week`, `month`, `month YYYY-MM`) and pass through unchanged.
@@ -34,7 +39,7 @@ Compatibility command shim for users invoking `/ai_daily_brief_top5`.
   - REJECT any story whose event date is outside the scope bounds.
   - Do NOT backfill with older stories to reach 5 — fewer is correct.
 - Latency policy for this alias:
-  - Execute retrieval + drafting directly; do not narrate internal pipeline steps.
+  - Perform retrieval + drafting directly; do not narrate internal pipeline steps.
   - Never claim "python tools unavailable" or "manual processing mode".
   - Keep top5 runs under the canonical top5 budget caps.
   - Use Brave POST requests by default (JSON body), unless transport constraints require GET.
