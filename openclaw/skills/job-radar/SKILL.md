@@ -40,6 +40,11 @@ Provide high-signal AI/ML remote job discovery with explicit scoring context:
 - Return final answer only.
 - Never output `Reasoning:`, chain-of-thought, or process narration.
 - Never send pre-execution messages like "I will now..." or "checking...".
+- Strip accidental internal-prefix lines before sending (`Reasoning:`, `Analyzing`, `I will now`, `Next I will`).
+- Always end the final message with:
+  - `Tokens used: <input>/<output> - USD $<usd> / COP $<cop>`
+  - append ` - Brave api: <n>` only when Brave was used by the backend for this request.
+  - if runtime metrics are unavailable, use `n/a` placeholders.
 - If command is ambiguous, ask one concise clarifying question.
 
 ## Retrieval and Search Policy
@@ -145,6 +150,8 @@ For list-style responses, keep compact structure:
 1) <title> @ <company>
    Opp: <score> | JA: <score> | COL: <score> | <scope>
    <url>
+
+Tokens used: <input>/<output> - USD $<usd> / COP $<cop> - Brave api: <n>   # include Brave segment only when used
 ```
 
 ## Constraints

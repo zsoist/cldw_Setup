@@ -27,6 +27,36 @@ class SentinelTelegramBot:
         """Check if user is in the allowed list."""
         return user_id in self.config.allowed_user_ids
 
+    def _build_usage_footer(self, user_id: int) -> str:
+        """Build per-request usage summary for Telegram responses."""
+        stats = {}
+        if hasattr(self.agent, "get_last_request_stats"):
+            try:
+                stats = self.agent.get_last_request_stats(user_id) or {}
+            except Exception:
+                stats = {}
+
+        input_tokens = max(0, int(stats.get("input_tokens", 0)))
+        output_tokens = max(0, int(stats.get("output_tokens", 0)))
+        usd_cost = max(0.0, float(stats.get("estimated_usd", 0.0)))
+        cop_cost = usd_cost * float(self.config.usd_to_cop_rate)
+        brave_calls = max(0, int(stats.get("brave_api_calls", 0)))
+
+        footer = (
+            f"Tokens used: {input_tokens}/{output_tokens} - "
+            f"USD ${usd_cost:.6f} / COP ${cop_cost:,.2f}"
+        )
+        if brave_calls > 0:
+            footer += f" - Brave api: {brave_calls}"
+        return footer
+
+    def _append_usage_footer(self, user_id: int, text: str) -> str:
+        base = (text or "").rstrip()
+        footer = self._build_usage_footer(user_id)
+        if not base:
+            return footer
+        return f"{base}\n\n{footer}"
+
     async def _reply_text_safe(self, message, text: str) -> None:
         """Send markdown when possible, fallback to plain text on parse errors."""
         try:
@@ -71,6 +101,7 @@ class SentinelTelegramBot:
             update.effective_user.id,
             "Give me a quick system status: CPU, RAM, disk, and Docker containers. Be concise."
         )
+        response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
     async def openclaw_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -81,6 +112,7 @@ class SentinelTelegramBot:
             update.effective_user.id,
             "Check OpenClaw gateway health: is it running, any recent errors, HTTP status."
         )
+        response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
     async def security_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -91,6 +123,7 @@ class SentinelTelegramBot:
             update.effective_user.id,
             "Run a security audit: UFW status, failed SSH attempts, open ports, running services."
         )
+        response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
     async def backup_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -101,6 +134,7 @@ class SentinelTelegramBot:
             update.effective_user.id,
             "Create a backup of OpenClaw's config and workspace. Report the file path and size."
         )
+        response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -117,10 +151,12 @@ class SentinelTelegramBot:
 
         try:
             response = self.agent.process_message(update.effective_user.id, user_message)
+            response = self._append_usage_footer(update.effective_user.id, response)
             await self._reply_text_safe_chunked(update.message, response)
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
-            await update.message.reply_text(f"Error: {str(e)[:200]}")
+            err = self._append_usage_footer(update.effective_user.id, f"Error: {str(e)[:200]}")
+            await update.message.reply_text(err)
 
     def run(self) -> None:
         """Start the Telegram bot."""

@@ -82,10 +82,10 @@ No proactive messages are sent between 23:00-07:00 COT. This reduces unnecessary
 | Component | Max Tokens |
 |-----------|-----------|
 | OpenClaw responses | 2048 |
-| Sentinel responses | 1024 |
+| Sentinel responses | 768 (env: `SENTINEL_MAX_TOKENS`) |
 | Bot instruction | "Keep under 300 words" |
 
-Capping response tokens prevents runaway generation costs. Sentinel is deliberately limited to 1024 since infrastructure status reports are inherently concise.
+Capping response tokens prevents runaway generation costs. Sentinel is deliberately limited to 768 by default since infrastructure status reports are inherently concise.
 
 ### 7. Resource-Constrained Container Limits
 
@@ -301,10 +301,14 @@ EOF
 ## Sentinel: Agentic Sysadmin Bot
 
 Sentinel supports **dual providers**:
-- Anthropic (`SENTINEL_PROVIDER=anthropic`, default)
-- Google Gemini (`SENTINEL_PROVIDER=google`)
+- Google Gemini (`SENTINEL_PROVIDER=google`, default)
+- Anthropic (`SENTINEL_PROVIDER=anthropic`)
 
 Both providers run the same safe tool-execution loop with shared whitelist controls.
+
+Every Sentinel Telegram reply now appends an execution footer:
+- `Tokens used: in/out - USD $... / COP $...`
+- Adds `- Brave api: N` only when Brave was used in that request.
 
 ### Tool Architecture
 
@@ -610,7 +614,7 @@ Notes:
 | Loopback gateway binding | No public exposure — SSH tunnel only. Eliminates need for TLS cert management. |
 | systemd for Sentinel | Lighter than Docker for a single Python process. Auto-restart on crash. |
 | 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping a week of recovery points. |
-| Sentinel provider toggle | Default Anthropic path remains stable; Google provider is available for redundancy/testing. |
+| Sentinel provider toggle | Default is Gemini Flash for speed/cost; Anthropic remains available as fallback/resilience path. |
 | Silent hours (23:00-07:00) | Reduces proactive API calls while preserving the 07:00 scheduled AI brief run. |
 | Multi-agent (main + work) | Separates personal/professional data, enables sandboxing, reduces context per agent. |
 | Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |

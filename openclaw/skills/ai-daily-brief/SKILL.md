@@ -64,6 +64,10 @@ Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled
 - Never include `Reasoning:` sections, chain-of-thought, or internal checklist text in user-visible output.
 - Never send transitional messages like "starting now", "checking configuration", or "next I will...". Send exactly one final result message per invocation.
 - Do not stream pipeline progress unless the user explicitly requests `/ai_daily_brief status`.
+- Always end the final user-visible message with:
+  - `Tokens used: <input>/<output> - USD $<usd> / COP $<cop>`
+  - append ` - Brave api: <n>` only when Brave was used in this run.
+  - if runtime metrics are unavailable, emit `n/a` values (do not narrate why).
 - If user sends plain `/ai_daily_brief` with no mode, ask exactly one concise question:
   - `Choose mode: morning, evening, top5, builder, watchlist, status, feedback, history, diff, or help.`
 - For natural-language requests, infer mode/scope and execute immediately without asking when intent is clear:
@@ -330,7 +334,7 @@ Example story header format:
   - Architecture: Sparse Mixture-of-Experts (MoE) transformer
   - Parameters: not publicly disclosed
   - Context: 2,097,152 tokens (2x vs Gemini 2.0 Pro's 1M)
-  - Extended thinking: enabled by default (chain-of-thought reasoning)
+  - Reasoning policy: concise final answer only (no chain-of-thought in output)
   - Benchmarks: 82.1% MMLU-Pro (5-shot, 2026-02-21); 74.3% GPQA-Diamond
   - Training compute: not disclosed
 - Why it matters: ...
@@ -558,9 +562,16 @@ CHECK 7 — TECHNICAL DETAILS: Does every story have a Technical Details line?
   ✓ "Technical Details: not yet publicly disclosed"
   ✗ (field omitted entirely) is INVALID
   → If missing: add it
+
+CHECK 8 — OUTPUT HYGIENE + FOOTER:
+  - No lines starting with "Reasoning:", "Analyzing", "I will now", or "Next I will"
+  - Final line is telemetry footer:
+    `Tokens used: <input>/<output> - USD $<usd> / COP $<cop>`
+  - Append ` - Brave api: <n>` only when Brave was used
+  → If missing or malformed: fix before sending
 ```
 
-Only send the output after ALL 7 checks pass.
+Only send the output after ALL 8 checks pass.
 
 ## Efficiency Constraints
 - Target runtime <60s (top5 target <45s)

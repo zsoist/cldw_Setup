@@ -103,6 +103,7 @@ class SentinelAgent:
         self._last_activity: dict[int, float] = {}
         self._request_windows: dict[int, deque[float]] = {}
         self._provider_backoff_until: dict[str, float] = {}
+        self._last_request_stats: dict[int, dict[str, Any]] = {}
         self._state_lock = threading.Lock()
 
         self._audit_log_path = Path(self.config.audit_log_file)
@@ -261,6 +262,64 @@ class SentinelAgent:
         except OSError as exc:
             logger.warning("Failed to append audit event: %s", exc)
 
+    @staticmethod
+    def _new_request_stats() -> dict[str, Any]:
+        return {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "estimated_usd": 0.0,
+            "calls": 0,
+            "error_calls": 0,
+            "providers": [],
+            "models": [],
+            "brave_api_calls": 0,
+            "status": "started",
+        }
+
+    def _store_last_request_stats(self, user_id: int, stats: dict[str, Any]) -> None:
+        snapshot = {
+            "input_tokens": int(stats.get("input_tokens", 0)),
+            "output_tokens": int(stats.get("output_tokens", 0)),
+            "estimated_usd": round(float(stats.get("estimated_usd", 0.0)), 8),
+            "calls": int(stats.get("calls", 0)),
+            "error_calls": int(stats.get("error_calls", 0)),
+            "providers": list(stats.get("providers", [])),
+            "models": list(stats.get("models", [])),
+            "brave_api_calls": int(stats.get("brave_api_calls", 0)),
+            "status": str(stats.get("status", "unknown")),
+        }
+        with self._state_lock:
+            self._last_request_stats[user_id] = snapshot
+
+    def get_last_request_stats(self, user_id: int) -> dict[str, Any]:
+        with self._state_lock:
+            stats = self._last_request_stats.get(user_id)
+            if not isinstance(stats, dict):
+                return self._new_request_stats()
+            return dict(stats)
+
+    @staticmethod
+    def _try_static_response(user_message: str, provider: str, model: str) -> str | None:
+        """Handle trivial low-information prompts without an LLM call."""
+        normalized = " ".join((user_message or "").strip().lower().split())
+        if not normalized:
+            return "Please send a command or question."
+        if normalized in {"hi", "hello", "hey", "hola", "buenas"}:
+            return "Hello. How can I help?"
+        if any(
+            token in normalized
+            for token in (
+                "what model",
+                "which model",
+                "what's your model",
+                "whats your model",
+                "run on gemini",
+                "model of llm",
+            )
+        ):
+            return f"Primary model: {model} (provider: {provider})."
+        return None
+
     def _enforce_rate_limit(self, user_id: int) -> tuple[bool, int]:
         """Apply per-user sliding-window rate limit."""
         now = time.monotonic()
@@ -360,24 +419,52 @@ class SentinelAgent:
         input_tokens: int = 0,
         output_tokens: int = 0,
         error: Exception | None = None,
-    ) -> None:
-        if self._cost_tracker is None:
-            return
+        request_stats: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        event: dict[str, Any] | None = None
         error_type = type(error).__name__ if error else None
         error_preview = str(error) if error else None
-        try:
-            self._cost_tracker.record(
-                provider=provider,
-                model=model,
-                status=status,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                user_id=user_id,
-                error_type=error_type,
-                error_preview=error_preview,
-            )
-        except Exception:
-            logger.exception("API cost tracking failed")
+        if self._cost_tracker is not None:
+            try:
+                event = self._cost_tracker.record(
+                    provider=provider,
+                    model=model,
+                    status=status,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    user_id=user_id,
+                    error_type=error_type,
+                    error_preview=error_preview,
+                )
+            except Exception:
+                logger.exception("API cost tracking failed")
+
+        if request_stats is not None:
+            request_stats["input_tokens"] = int(request_stats.get("input_tokens", 0)) + max(0, int(input_tokens))
+            request_stats["output_tokens"] = int(request_stats.get("output_tokens", 0)) + max(0, int(output_tokens))
+            request_stats["calls"] = int(request_stats.get("calls", 0)) + 1
+            if status != "success":
+                request_stats["error_calls"] = int(request_stats.get("error_calls", 0)) + 1
+            if event is not None:
+                request_stats["estimated_usd"] = round(
+                    float(request_stats.get("estimated_usd", 0.0)) + float(event.get("estimated_usd", 0.0)),
+                    8,
+                )
+            providers = request_stats.setdefault("providers", [])
+            if provider not in providers:
+                providers.append(provider)
+            models = request_stats.setdefault("models", [])
+            if model not in models:
+                models.append(model)
+        return event
+
+    @staticmethod
+    def _mark_brave_usage(tool_name: str, tool_input: dict[str, Any], request_stats: dict[str, Any] | None) -> None:
+        if request_stats is None:
+            return
+        payload = json.dumps({"name": tool_name, "input": tool_input}, ensure_ascii=False).lower()
+        if "brave" in payload or "api.search.brave.com" in payload:
+            request_stats["brave_api_calls"] = int(request_stats.get("brave_api_calls", 0)) + 1
 
     def _extract_anthropic_usage(self, response: Any) -> tuple[int, int]:
         usage = self._coerce_mapping(getattr(response, "usage", None))
@@ -459,6 +546,20 @@ class SentinelAgent:
                 text_chunks.append(text)
                 assistant_parts.append({"text": text})
 
+        # SDK fallbacks: some responses expose only response.text even when
+        # candidate parts are sparse/empty.
+        if not text_chunks:
+            direct_text = ""
+            try:
+                raw_direct_text = getattr(response, "text", None)
+                if isinstance(raw_direct_text, str):
+                    direct_text = raw_direct_text.strip()
+            except Exception:  # pragma: no cover - defensive for SDK behavior
+                direct_text = ""
+            if direct_text:
+                text_chunks.append(direct_text)
+                assistant_parts.append({"text": direct_text})
+
         if not assistant_parts:
             assistant_parts = [{"text": ""}]
 
@@ -471,6 +572,7 @@ class SentinelAgent:
         history: list[dict[str, Any]],
         persist_history: bool = True,
         model_name: str | None = None,
+        request_stats: dict[str, Any] | None = None,
     ) -> str:
         """Run Anthropic tool-use loop until a final text response is produced."""
         active_model = model_name or self._resolve_model_for_provider("anthropic")
@@ -484,6 +586,7 @@ class SentinelAgent:
                     status="error",
                     user_id=user_id,
                     error=exc,
+                    request_stats=request_stats,
                 )
                 raise
 
@@ -495,6 +598,7 @@ class SentinelAgent:
                 user_id=user_id,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                request_stats=request_stats,
             )
 
             if response.stop_reason == "tool_use":
@@ -506,6 +610,7 @@ class SentinelAgent:
                     if block.type != "tool_use":
                         continue
                     logger.info("Executing tool: %s(%s)", block.name, json.dumps(block.input)[:200])
+                    self._mark_brave_usage(block.name, block.input, request_stats)
                     result = execute_tool(block.name, block.input)
                     serialized, truncated = self._serialize_tool_result(result)
                     self._append_audit_event(
@@ -558,6 +663,7 @@ class SentinelAgent:
         client: Any | None = None,
         persist_history: bool = True,
         model_name: str | None = None,
+        request_stats: dict[str, Any] | None = None,
     ) -> str:
         """Run Gemini function-calling loop until a final text response is produced."""
         latest_tool_result = ""
@@ -573,6 +679,7 @@ class SentinelAgent:
                     status="error",
                     user_id=user_id,
                     error=exc,
+                    request_stats=request_stats,
                 )
                 raise
 
@@ -584,6 +691,7 @@ class SentinelAgent:
                 user_id=user_id,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                request_stats=request_stats,
             )
 
             text_response, tool_calls, assistant_turn = self._extract_google_response(response)
@@ -595,6 +703,7 @@ class SentinelAgent:
                     tool_name = call["name"]
                     tool_input = call.get("input", {})
                     logger.info("Executing tool: %s(%s)", tool_name, json.dumps(tool_input)[:200])
+                    self._mark_brave_usage(tool_name, tool_input, request_stats)
                     result = execute_tool(tool_name, tool_input)
                     serialized, truncated = self._serialize_tool_result(result)
                     latest_tool_result = serialized
@@ -628,7 +737,7 @@ class SentinelAgent:
             elif latest_tool_result:
                 final_text = (
                     "Tool execution completed; model returned no narrative summary. "
-                    f"Latest tool result: {latest_tool_result[:1200]}"
+                    f"Latest tool result: {latest_tool_result[:600]}"
                 )
             else:
                 if blank_response_retries < 1:
@@ -650,7 +759,7 @@ class SentinelAgent:
                     if persist_history:
                         self.conversations[user_id] = history
                     continue
-                raise RuntimeError("google_empty_response")
+                final_text = "Gemini returned an empty response. Please retry your request."
             history = self._truncate_history(history)
             if persist_history:
                 self.conversations[user_id] = history
@@ -720,6 +829,7 @@ class SentinelAgent:
         *,
         persist_history: bool,
         use_existing_history: bool,
+        request_stats: dict[str, Any] | None = None,
     ) -> str:
         base_history = self._prepare_history(user_id) if use_existing_history else []
         history = list(base_history)
@@ -749,6 +859,7 @@ class SentinelAgent:
                 client=self.google_client,
                 persist_history=persist_history,
                 model_name=model_name,
+                request_stats=request_stats,
             )
         model_name = self._resolve_model_for_provider("anthropic")
         return self._run_anthropic_loop(
@@ -756,6 +867,7 @@ class SentinelAgent:
             history,
             persist_history=persist_history,
             model_name=model_name,
+            request_stats=request_stats,
         )
 
     def process_message(self, user_id: int, user_message: str) -> str:
@@ -763,6 +875,8 @@ class SentinelAgent:
 
         Implements the agentic loop: send message -> get tool use -> execute -> feed back -> repeat.
         """
+        request_stats = self._new_request_stats()
+
         allowed, retry_after = self._enforce_rate_limit(user_id)
         if not allowed:
             self._append_audit_event(
@@ -770,10 +884,22 @@ class SentinelAgent:
                 "rate_limited",
                 {"retry_after_seconds": retry_after},
             )
+            request_stats["status"] = "rate_limited"
+            self._store_last_request_stats(user_id, request_stats)
             return (
                 "Rate limit reached. "
                 f"Please wait about {retry_after}s before sending another request."
             )
+
+        static_response = self._try_static_response(
+            user_message,
+            provider=self.provider,
+            model=self._resolve_model_for_provider(self.provider),
+        )
+        if static_response is not None:
+            request_stats["status"] = "success"
+            self._store_last_request_stats(user_id, request_stats)
+            return static_response
 
         fallback_provider = self._get_fallback_provider()
         if fallback_provider and self._provider_in_backoff(self.provider):
@@ -782,13 +908,17 @@ class SentinelAgent:
                 self.provider,
                 fallback_provider,
             )
-            return self._process_with_provider(
+            response = self._process_with_provider(
                 fallback_provider,
                 user_id,
                 user_message,
                 persist_history=False,
                 use_existing_history=False,
+                request_stats=request_stats,
             )
+            request_stats["status"] = "fallback_backoff"
+            self._store_last_request_stats(user_id, request_stats)
+            return response
 
         try:
             response = self._process_with_provider(
@@ -797,8 +927,11 @@ class SentinelAgent:
                 user_message,
                 persist_history=True,
                 use_existing_history=True,
+                request_stats=request_stats,
             )
             self._clear_provider_backoff(self.provider)
+            request_stats["status"] = "success"
+            self._store_last_request_stats(user_id, request_stats)
             return response
         except Exception as primary_exc:
             if self.provider == "google" and self._is_soft_google_response_error(primary_exc):
@@ -811,9 +944,13 @@ class SentinelAgent:
                         "error_preview": str(primary_exc)[:200],
                     },
                 )
+                request_stats["status"] = "soft_error"
+                self._store_last_request_stats(user_id, request_stats)
                 return "Gemini returned an empty response. Please retry your request."
 
             if not self._is_recoverable_provider_error(primary_exc):
+                request_stats["status"] = "error"
+                self._store_last_request_stats(user_id, request_stats)
                 raise
 
             if not fallback_provider:
@@ -826,6 +963,8 @@ class SentinelAgent:
                         "error_preview": str(primary_exc)[:200],
                     },
                 )
+                request_stats["status"] = "recoverable_no_fallback"
+                self._store_last_request_stats(user_id, request_stats)
                 return "Provider temporarily unavailable. Please retry in a few seconds."
 
             self._set_provider_backoff(self.provider)
@@ -853,6 +992,7 @@ class SentinelAgent:
                     user_message,
                     persist_history=False,
                     use_existing_history=False,
+                    request_stats=request_stats,
                 )
             except Exception as fallback_exc:
                 self._append_audit_event(
@@ -865,4 +1005,10 @@ class SentinelAgent:
                         "fallback_error_type": type(fallback_exc).__name__,
                     },
                 )
+                request_stats["status"] = "fallback_failed"
+                self._store_last_request_stats(user_id, request_stats)
                 raise
+            finally:
+                if request_stats.get("status") != "fallback_failed":
+                    request_stats["status"] = "fallback_success"
+                    self._store_last_request_stats(user_id, request_stats)

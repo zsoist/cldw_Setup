@@ -23,7 +23,8 @@
 
 ## Known Constraints
 - VPS: Hetzner CPX22 (4 vCPU, 8GB RAM, 80GB disk)
-- Default model: Haiku (cost control). Sonnet for quality. Opus manual-only.
+- Default model: Gemini 2.5 Flash. Escalate to Gemini 2.5 Pro for AI brief/research/job synthesis.
+- Sonnet 4.6 only on explicit "think harder". Opus manual-only.
 - Token cost target: <$5/day
 - Silent hours: 23:00-07:00 COT
 

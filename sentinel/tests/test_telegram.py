@@ -31,6 +31,14 @@ def mock_agent():
         )
         agent = SentinelAgent(config)
         agent.process_message = MagicMock(return_value="Test response")
+        agent.get_last_request_stats = MagicMock(
+            return_value={
+                "input_tokens": 120,
+                "output_tokens": 45,
+                "estimated_usd": 0.00012,
+                "brave_api_calls": 0,
+            }
+        )
         return agent
 
 
@@ -103,6 +111,10 @@ class TestMessageHandler:
         await bot.handle_message(update, context)
         bot.agent.process_message.assert_called_once_with(12345, "What is the system status?")
         update.message.reply_text.assert_called_once()
+        sent_text = update.message.reply_text.call_args[0][0]
+        assert "Test response" in sent_text
+        assert "Tokens used: 120/45" in sent_text
+        assert "Brave api:" not in sent_text
 
     @pytest.mark.asyncio
     async def test_unauthorized_message(self, bot):
@@ -112,6 +124,24 @@ class TestMessageHandler:
         update.message.reply_text.assert_called_once()
         call_args = update.message.reply_text.call_args
         assert "Unauthorized" in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_footer_includes_brave_only_when_used(self, bot):
+        update = make_update(12345, "status")
+        context = MagicMock()
+        context.bot = MagicMock()
+        context.bot.send_chat_action = AsyncMock()
+
+        bot.agent.get_last_request_stats.return_value = {
+            "input_tokens": 200,
+            "output_tokens": 100,
+            "estimated_usd": 0.001,
+            "brave_api_calls": 2,
+        }
+        await bot.handle_message(update, context)
+        sent_text = update.message.reply_text.call_args[0][0]
+        assert "Tokens used: 200/100" in sent_text
+        assert "Brave api: 2" in sent_text
 
 
 class TestConfigValidation:

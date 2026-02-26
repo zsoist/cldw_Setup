@@ -14,6 +14,25 @@
 
 Precedence rule: if historical notes below conflict, treat the **Latest pass (Gemini integration + cross-provider fallback)** as authoritative.
 
+### Latest pass (2026-02-26, Sentinel empty-response hardening + Telegram usage footer)
+
+- `sentinel/sentinel.py`
+  - Gemini response extraction hardened: now reads SDK fallback `response.text` when candidate parts are sparse.
+  - empty-response path now returns a deterministic user message from the Google loop (instead of bubbling exception), which avoids silent failures and reduces fallback churn.
+- `sentinel/telegram_handler.py`
+  - all Sentinel command/free-text replies now append a usage footer:
+    - `Tokens used: in/out - USD / COP`
+    - Brave segment appended only when Brave calls were used.
+- `sentinel/config.py`
+  - supports `SENTINEL_MAX_TOKENS` (default `768`) and `SENTINEL_USD_TO_COP_RATE` (default `4000`).
+- `infrastructure/env.template`, `infrastructure/sync-sentinel-env.sh`
+  - include/sync `SENTINEL_MAX_TOKENS` and `SENTINEL_USD_TO_COP_RATE`.
+- `sentinel/tests/test_telegram.py`, `sentinel/tests/test_config.py`
+  - added coverage for Telegram footer rendering and USD->COP config parsing.
+- `openclaw/config/SOUL.md`, `openclaw/skills/ai-daily-brief/SKILL.md`, `openclaw/skills/job-radar/SKILL.md`
+  - reinforced no-narration output contract.
+  - added mandatory telemetry footer format in user-visible Telegram responses.
+
 ### Latest pass (2026-02-26, gateway startup hardening + routing drift cleanup)
 
 - `infrastructure/sync-openclaw-config.sh`

@@ -752,6 +752,43 @@ journalctl -u sentinel --since "1 hour ago" | grep -i error
 grep SENTINEL_TELEGRAM_TOKEN /root/openclaw/.env 2>/dev/null || echo "Check environment variables"
 ```
 
+### Sentinel says Gemini returned empty response
+This is usually a transient Gemini SDK/provider response edge case.
+
+```bash
+# 1) Confirm Sentinel is on Gemini primary
+grep '^SENTINEL_PROVIDER=' /root/openclaw/.env
+grep '^SENTINEL_MODEL=' /root/openclaw/.env
+
+# 2) Sync runtime env + restart service
+/usr/local/sbin/sync-sentinel-env.sh
+systemctl restart sentinel
+
+# 3) Inspect recent provider logs
+journalctl -u sentinel -n 80 --no-pager | grep -Ei 'google|gemini|empty|fallback|error'
+```
+
+Expected behavior:
+- Sentinel should remain on Gemini primary by default.
+- If Gemini returns no usable text, Sentinel retries once and responds with a concise retry hint instead of silent failure.
+
+### Sentinel footer (tokens/cost) missing in Telegram replies
+Sentinel now appends a usage footer to every LLM-generated reply.
+
+```bash
+# Ensure COP conversion + token cap envs are present
+grep '^SENTINEL_MAX_TOKENS=' /root/openclaw/.env
+grep '^SENTINEL_USD_TO_COP_RATE=' /root/openclaw/.env
+
+# Sync + restart after changes
+/usr/local/sbin/sync-sentinel-env.sh
+systemctl restart sentinel
+```
+
+Footer format:
+- `Tokens used: <in>/<out> - USD $<cost> / COP $<cost>`
+- `- Brave api: <n>` appears only when Brave was used in that request.
+
 ## Infrastructure Issues
 
 ### SSH tunnel disconnects

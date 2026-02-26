@@ -48,6 +48,25 @@ def _parse_bool(env_name: str, default: bool) -> bool:
     return default
 
 
+def _parse_positive_float(
+    env_name: str,
+    default: float,
+    minimum: float = 0.000_001,
+    maximum: float = 1_000_000.0,
+) -> float:
+    """Parse float env var with bounds and fallback to default."""
+    raw = _clean_env_value(os.getenv(env_name, ""))
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    if value < minimum or value > maximum:
+        return default
+    return value
+
+
 def _load_env_files() -> None:
     """Load environment variables from common deployment/local paths."""
     env_hint = os.getenv("SENTINEL_ENV_FILE")
@@ -102,7 +121,12 @@ class SentinelConfig:
     model: str = field(
         default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_MODEL", "gemini-2.5-flash"))
     )
-    max_tokens: int = 1024
+    max_tokens: int = field(
+        default_factory=lambda: _parse_positive_int("SENTINEL_MAX_TOKENS", 768, minimum=128, maximum=4096)
+    )
+    usd_to_cop_rate: float = field(
+        default_factory=lambda: _parse_positive_float("SENTINEL_USD_TO_COP_RATE", 4000.0, minimum=1000.0, maximum=10000.0)
+    )
     rate_limit_max_requests: int = field(
         default_factory=lambda: _parse_positive_int("SENTINEL_RATE_LIMIT_MAX_REQUESTS", 8, minimum=1, maximum=100)
     )
@@ -159,6 +183,10 @@ class SentinelConfig:
             errors.append("SENTINEL_CONVERSATION_TTL_SECONDS must be > 0")
         if self.max_tool_iterations <= 0:
             errors.append("SENTINEL_MAX_TOOL_ITERATIONS must be > 0")
+        if self.max_tokens <= 0:
+            errors.append("SENTINEL_MAX_TOKENS must be > 0")
+        if self.usd_to_cop_rate <= 0:
+            errors.append("SENTINEL_USD_TO_COP_RATE must be > 0")
         if self.cost_retention_days <= 0:
             errors.append("SENTINEL_COST_RETENTION_DAYS must be > 0")
         return errors
