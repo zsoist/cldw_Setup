@@ -91,7 +91,7 @@ class SentinelConfig:
 
     # Anthropic
     provider: str = field(
-        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_PROVIDER", "anthropic")).lower() or "anthropic"
+        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_PROVIDER", "google")).lower() or "google"
     )
     anthropic_api_key: str = field(
         default_factory=lambda: _clean_env_value(os.getenv("ANTHROPIC_API_KEY", ""))
@@ -100,7 +100,7 @@ class SentinelConfig:
         default_factory=lambda: _clean_env_value(os.getenv("GEMINI_API_KEY", ""))
     )
     model: str = field(
-        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_MODEL", "claude-haiku-4-5"))
+        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_MODEL", "gemini-2.5-flash"))
     )
     max_tokens: int = 1024
     rate_limit_max_requests: int = field(
