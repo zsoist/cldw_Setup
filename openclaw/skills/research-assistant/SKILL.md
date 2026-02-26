@@ -36,7 +36,7 @@ Deliver in this exact structure:
 
 ## Constraints
 - Use Gemini Pro for synthesis and judgment
-- If topic is highly specialized or ambiguous, suggest escalating to Opus
+- If topic is highly specialized or ambiguous, suggest escalating to Sonnet (manual trigger only)
 - Max 8 tool calls (web searches)
 - Cite every factual claim — no unsourced assertions
 - Do not fabricate sources or URLs

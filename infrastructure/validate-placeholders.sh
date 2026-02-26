@@ -12,10 +12,10 @@ fi
 required_keys=(
     OPENCLAW_GATEWAY_TOKEN
     GOG_KEYRING_PASSWORD
-    ANTHROPIC_API_KEY
     OPENCLAW_TELEGRAM_TOKEN
     SENTINEL_TELEGRAM_TOKEN
     SENTINEL_ALLOWED_USERS
+    GEMINI_API_KEY
 )
 
 fail=0
@@ -47,6 +47,7 @@ fi
 
 optional_keys=(
     BRAVE_API_KEY
+    ANTHROPIC_API_KEY
 )
 
 for key in "${optional_keys[@]}"; do

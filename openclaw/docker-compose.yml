@@ -1,0 +1,99 @@
+# Docker Compose for OpenClaw Gateway on Hetzner CPX22
+# 3 vCPU / 4GB RAM / 80GB NVMe — resource limits tuned accordingly
+
+services:
+  openclaw-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        OPENCLAW_REF: ${OPENCLAW_REF:-v2026.2.22}
+    container_name: openclaw-openclaw-gateway-1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18789:18789"  # Loopback only — SSH tunnel for access
+    environment:
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-}
+      - OPENCLAW_GATEWAY_PORT=18789
+      - TELEGRAM_BOT_TOKEN=${OPENCLAW_TELEGRAM_TOKEN:-}
+      - OPENCLAW_TELEGRAM_TOKEN=${OPENCLAW_TELEGRAM_TOKEN:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      - AIDB_SEARCH_COUNTRY=${AIDB_SEARCH_COUNTRY:-us}
+      - AIDB_SEARCH_LANG=${AIDB_SEARCH_LANG:-en}
+      - AIDB_BRAVE_COUNT=${AIDB_BRAVE_COUNT:-8}
+      - AIDB_BRAVE_MAX_URLS=${AIDB_BRAVE_MAX_URLS:-8}
+      - AIDB_BRAVE_MAX_TOKENS=${AIDB_BRAVE_MAX_TOKENS:-3072}
+      - AIDB_BRAVE_MAX_SNIPPETS=${AIDB_BRAVE_MAX_SNIPPETS:-30}
+      - AIDB_BRAVE_MAX_TOKENS_PER_URL=${AIDB_BRAVE_MAX_TOKENS_PER_URL:-2048}
+      - AIDB_BRAVE_MAX_SNIPPETS_PER_URL=${AIDB_BRAVE_MAX_SNIPPETS_PER_URL:-20}
+      - AIDB_BRAVE_THRESHOLD_MODE=${AIDB_BRAVE_THRESHOLD_MODE:-balanced}
+      - AIDB_BRAVE_GOGGLES=${AIDB_BRAVE_GOGGLES:-}
+      - AIDB_BRAVE_ENABLE_LOCAL=${AIDB_BRAVE_ENABLE_LOCAL:-}
+      - XDG_CONFIG_HOME=/home/node/.openclaw
+    command:
+      - sh
+      - -c
+      - |
+        echo "[entrypoint] Waiting for Telegram config readiness..."
+        BOT_TOKEN=""
+        for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          BOT_TOKEN=$$(node -e "
+            const fs=require('fs');
+            const trim=(v)=>typeof v==='string'?v.trim():'';
+            try {
+              const d=JSON.parse(fs.readFileSync('/home/node/.openclaw/openclaw.json','utf8'));
+              const tg=(d.channels&&d.channels.telegram)||{};
+              const acc=(tg.accounts&&tg.accounts.default)||{};
+              const candidates=[
+                trim(process.env.OPENCLAW_TELEGRAM_TOKEN),
+                trim(process.env.TELEGRAM_BOT_TOKEN),
+                trim(acc.botToken),
+                trim(tg.botToken),
+              ];
+              for (const tokenFile of [trim(acc.tokenFile), trim(tg.tokenFile)]) {
+                if (!tokenFile) continue;
+                try { candidates.push(trim(fs.readFileSync(tokenFile,'utf8'))); } catch (_) {}
+              }
+              const token=candidates.find((v)=>v && !v.startsWith('REPLACE_'))||'';
+              if (token) process.stdout.write(token);
+            } catch (_) {}
+          " 2>/dev/null)
+          if [ -n "$$BOT_TOKEN" ]; then
+            break
+          fi
+          echo "[entrypoint] Config not ready (attempt $$attempt/10), waiting..."
+          sleep 3
+        done
+        if [ -n "$$BOT_TOKEN" ]; then
+          echo "[entrypoint] Clearing Telegram webhook to enforce polling mode..."
+          curl -sf "https://api.telegram.org/bot$${BOT_TOKEN}/deleteWebhook?drop_pending_updates=false" >/dev/null 2>&1 \
+            || echo "[entrypoint] WARN: deleteWebhook call failed (continuing)"
+        else
+          echo "[entrypoint] WARN: No Telegram token detected after 30s; skipping webhook cleanup"
+        fi
+        echo "[entrypoint] Starting OpenClaw gateway..."
+        exec node openclaw.mjs gateway --allow-unconfigured
+    volumes:
+      - ${OPENCLAW_CONFIG_DIR:-/root/.openclaw}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_DIR:-/root/.openclaw/workspace}:/home/node/.openclaw/workspace
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"        # Reserve 1 vCPU for Sentinel + OS on CPX22 (3 vCPU total)
+          memory: 2560M      # 2.5GB for OpenClaw, leaves ~1.5GB for Sentinel + OS on 4GB total
+        reservations:
+          cpus: "1.0"
+          memory: 1024M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:18789/"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

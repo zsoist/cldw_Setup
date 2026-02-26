@@ -99,14 +99,18 @@
 
 ### Fallback chain
 1. google/gemini-2.5-flash (primary)
-2. anthropic/claude-haiku-4-5 (first fallback, cross-provider)
-3. anthropic/claude-sonnet-4-6 (escalation fallback)
-4. anthropic/claude-opus-4-6 (manual only)
+2. google/gemini-2.5-pro (escalation)
+3. anthropic/claude-sonnet-4-6 (manual escalation — "think harder")
+4. anthropic/claude-opus-4-6 (manual only — explicit `/model opus`)
+
+> **Note:** Anthropic models are not configured as automatic fallbacks in the gateway.
+> Cross-provider fallback is disabled because history formats are incompatible.
+> Sonnet/Opus require explicit manual trigger.
 
 ## Token Guardrails
 - Compaction mode: safeguard
 - Max concurrent tasks: 4
-- Max concurrent subagents: 4
+- Max concurrent subagents: 1
 - Heartbeat interval: 55 minutes (cache-friendly interval for routine runs)
 - Max tool calls per task: 10
 - Max retries on failure: 2
