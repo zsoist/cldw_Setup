@@ -154,6 +154,9 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
 - Rollout hardening:
   - config sync preserves gateway runtime ownership for `/root/.openclaw/openclaw.json`
   - config sync writes `/root/.openclaw/secrets/telegram-default.token` and wires `channels.telegram(.accounts.default).tokenFile` to avoid token drift after config rewrites
+  - config sync now writes `gateway.controlUi` defaults required by latest OpenClaw builds on non-loopback bind:
+    - default `dangerouslyAllowHostHeaderOriginFallback=true` for `bind != loopback`
+    - optional explicit allowlist via `OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS`
   - gateway container receives `TELEGRAM_BOT_TOKEN`/`OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` from `.env`
   - gateway startup now waits for mounted runtime config readiness and auto-clears Telegram webhooks to force polling mode
   - config sync maps DM authorization from `OPENCLAW_TELEGRAM_ALLOW_FROM` (or fallback `SENTINEL_ALLOWED_USERS`) and sets Telegram `dmPolicy=allowlist` automatically when IDs are present
@@ -167,6 +170,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
   - smoke test now fails hard when `dmPolicy=pairing` with empty `allowFrom` because DM commands are gated until pairing approval
   - rollout refreshes `/usr/local/sbin/sync-sentinel-env.sh` and `/usr/local/sbin/sync-openclaw-config.sh` from repo before execution to prevent stale helper-script behavior
   - config-only rollout now syncs Sentinel runtime code into `/opt/sentinel` (and refreshes deps when `requirements.txt` changes) to avoid deployment drift between repo and systemd runtime
+  - rollout now removes deprecated runtime skill folders (`aibrief*`, `daily-brief*`) to prevent duplicate slash-trigger ownership and routing drift
   - `set-aibrief-output-channel.sh` now also updates `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` when target is numeric chat ID
 - Runtime bootstrap files used by command routing are loaded from:
   - `/root/.openclaw/workspace/AGENTS.md`
@@ -177,6 +181,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
 ### 10. Job Radar Performance Profile (Brave-only)
 
 Job Radar runs as a separate backend on the VPS (`/root/job-radar`, API on `127.0.0.1:8080`) and is optimized for low-cost, high-signal discovery.
+OpenClaw command routing for Job Radar is now tracked in-repo at `openclaw/skills/job-radar/SKILL.md` to avoid runtime-only drift.
 
 Production routing and filtering:
 - Discovery source: Brave LLM Context API only (`/res/v1/llm/context`)
@@ -386,6 +391,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   │   ├── ai-daily-brief/SKILL.md        # Canonical AI brief command (scoped top5 + full modes)
 │   │   ├── ai-daily-brief-*/SKILL.md      # Compatibility alias shims for /ai_daily_brief_* commands
 │   │   ├── daily-briefing/SKILL.md        # Morning planning briefing (Gemini Flash, scheduled)
+│   │   ├── job-radar/SKILL.md             # Job Radar command router (/job_*), backend-only data path
 │   │   ├── research-assistant/SKILL.md    # Deep research (Gemini Pro, on-demand)
 │   │   └── task-tracker/SKILL.md          # Task management (Gemini Flash, triggered)
 │   ├── memory/                            # Daily + weekly log storage

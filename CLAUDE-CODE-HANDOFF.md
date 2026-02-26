@@ -2,7 +2,7 @@
 
 > For the next LLM session.
 >
-> Last updated: 2026-02-23
+> Last updated: 2026-02-26
 > Branch: `main`
 > Current commit: run `git rev-parse --short HEAD` on your checkout
 
@@ -13,6 +13,37 @@
 `main` now includes the 2026-02-22 hardening pass plus the 2026-02-23 AI Daily Brief channel-command/quality improvements and the 2026-02-23 Gemini integration pass.
 
 Precedence rule: if historical notes below conflict, treat the **Latest pass (Gemini integration + cross-provider fallback)** as authoritative.
+
+### Latest pass (2026-02-26, gateway startup hardening + routing drift cleanup)
+
+- `infrastructure/sync-openclaw-config.sh`
+  - adds `gateway.controlUi` generation to runtime config.
+  - new env knobs:
+    - `OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS` (explicit origin allowlist)
+    - `OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK` (0/1 fallback toggle)
+  - default behavior for non-loopback bind now sets:
+    - `gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback=true`
+  - this fixes OpenClaw startup failure:
+    - `non-loopback Control UI requires gateway.controlUi.allowedOrigins ...`
+- `openclaw/openclaw-config.json`
+  - template now includes `gateway.controlUi` fallback setting for compatibility with newer OpenClaw runtime validation.
+- `infrastructure/env.template`
+  - documents new `OPENCLAW_CONTROL_UI_*` variables.
+- `infrastructure/vps-rollout-aibrief.sh`
+  - now removes stale runtime skill trees:
+    - `daily-brief*`
+    - `aibrief*`
+  - prevents duplicate trigger ownership and non-deterministic `/ai_daily_brief*` routing.
+- `infrastructure/aibrief-smoke-test.sh`
+  - now fails when deprecated/conflicting `daily-brief*` or `aibrief*` folders exist in runtime skills.
+- `openclaw/skills/job-radar/SKILL.md` (new, tracked)
+  - version-controls `/job_*` routing previously runtime-only.
+  - enforces response discipline (no narration), backend-only retrieval, Brave LLM Context policy, and cost-aware model escalation (Flash default, Pro selective, Sonnet on explicit “think harder”).
+
+Operational validation on VPS (2026-02-26 UTC):
+- OpenClaw gateway now starts and stays healthy.
+- `health-check.sh`: pass (13/13).
+- `aibrief-smoke-test.sh`: pass with no failures (warnings only for expected no-inbound/no-output-yet conditions).
 
 ### Latest pass (2026-02-26, Job Radar performance/efficiency/cost hardening)
 

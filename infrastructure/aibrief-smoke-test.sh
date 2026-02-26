@@ -60,15 +60,22 @@ for legacy in \
   aibrief_top5 \
   aibrief_builder \
   aibrief_watchlist \
-  aibrief_status; do
+  aibrief_status \
+  daily-brief \
+  daily-brief-morning \
+  daily-brief-evening \
+  daily-brief-top5 \
+  daily-brief-builder \
+  daily-brief-watchlist \
+  daily-brief-status; do
   if [ -d "/root/.openclaw/skills/$legacy" ]; then
     STALE_SKILLS+=("$legacy")
   fi
 done
 if [ "${#STALE_SKILLS[@]}" -gt 0 ]; then
-  fail "Deprecated alias skill folders still present: ${STALE_SKILLS[*]}"
+  fail "Deprecated/conflicting skill folders still present: ${STALE_SKILLS[*]}"
 else
-  pass "No deprecated /aibrief* alias skill folders on runtime"
+  pass "No deprecated/conflicting alias skill folders on runtime"
 fi
 
 if docker inspect openclaw-openclaw-gateway-1 >/dev/null 2>&1; then

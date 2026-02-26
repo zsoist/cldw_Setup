@@ -397,6 +397,50 @@ cd /root/openclaw-project
 ./infrastructure/aibrief-smoke-test.sh
 ```
 
+### Gateway crash-loop after OpenClaw update: `non-loopback Control UI requires gateway.controlUi...`
+Symptom:
+- `openclaw-gateway` keeps restarting.
+- Logs show: `non-loopback Control UI requires gateway.controlUi.allowedOrigins ...`
+
+Cause:
+- Newer OpenClaw builds require explicit `gateway.controlUi` policy when bind is non-loopback (`lan`/`0.0.0.0`).
+- Runtime config was generated without `gateway.controlUi`.
+
+Fix:
+```bash
+cd /root/openclaw-project
+# ensure latest helper is installed
+install -m 755 infrastructure/sync-openclaw-config.sh /usr/local/sbin/sync-openclaw-config.sh
+
+# optional explicit origin allowlist (recommended when you know your hostnames)
+# echo 'OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS=http://46.225.170.60:18789' >> /root/openclaw/.env
+
+/usr/local/sbin/sync-openclaw-config.sh /root/openclaw/.env /root/openclaw-project/openclaw/openclaw-config.json
+cd /root/openclaw
+docker compose up -d --force-recreate openclaw-gateway
+```
+
+Expected:
+- `/root/.openclaw/openclaw.json` contains `gateway.controlUi`.
+- Container health transitions to `healthy`.
+
+### AI Brief commands still narrate or route inconsistently despite healthy ingest
+Symptom:
+- replies include process narration (`Reasoning:`, `I will now...`), or alias commands route to wrong behavior.
+
+Cause:
+- stale runtime skill folders (`daily-brief*`, `aibrief*`) can coexist with canonical `ai-daily-brief*`, creating trigger collisions.
+
+Fix:
+```bash
+cd /root/openclaw-project
+./infrastructure/vps-rollout-aibrief.sh
+./infrastructure/aibrief-smoke-test.sh
+```
+
+Expected smoke-test line:
+- `No deprecated/conflicting alias skill folders on runtime`
+
 ### `/ai_daily_brief*` reports sub-agent/pairing block despite healthy Telegram ingest
 Symptom:
 - Telegram command is received and bot replies, but message says sub-agent spawn is blocked by pairing.

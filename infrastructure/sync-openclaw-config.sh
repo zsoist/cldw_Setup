@@ -51,6 +51,8 @@ OPENCLAW_TELEGRAM_NATIVE_SKILLS="$(extract_key OPENCLAW_TELEGRAM_NATIVE_SKILLS |
 OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER="$(extract_key OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER || true)"
 OPENCLAW_GATEWAY_BIND="$(extract_key OPENCLAW_GATEWAY_BIND || true)"
 OPENCLAW_GATEWAY_PORT="$(extract_key OPENCLAW_GATEWAY_PORT || true)"
+OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS="$(extract_key OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS || true)"
+OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK="$(extract_key OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK || true)"
 
 if [ -z "$OPENCLAW_GATEWAY_TOKEN" ] || [ -z "$OPENCLAW_TELEGRAM_TOKEN" ]; then
     echo "Missing required OpenClaw values in $SOURCE_ENV (OPENCLAW_GATEWAY_TOKEN / OPENCLAW_TELEGRAM_TOKEN)." >&2
@@ -75,6 +77,7 @@ chmod 600 "$TELEGRAM_TOKEN_FILE_HOST"
 export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
 export OPENCLAW_TELEGRAM_ALLOW_FROM OPENCLAW_TELEGRAM_INTERACTIVE_CHATS OPENCLAW_TELEGRAM_DM_POLICY
 export OPENCLAW_TELEGRAM_NATIVE_COMMANDS OPENCLAW_TELEGRAM_NATIVE_SKILLS OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER
+export OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK
 export TELEGRAM_BOT_TOKEN="$OPENCLAW_TELEGRAM_TOKEN"
 export OPENCLAW_TELEGRAM_TOKEN_FILE="$TELEGRAM_TOKEN_FILE_RUNTIME"
 
@@ -122,6 +125,35 @@ data["gateway"]["bind"] = os.environ["OPENCLAW_GATEWAY_BIND"]
 data["gateway"]["port"] = int(os.environ["OPENCLAW_GATEWAY_PORT"])
 data.setdefault("gateway", {}).setdefault("auth", {})
 data["gateway"]["auth"]["token"] = os.environ["OPENCLAW_GATEWAY_TOKEN"]
+control_ui = data["gateway"].get("controlUi")
+if not isinstance(control_ui, dict):
+    control_ui = {}
+
+allowed_origins_raw = (os.environ.get("OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS") or "").strip()
+if allowed_origins_raw:
+    allowed_origins = []
+    for raw in re.split(r"[\s,]+", allowed_origins_raw):
+        origin = raw.strip()
+        if origin and origin not in allowed_origins:
+            allowed_origins.append(origin)
+    if allowed_origins:
+        control_ui["allowedOrigins"] = allowed_origins
+
+if "allowedOrigins" not in control_ui and "dangerouslyAllowHostHeaderOriginFallback" not in control_ui:
+    bind_value = str(data["gateway"].get("bind") or "").strip().lower()
+    loopback_bindings = {"loopback", "localhost", "127.0.0.1", "::1"}
+    default_host_header_fallback = bind_value not in loopback_bindings
+    control_ui["dangerouslyAllowHostHeaderOriginFallback"] = parse_bool(
+        os.environ.get("OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK"),
+        default_host_header_fallback,
+    )
+elif "allowedOrigins" not in control_ui:
+    control_ui["dangerouslyAllowHostHeaderOriginFallback"] = parse_bool(
+        os.environ.get("OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK"),
+        bool(control_ui.get("dangerouslyAllowHostHeaderOriginFallback")),
+    )
+
+data["gateway"]["controlUi"] = control_ui
 
 data.setdefault("channels", {}).setdefault("telegram", {})
 data["channels"]["telegram"]["enabled"] = True

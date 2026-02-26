@@ -3,6 +3,9 @@
     "mode": "local",
     "bind": "lan",
     "port": 18789,
+    "controlUi": {
+      "dangerouslyAllowHostHeaderOriginFallback": true
+    },
     "auth": {
       "token": "REPLACE_WITH_GATEWAY_TOKEN"
     }

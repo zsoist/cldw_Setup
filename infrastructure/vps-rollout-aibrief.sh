@@ -123,6 +123,8 @@ if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
 fi
 
 # Remove deprecated alias skill folders to avoid confusing/duplicate command surfaces.
+# `daily-brief*` folders were runtime-only experiments and conflict with canonical
+# `ai-daily-brief*` routing (can cause non-deterministic trigger ownership).
 for deprecated in \
   aibrief \
   aibrief_morning \
@@ -130,7 +132,14 @@ for deprecated in \
   aibrief_top5 \
   aibrief_builder \
   aibrief_watchlist \
-  aibrief_status; do
+  aibrief_status \
+  daily-brief \
+  daily-brief-morning \
+  daily-brief-evening \
+  daily-brief-top5 \
+  daily-brief-builder \
+  daily-brief-watchlist \
+  daily-brief-status; do
   rm -rf "$OPENCLAW_CFG/skills/$deprecated"
 done
 bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \

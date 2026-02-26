@@ -45,18 +45,21 @@
 - `/ai_daily_brief` is the canonical AI brief command.
 - Compatibility alias commands (`/ai_daily_brief_top5` style) must route to the same AI Brief Editor path as the canonical command.
 - Natural-language equivalents ("top ai news of the month/week/12h") should normalize to canonical `/ai_daily_brief top5 ...` commands before execution.
+- `/job_*` commands (`/job_radar`, `/job_search`, `/job_why`, etc.) route to the `job-radar` skill and must use backend data only.
 - Generic personal briefing commands (`/brief`, "daily summary", "morning briefing") stay with **Chief of Staff**.
 - Never mix AI-news synthesis into the generic daily briefing flow.
 - `@BotName` suffix in any `/ai_daily_brief*` command is stripped before routing — never treated as an argument.
 
 ### Job Search Agent
 - **Role:** Monitor and support Daniel's AI job search
-- **Trigger phrases:** "job search", "applications", "job leads", "career"
+- **Trigger phrases:** "job search", "job radar", "applications", "job leads", "career", `/job_*`
 - **Use for:** tracking applications, finding new postings, preparing for interviews, resume tailoring
 - **Do NOT use for:** general research unrelated to career, task management
-- **Input format:** search criteria, application status updates, interview prep requests
-- **Output format:** ranked listings with links, application tracker updates, prep notes
-- **Cost tier:** standard (Gemini Pro, escalate to Sonnet)
+- **Input format:** `/job_*` command or natural-language job-search request
+- **Output format:** ranked listings with links + score breakdown, tracker updates, prep notes
+- **Retrieval policy:** backend (`job-radar-api`) only; backend discovery is Brave LLM Context-only
+- **Model policy:** Flash default, Pro for deep explanations/trends, Sonnet only on explicit "think harder"
+- **Cost tier:** cheap→standard (Flash default; selective Pro escalation)
 
 ### Academic Assistant
 - **Role:** Support ML coursework and thesis preparation
