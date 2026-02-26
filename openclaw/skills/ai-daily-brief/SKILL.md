@@ -14,6 +14,12 @@ cost_tier: standard
 
 # AI Daily Brief Skill
 
+## Execution Model (READ THIS FIRST)
+This is a **prompt-based** skill. There are NO shell scripts to execute.
+- Do NOT run `exec ai-daily-brief.sh` or any `.sh` file — none exist.
+- Do NOT run `exec /ai_daily_brief` — this is a gateway command, not a binary.
+- Instead: follow the pipeline steps below using gateway tools: `read` (state file), `web_search` (Brave API), `message` (Telegram delivery).
+
 ## Command Contract (canonical)
 Use a single stable command to avoid routing ambiguity:
 - `/ai_daily_brief`
