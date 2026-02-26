@@ -33,6 +33,12 @@
       "compaction": {
         "mode": "safeguard"
       },
+      "subagents": {
+        "model": "google/gemini-2.5-flash",
+        "maxConcurrent": 1,
+        "runTimeoutSeconds": 90,
+        "archiveAfterMinutes": 30
+      },
       "workspace": "/home/node/.openclaw/workspace",
       "contextTokens": 262144,
       "maxConcurrent": 4
