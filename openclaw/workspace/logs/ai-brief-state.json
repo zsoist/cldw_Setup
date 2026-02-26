@@ -101,7 +101,7 @@
   ],
   "providers": {
     "primary": "brave_llm_context",
-    "fallback": "web_search",
+    "fallback": "none",
     "updated_at": null,
     "brave_llm_context": {
       "status": "unknown",

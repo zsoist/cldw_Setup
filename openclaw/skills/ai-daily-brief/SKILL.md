@@ -126,7 +126,7 @@ Produce a high-signal, low-noise AI news briefing for Daniel. The only scheduled
 - Keep `sources` metadata so every top story can cite URLs and hostnames.
 - If provider errors or returns empty grounding:
   - mark provider degraded in run status
-  - continue with fallback web search only as partial brief
+  - mark run as failed with explicit provider diagnostics (no generic web-search fallback)
   - never fabricate source-backed claims
 
 ### Brave Mode Policy
@@ -216,7 +216,7 @@ Query 2: "openai anthropic google deepmind meta ai AI news 2026-02-16 2026-02-17
    - call Brave LLM Context first for AI queries in coverage window
    - use mode budget caps from this skill (not legacy high-context defaults)
    - run optional second Brave query only under adaptive fan-out rules
-   - if Brave is unavailable, use fallback web search and mark partial mode
+   - if Brave is unavailable, stop and return provider error with remediation steps
 2. **Normalize**: canonical URL, normalized publisher, UTC+COT timestamps.
 3. **Deduplicate**:
    - canonical URL dedupe

@@ -6,10 +6,10 @@
 
 ### 1. Automated Job Discovery Scans
 
-Use `web_search` and `web_fetch` to scan job boards and company career pages on a schedule.
+Use Brave LLM Context API (`/res/v1/llm/context`) as the sole web retrieval backend for job search scans.
 
 ```
-Cron: weekdays 08:00 → web_search for target roles → filter → digest
+Cron: weekdays 08:00 -> Brave LLM Context retrieval for target roles -> filter -> digest
 ```
 
 Works well for:
@@ -94,7 +94,7 @@ Only needed for:
 - JS-heavy career pages that don't render with `web_fetch`
 - Login-required portals (LinkedIn logged-in search, internal job boards)
 
-Higher cost (tokens + time). Use `web_search` + `web_fetch` first; escalate to browser only when needed.
+Higher cost (tokens + time). Keep Brave LLM Context budgets tight first; escalate to browser only when needed.
 
 ### Application Submission
 
@@ -110,7 +110,7 @@ OpenClaw can draft but should **not auto-submit** applications. Reasons:
 
 Job boards may rate-limit or block aggressive scraping. Mitigations:
 - Space searches across cron windows (not all at once)
-- Use `web_search` (search engine cache) rather than direct scraping
+- Use Brave LLM Context grounding rather than ad-hoc scraping
 - Rotate search queries to avoid repetitive patterns
 - Save results to `docs/research/` to avoid re-searching
 

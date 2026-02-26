@@ -61,7 +61,7 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
   - AI news runs should keep `enable_local=null` unless query is explicitly location-based.
 - Goggles:
   - Optional `config.brave_llm_context.goggles` can enforce source re-ranking for trusted domains.
-- Fallback behavior: if Brave is unavailable, run partial brief with fallback web search and explicit confidence downgrade.
+- Fallback behavior: none. If Brave LLM Context is unavailable, fail fast with explicit provider diagnostics and remediation steps.
 - Brave provider health is checked during runs/on-demand status (no separate scheduled probe).
 
 Recommended context budgets:

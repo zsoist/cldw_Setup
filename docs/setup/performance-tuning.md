@@ -103,11 +103,11 @@ Use the cheapest tool that works:
 
 | Tool | Cost | Use When |
 |------|------|----------|
-| `web_search` | Low | Quick lookups, job listings, news |
+| `brave_llm_context` | Low-to-medium | Grounded web context for AI brief and job search |
 | `web_fetch` | Low | Scraping known URLs, reading docs |
 | Browser automation | High | JS-heavy pages, login-required sites |
 
-**Rule:** Always try `web_search` + `web_fetch` before resorting to browser automation. Most job-search and research tasks work fine without a full browser.
+**Rule:** For AI brief and job search, use Brave LLM Context first with bounded token budgets; use browser automation only when strictly necessary.
 
 ## 9. Tuning Checklist
 
@@ -117,7 +117,7 @@ Periodic performance review:
 - [ ] Run `/context list` — no single item > 20% of context
 - [ ] Heartbeat interval is 55 min (cache-aligned)
 - [ ] The single cron job uses main-session mode unless isolation is needed
-- [ ] No browser automation for tasks achievable with web_search/web_fetch
+- [ ] No browser automation for tasks achievable with Brave LLM Context
 - [ ] `/compact` run on any session older than 2 hours of active use
 - [ ] Response token caps enforced (2048 OpenClaw, 1024 Sentinel)
 - [ ] Silent hours active (23:00-07:00 COT)

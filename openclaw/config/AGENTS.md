@@ -37,7 +37,7 @@
 - **Execution mode:** direct skill execution in the current lane; do not require sub-agent spawning for `/ai_daily_brief*` slash commands
 - **Channel context:** strip `@BotName` suffix before routing (e.g. `/ai_daily_brief@MangenkyoBot status` → `/ai_daily_brief status`); treat approved group/channel chats identically to DM
 - **Output format:** Full mode: Executive Snapshot → Top Stories (with YYYY-MM-DD date + technical details) → Quick Hits → Builder Corner → Strategic Take → Watchlist → Confidence & Gaps
-- **Provider preference:** use Brave LLM Context (`/res/v1/llm/context`) for grounding with state-configured token budgets before generic web search fallback
+- **Provider preference:** use Brave LLM Context (`/res/v1/llm/context`) for grounding as the only allowed search backend in AI brief and job-search flows
 - **Delivery routing:** read `/home/node/.openclaw/workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat
 - **Cost tier:** standard (Gemini Pro); `feedback`/`status`/`history`/`diff`/`help` modes use Flash
 
