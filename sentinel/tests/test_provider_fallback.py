@@ -153,7 +153,7 @@ def test_non_recoverable_primary_error_does_not_fallback(tmp_path):
         assert google_model.generate_content.call_count == 0
 
 
-def test_google_empty_response_falls_back_to_anthropic(tmp_path):
+def test_google_empty_response_does_not_fallback_to_anthropic(tmp_path):
     config = _build_google_primary_config(tmp_path)
 
     with patch("sentinel.Anthropic") as mock_anthropic, patch(
@@ -180,11 +180,9 @@ def test_google_empty_response_falls_back_to_anthropic(tmp_path):
         agent = SentinelAgent(config)
         result = agent.process_message(12345, "status")
 
-        assert result == "anthropic fallback ok"
+        assert "empty response" in result.lower()
         assert google_model.generate_content.call_count >= 2
-        assert anthropic_client.messages.create.call_count == 1
-        anthropic_call = anthropic_client.messages.create.call_args
-        assert anthropic_call.kwargs["model"] == "claude-haiku-4-5"
+        assert anthropic_client.messages.create.call_count == 0
 
 
 def test_google_empty_response_without_fallback_returns_retry_message(tmp_path):
@@ -210,5 +208,5 @@ def test_google_empty_response_without_fallback_returns_retry_message(tmp_path):
         agent = SentinelAgent(config)
         result = agent.process_message(12345, "status")
 
-        assert "temporarily unavailable" in result.lower()
+        assert "empty response" in result.lower()
         assert google_model.generate_content.call_count >= 2

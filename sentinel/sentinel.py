@@ -689,9 +689,14 @@ class SentinelAgent:
             "timeout",
             "connection",
             "temporarily unavailable",
-            "empty_response",
         )
         return any(marker in details for marker in markers)
+
+    @staticmethod
+    def _is_soft_google_response_error(exc: Exception) -> bool:
+        """Return True for non-provider outages where Gemini returned no usable text."""
+        details = f"{type(exc).__name__}: {exc}".lower()
+        return "google_empty_response" in details or "empty_response" in details
 
     def _set_provider_backoff(self, provider: str, seconds: int = 300) -> None:
         deadline = time.monotonic() + max(1, seconds)
@@ -796,6 +801,18 @@ class SentinelAgent:
             self._clear_provider_backoff(self.provider)
             return response
         except Exception as primary_exc:
+            if self.provider == "google" and self._is_soft_google_response_error(primary_exc):
+                self._append_audit_event(
+                    user_id,
+                    "provider_soft_error_no_fallback",
+                    {
+                        "provider": self.provider,
+                        "error_type": type(primary_exc).__name__,
+                        "error_preview": str(primary_exc)[:200],
+                    },
+                )
+                return "Gemini returned an empty response. Please retry your request."
+
             if not self._is_recoverable_provider_error(primary_exc):
                 raise
 
