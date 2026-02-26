@@ -133,7 +133,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
 - Channel context: `/ai_daily_brief@BotName status` strips `@BotName` suffix automatically; approved group/supergroup chats treated identically to DM.
 - Execution policy: `/ai_daily_brief*` runs directly in-lane (skill-first), not via mandatory sub-agent spawn.
 - Deduplication and update suppression using `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
-- State schema v3: adds `history[]` (last 20 runs), `feedback[]`, `cost_estimate` per run, `last_probe_at` on Brave provider.
+- State schema v5: includes `history[]` (last 20 runs), `feedback[]`, `cost_estimate` per run, `last_probe_at` on Brave provider, plus Brave request controls (`request_method`, `threshold_by_mode`, `query_constraints`, `min_inter_query_delay_seconds`).
 - Story output enforces **precise `YYYY-MM-DD` event dates** per story — vague or undated stories are rejected.
 - Story output includes **Technical Details** per top story: architecture type, parameter count (or disclosure status), context window, capability delta vs prior version, benchmarks with methodology.
 - Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
@@ -149,6 +149,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
 - VPS operational scripts for rollout and smoke-testing:
   - `infrastructure/vps-rollout-aibrief.sh`
   - `infrastructure/aibrief-smoke-test.sh`
+  - `infrastructure/reconcile-ai-brief-state.sh`
   - `infrastructure/set-aibrief-output-channel.sh`
 - Rollout hardening:
   - config sync preserves gateway runtime ownership for `/root/.openclaw/openclaw.json`
@@ -160,6 +161,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
   - config sync supports interactive-chat anonymous/channel compatibility via `OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=1` (sets `groups.<chat>.allowFrom=["*"]` for approved interactive chats)
   - config-only rollout now syncs `infrastructure/docker-compose.yml` into `/root/openclaw` before restart
   - rollout now detects active Telegram webhooks via `getWebhookInfo`, clears them, and restarts gateway before final health validation
+  - rollout now auto-reconciles stale AI brief locks (`last_run.status=running` older than 15m) before restart
   - rollout/smoke diagnostics now read gateway auth token from `/root/.openclaw/openclaw.json` first (env fallback only), preventing false `device token mismatch` checks caused by stale `.env` duplicates
   - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`), tokenFile readability, webhook conflict absence, direct in-lane AI brief policy markers in workspace SOUL/AGENTS, and container-visible Brave key
   - smoke test now fails hard when `dmPolicy=pairing` with empty `allowFrom` because DM commands are gated until pairing approval
@@ -171,6 +173,31 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
   - `/root/.openclaw/workspace/SOUL.md`
   - `/root/.openclaw/workspace/TOOLS.md`
   - `/root/.openclaw/workspace/HEARTBEAT.md`
+
+### 10. Job Radar Performance Profile (Brave-only)
+
+Job Radar runs as a separate backend on the VPS (`/root/job-radar`, API on `127.0.0.1:8080`) and is optimized for low-cost, high-signal discovery.
+
+Production routing and filtering:
+- Discovery source: Brave LLM Context API only (`/res/v1/llm/context`)
+- Connector mode: `job_search_brave_only=true` (RemoteOK/HN connectors disabled)
+- Source quality filter: only ATS hosts (`greenhouse.io`, `lever.co`, `workable.com`)
+- Discovery fan-out cap: stop querying once `brave_discovery_target_jobs=24` is reached
+- Stale suppression: skip jobs older than `job_max_age_days=45` when `posted_at` is known
+
+Cost/latency defaults:
+- `BRAVE_RESULTS_PER_QUERY=8`
+- `BRAVE_CONTEXT_MAX_TOKENS=3072`
+- `BRAVE_CONTEXT_MAX_SNIPPETS=20`
+- `BRAVE_CONTEXT_THRESHOLD_MODE=strict`
+- `BRAVE_DISCOVERY_TARGET_JOBS=24`
+- `JOB_MAX_AGE_DAYS=45`
+- `HEALTH_LOG_INTERVAL_MINUTES=180`
+- `HEALTH_EXTERNAL_CHECK_TTL_SECONDS=120`
+
+Health endpoint optimization:
+- `/health/full` caches external API checks (Brave/Anthropic/Telegram/OpenClaw) for 120s.
+- This preserves diagnostics while reducing repeated token/API spend from dashboards and polls.
 
 ### AI Daily Brief + Gemini VPS Rollout (Fast Path)
 
@@ -224,6 +251,7 @@ Manual Telegram validation after rollout:
 - run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
 - if interactive channel commands are required, ensure channel/supergroup ID is present in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`
 - note: `/ai_daily_brief_status` is diagnostic and may not mutate `last_run`; `/ai_daily_brief_top5` should create/update `last_run.run_id/status`
+- if smoke test reports stale running lock, run: `./infrastructure/reconcile-ai-brief-state.sh /root/.openclaw/workspace/logs/ai-brief-state.json`
 - if status reports `provider unconfigured`, re-check `BRAVE_API_KEY` in `/root/openclaw/.env`
 - if smoke test shows `BRAVE_API_KEY appears invalid (len=...)`, rotate the key in `/root/openclaw/.env` (no quotes/comments on the same line)
 - if Gemini appears unavailable, inspect `docker compose logs --since=120s openclaw-gateway | grep -Ei 'gemini|google|fallback|529|overload'`
@@ -232,6 +260,20 @@ Manual Telegram validation after rollout:
   - `cd /root/openclaw-project && ./infrastructure/reset-openclaw-telegram-sessions.sh`
 - runtime now pins `thinkingDefault=off` to prevent model thinking blocks from being surfaced in Telegram responses
 - avoid `openclaw doctor --fix` during AI brief rollout/troubleshooting because it can rewrite channel config and break token wiring
+
+Job Radar quick validation:
+```bash
+ssh root@YOUR_VPS_IP <<'EOF'
+set -euo pipefail
+cd /root/job-radar
+docker compose -f docker-compose.job-radar.yml ps
+curl -sS http://127.0.0.1:8080/health/full | python3 -m json.tool | sed -n '1,120p'
+curl -sS -X POST http://127.0.0.1:8080/api/v1/ingestion/sync
+sleep 6
+docker compose -f docker-compose.job-radar.yml logs --tail=220 job-radar-api | \
+  grep -E 'pipeline.start|connectors|target_reached|stale_filtered|llm/context' || true
+EOF
+```
 
 Configure dedicated AI brief channel (optional):
 ```bash
@@ -376,6 +418,7 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 │   ├── aibrief-smoke-test.sh              # AI brief health + token + state smoke test
 │   ├── vps-rollout-aibrief.sh             # Config-only AI brief rollout/update path
 │   ├── merge-ai-brief-state.sh            # Template->runtime state merge (preserve history/routing)
+│   ├── reconcile-ai-brief-state.sh        # Auto-close stale running locks in ai-brief state
 │   ├── set-aibrief-output-channel.sh      # Configure AI brief output channel in state
 │   ├── reset-telegram-offset.sh           # Reset stale Telegram update offsets + restart gateway
 │   └── ssh-config-snippet                 # Mac SSH config with tunnel

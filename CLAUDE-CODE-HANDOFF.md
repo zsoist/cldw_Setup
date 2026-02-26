@@ -14,6 +14,53 @@
 
 Precedence rule: if historical notes below conflict, treat the **Latest pass (Gemini integration + cross-provider fallback)** as authoritative.
 
+### Latest pass (2026-02-26, Job Radar performance/efficiency/cost hardening)
+
+Runtime changes applied on VPS (`/root/job-radar`):
+
+- `backend/app/config.py`
+  - added tuning knobs:
+    - `brave_discovery_target_jobs` (default `24`)
+    - `job_max_age_days` (default `45`)
+    - `health_log_interval_minutes` (default `180`)
+    - `health_external_check_ttl_seconds` (default `120`)
+  - Brave context defaults tightened:
+    - `brave_context_max_tokens=3072`
+    - `brave_context_max_snippets=20`
+- `backend/app/domain/connectors/brave_discovery.py`
+  - discovery remains Brave LLM Context-only.
+  - per-url context budget reduced (`tokens_per_url=768`, `snippets_per_url=8`).
+  - query fan-out now stops early once target candidate count is reached.
+  - high-noise domains filtered by host allowlist (`greenhouse.io`, `lever.co`, `workable.com`).
+- `backend/app/domain/ingestion/pipeline.py`
+  - stale job filter added: skips insert/scoring when `posted_at` exceeds `job_max_age_days`.
+  - run summary now includes `stale_filtered`.
+  - scoring call reduced to exact new-job count (`limit=totals["new"]`) instead of overfetching.
+- `backend/app/domain/health/checker.py`
+  - external checks (Brave/Anthropic/Telegram/OpenClaw) now cached with TTL to reduce repeated API spend.
+  - cache marker (`"cached": true`) included in responses when applicable.
+  - added `reset_health_check_cache()` for deterministic testing/debugging.
+- `backend/app/scheduler.py`
+  - health-log schedule now configurable (`health_log_interval_minutes`, default every 3h).
+- `backend/tests/integration/test_health_checks.py`
+  - cache reset fixture added so mocks are deterministic under cached health checks.
+
+Data hygiene applied on VPS:
+- removed legacy non-Brave source rows (`remoteok_rss`, `hn_whoshiring`) from Job Radar DB.
+- removed old stale rows (`posted_at` older than 45 days).
+- removed non-ATS rows (non Greenhouse/Lever/Workable URLs) to improve feed quality.
+
+Operational state after rollout:
+- `job-radar-api` healthy, Brave LLM Context checks `OK`.
+- ingestion logs show:
+  - `brave_only: true`
+  - `connectors: ["brave_discovery"]`
+  - `target_reached` and `stale_filtered` counters active.
+
+Important deployment note:
+- `/root/job-radar` is currently runtime-managed on VPS and **not** part of this git repository tree.
+- GitHub repo now documents the production tuning profile and troubleshooting, but backend code sync for Job Radar remains a VPS operation.
+
 ### Latest pass (2026-02-23, stale-session narration reset hardening)
 
 - `openclaw/config/SOUL.md`
@@ -55,6 +102,38 @@ Precedence rule: if historical notes below conflict, treat the **Latest pass (Ge
     - direct execution for clear natural-language intents.
 - `openclaw/skills/ai-daily-brief-top5/SKILL.md` and `openclaw/skills/ai-daily-brief-evening/SKILL.md`
   - alias behavior now explicitly forbids internal process narration in user-visible output.
+
+### Latest pass (2026-02-23, stale running-state reconciliation for AI Daily Brief)
+
+- `infrastructure/reconcile-ai-brief-state.sh` (new)
+  - detects `last_run.status=running` stale locks in `/root/.openclaw/workspace/logs/ai-brief-state.json`.
+  - stale condition: `started_at` missing/invalid OR age >= 900 seconds.
+  - auto-finalizes stale runs as `failed` with `finished_at` and explicit interruption error text.
+  - supports non-destructive preview mode via `DRY_RUN=1`.
+- `infrastructure/vps-rollout-aibrief.sh`
+  - now invokes reconcile script after state merge so stale locks are cleared during rollout automatically.
+- `infrastructure/deploy.sh`
+  - now invokes reconcile script during full deploy flow after state merge.
+- `infrastructure/aibrief-smoke-test.sh`
+  - now checks for stale `running` state and fails with a targeted remediation command when detected.
+- `openclaw/skills/ai-daily-brief/SKILL.md`
+  - pipeline step 0 now includes mandatory stale-lock recovery behavior before writing a new run.
+  - active runs younger than 900s are treated as in-progress and should not be overwritten.
+- alias skills (`morning`, `evening`, `top5`, `builder`, `watchlist`, `status`)
+  - now reference canonical stale-lock handling expectations for consistency across `/ai_daily_brief_*` commands.
+
+### Latest pass (2026-02-23, cross-chat narration suppression + session optimization)
+
+- `openclaw/config/SOUL.md`
+  - strengthened global response policy:
+    - no progress/pre-execution chatter in normal chats,
+    - no user-visible tool-step narration,
+    - no `Reasoning:` section leakage.
+- `openclaw/openclaw-config.json`
+  - set `agents.defaults.contextTokens=262144` to cap long-lived session context and reduce drift/token waste.
+- VPS runtime remediation:
+  - pruned existing Telegram session history keys (`agent:main:telegram:*`) from `sessions.json` with backup and session-file rotation.
+  - restarted gateway after prune so new Telegram chats start from clean context under current SOUL/skill rules.
 
 ### Latest pass (2026-02-23, Telegram interactive channel sender-compatibility)
 
@@ -230,7 +309,7 @@ Config version marker: `2026.02.23-channel-commands-v1`
   - Pipeline step 13 (was 12): finalize now writes `cost_estimate`, appends `history[]`, updates `last_probe_at`.
   - Status output: watchlist topics, feedback summary, cost estimate, interactive chats registered.
 - `openclaw/workspace/logs/ai-brief-state.json`
-  - Schema v3: added `history[]`, `feedback[]`, `cost_estimate` in `last_run`, `last_probe_at` in `providers.brave_llm_context`.
+  - Schema evolved to v5: includes `history[]`, `feedback[]`, `cost_estimate` in `last_run`, `last_probe_at` in `providers.brave_llm_context`, plus Brave request controls (`request_method`, `threshold_by_mode`, `query_constraints`, `min_inter_query_delay_seconds`).
 - `openclaw/config/HEARTBEAT.md`
   - Task 11: Brave provider health probe every 6h (08:00/14:00/20:00 COT).
   - State rules: added cost_estimate, history, last_probe_at, story archive writes after each successful run.
@@ -240,7 +319,7 @@ Config version marker: `2026.02.23-channel-commands-v1`
 - `openclaw/config/AGENTS.md`
   - Updated AI Brief Editor input format with all new commands and model routing for lightweight modes.
 - `README.md`
-  - Updated AI Daily Brief section with all new commands, state schema v3, story archive, Brave probe, channel setup pointer.
+  - Updated AI Daily Brief section with all new commands, state schema v5, story archive, Brave probe, channel setup pointer.
   - Updated cron table from 14 → 15 jobs.
 
 ### Previous pass (2026-02-22, Telegram AI brief invocation hardening)
@@ -476,6 +555,7 @@ Marker format:
 - `infrastructure/vps-rollout-aibrief.sh`
 - `infrastructure/aibrief-smoke-test.sh`
 - `infrastructure/merge-ai-brief-state.sh`
+- `infrastructure/reconcile-ai-brief-state.sh`
 - `infrastructure/set-aibrief-output-channel.sh`
 - `infrastructure/sync-sentinel-env.sh`
 - `infrastructure/validate-placeholders.sh`
@@ -515,8 +595,8 @@ Marker format:
    - After first heartbeat cycle at 08:00 COT: check `providers.brave_llm_context.last_probe_at` in state is non-null.
 7. **Story archive validation:**
    - After first successful brief run: check `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json` exists.
-8. **Merge state schema v3 into runtime:**
-   - Run `infrastructure/merge-ai-brief-state.sh` to add new fields (`history`, `feedback`, `cost_estimate`) to the live VPS state file without overwriting existing `last_run` / `watchlist` data.
+8. **Merge latest state schema into runtime:**
+   - Run `infrastructure/merge-ai-brief-state.sh` to align runtime state with the current template (v5) without overwriting existing `last_run` / `watchlist` data.
 
 ### From 2026-02-22 pass (Telegram invocation hardening)
 9. Run full Sentinel test suite in a venv with Telegram dependency installed.

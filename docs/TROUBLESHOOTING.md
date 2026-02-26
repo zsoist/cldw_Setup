@@ -328,6 +328,30 @@ The smoke test now prints account runtime fields from `channels.status` (`accoun
 
 Avoid `openclaw doctor --fix` as part of AI-brief rollout automation. It can rewrite config and interfere with explicit Telegram token wiring.
 
+### AI brief returns "unknown error" and `last_run.status` stays `running`
+Symptom:
+- Telegram returns `An unknown error occurred` for `/ai_daily_brief_top5` or `/ai_daily_brief_evening`.
+- `ai-brief-state.json` shows `last_run.status="running"` long after the run should have ended.
+
+Cause:
+- The skill is prompt-driven and can be interrupted before finalize writes happen.
+- This leaves a stale lock-like run state that can confuse subsequent invocations.
+
+Fix:
+```bash
+cd /root/openclaw-project
+./infrastructure/reconcile-ai-brief-state.sh /root/.openclaw/workspace/logs/ai-brief-state.json
+./infrastructure/aibrief-smoke-test.sh
+```
+
+Expected:
+- reconcile script prints `RECOVERED run_id=...` when stale lock is found.
+- smoke test passes `AI brief last_run is not stuck in running state (...)`.
+
+Notes:
+- `vps-rollout-aibrief.sh` now runs this reconcile step automatically.
+- stale threshold defaults to 900s (override with `STALE_AFTER_SECONDS=...` if needed).
+
 ### Commands reach bot but AI brief never invokes (`last_run` stays null)
 If `/ai_daily_brief*` returns generic replies and `last_run.run_id/mode/status` remain null, verify DM authorization:
 
@@ -432,20 +456,15 @@ cd /root/openclaw && docker compose up -d --force-recreate
 Expected smoke-test pass line:
 - `Brave LLM Context API reachable (...)`
 
-If smoke test shows:
-- `Brave LLM Context probe failed (HTTP 422)` and
-- `Brave Web Search is reachable`
-
-then your Brave key is valid but likely does not include LLM Context entitlement.  
-In this case AI brief can still run with fallback web-search grounding (partial mode).
-
-If smoke test shows both probes failing (LLM Context + Web Search):
+If smoke test shows LLM Context probe failing:
 - check key length in failure output (`key_len=...`)
 - rotate/re-paste `BRAVE_API_KEY` (no quotes, no trailing spaces/comments)
 - ensure OpenClaw container sees the key:
 ```bash
 docker exec openclaw-openclaw-gateway-1 sh -lc 'echo ${#BRAVE_API_KEY}'
 ```
+
+AI brief is now configured for Brave LLM Context only. If LLM Context is unavailable, brief generation must fail fast with provider diagnostics (no fallback to `/res/v1/web/search`).
 
 If smoke test reports `BRAVE_API_KEY appears invalid (len=...)`, the key format itself is wrong (commonly a truncated value like length 4). Replace it before debugging anything else.
 
@@ -565,6 +584,75 @@ docker inspect openclaw-openclaw-gateway-1 | grep -i oom
 # Current limit: 2560MB in docker-compose.yml
 # On CPX22 (4GB total), this leaves ~1.5GB for Sentinel + OS
 ```
+
+## Job Radar Issues
+
+### `/job_radar` is slow or API costs are high
+Enforce the production tuning profile:
+```bash
+cd /root/job-radar
+set_kv(){ key="$1"; val="$2"; if grep -q "^${key}=" .env; then sed -i "s|^${key}=.*|${key}=${val}|" .env; else printf "%s=%s\n" "$key" "$val" >> .env; fi; }
+set_kv JOB_SEARCH_BRAVE_ONLY true
+set_kv BRAVE_RESULTS_PER_QUERY 8
+set_kv BRAVE_CONTEXT_MAX_TOKENS 3072
+set_kv BRAVE_CONTEXT_MAX_SNIPPETS 20
+set_kv BRAVE_CONTEXT_THRESHOLD_MODE strict
+set_kv BRAVE_DISCOVERY_TARGET_JOBS 24
+set_kv JOB_MAX_AGE_DAYS 45
+set_kv HEALTH_LOG_INTERVAL_MINUTES 180
+set_kv HEALTH_EXTERNAL_CHECK_TTL_SECONDS 120
+docker compose -f docker-compose.job-radar.yml up -d --build job-radar-api
+```
+
+Verify:
+```bash
+curl -sS http://127.0.0.1:8080/health/full | python3 -m json.tool | sed -n '1,120p'
+curl -sS -X POST http://127.0.0.1:8080/api/v1/ingestion/sync
+sleep 6
+docker compose -f docker-compose.job-radar.yml logs --tail=220 job-radar-api | \
+  grep -E 'pipeline.start|connectors|target_reached|stale_filtered|llm/context'
+```
+
+Expected:
+- `brave_only: true`
+- `connectors: ["brave_discovery"]`
+- `target_reached` and `stale_filtered` counters present.
+
+### Job feed contains noisy aggregator links or stale listings
+Purge non-ATS and stale rows from the database:
+```bash
+cd /root/job-radar
+DBPW="$(grep '^JOB_RADAR_DB_PASSWORD=' .env | cut -d= -f2-)"
+cat >/tmp/job-radar-clean.sql <<'SQL'
+BEGIN;
+WITH stale AS (
+  SELECT id FROM jobs_normalized
+  WHERE posted_at IS NOT NULL
+    AND posted_at < (NOW() - INTERVAL '45 days')
+), noisy AS (
+  SELECT id FROM jobs_normalized
+  WHERE canonical_url !~* 'greenhouse\\.io|lever\\.co|workable\\.com'
+), target AS (
+  SELECT id FROM stale
+  UNION
+  SELECT id FROM noisy
+)
+DELETE FROM job_events je USING target t WHERE je.job_id = t.id;
+DELETE FROM job_scores js USING target t WHERE js.job_id = t.id;
+DELETE FROM jobs_normalized jn USING target t WHERE jn.id = t.id;
+DELETE FROM jobs_raw jr WHERE NOT EXISTS (SELECT 1 FROM jobs_normalized jn WHERE jn.job_raw_id = jr.id);
+COMMIT;
+SQL
+docker exec -i -e PGPASSWORD="$DBPW" job-radar-db psql -U jobradar -d jobradar < /tmp/job-radar-clean.sql
+curl -sS "http://127.0.0.1:8080/api/v1/jobs?limit=5" | python3 -m json.tool
+```
+
+### `/job_health` is repeatedly calling external APIs
+`/health/full` now caches external checks for `HEALTH_EXTERNAL_CHECK_TTL_SECONDS` (default 120s).  
+If you still see high call volume:
+1. verify `HEALTH_EXTERNAL_CHECK_TTL_SECONDS=120` is set in `/root/job-radar/.env`
+2. restart API container
+3. call `/health/full` twice quickly; second response should include `"cached": true` on external checks.
 
 ## Sentinel Issues
 
