@@ -520,6 +520,7 @@ class SentinelAgent:
     ) -> str:
         """Run Gemini function-calling loop until a final text response is produced."""
         latest_tool_result = ""
+        blank_response_retries = 0
         google_model = self._normalize_google_model_name(self.config.model)
         for _ in range(self.config.max_tool_iterations):
             try:
@@ -589,7 +590,26 @@ class SentinelAgent:
                     f"Latest tool result: {latest_tool_result[:1200]}"
                 )
             else:
-                final_text = "No response generated."
+                if blank_response_retries < 1:
+                    blank_response_retries += 1
+                    history.append(
+                        {
+                            "role": "user",
+                            "parts": [
+                                {
+                                    "text": (
+                                        "Provide a concise plain-text answer to the previous user request. "
+                                        "Do not call tools unless strictly required."
+                                    )
+                                }
+                            ],
+                        }
+                    )
+                    history = self._truncate_history(history)
+                    if persist_history:
+                        self.conversations[user_id] = history
+                    continue
+                raise RuntimeError("google_empty_response")
             history = self._truncate_history(history)
             if persist_history:
                 self.conversations[user_id] = history
@@ -628,6 +648,7 @@ class SentinelAgent:
             "timeout",
             "connection",
             "temporarily unavailable",
+            "empty_response",
         )
         return any(marker in details for marker in markers)
 
@@ -721,8 +742,20 @@ class SentinelAgent:
             self._clear_provider_backoff(self.provider)
             return response
         except Exception as primary_exc:
-            if not fallback_provider or not self._is_recoverable_provider_error(primary_exc):
+            if not self._is_recoverable_provider_error(primary_exc):
                 raise
+
+            if not fallback_provider:
+                self._append_audit_event(
+                    user_id,
+                    "provider_recoverable_error_no_fallback",
+                    {
+                        "provider": self.provider,
+                        "error_type": type(primary_exc).__name__,
+                        "error_preview": str(primary_exc)[:200],
+                    },
+                )
+                return "Provider temporarily unavailable. Please retry in a few seconds."
 
             self._set_provider_backoff(self.provider)
             logger.warning(

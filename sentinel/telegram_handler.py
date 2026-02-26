@@ -1,6 +1,7 @@
 """Telegram bot interface for Sentinel."""
 import logging
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -25,6 +26,24 @@ class SentinelTelegramBot:
     def _is_authorized(self, user_id: int) -> bool:
         """Check if user is in the allowed list."""
         return user_id in self.config.allowed_user_ids
+
+    async def _reply_text_safe(self, message, text: str) -> None:
+        """Send markdown when possible, fallback to plain text on parse errors."""
+        try:
+            await message.reply_text(text, parse_mode="Markdown")
+        except BadRequest as exc:
+            if "can't parse entities" in str(exc).lower():
+                await message.reply_text(text)
+                return
+            raise
+
+    async def _reply_text_safe_chunked(self, message, text: str, chunk_size: int = 4000) -> None:
+        """Send long text in Telegram-safe chunks with markdown fallback."""
+        if len(text) <= chunk_size:
+            await self._reply_text_safe(message, text)
+            return
+        for i in range(0, len(text), chunk_size):
+            await self._reply_text_safe(message, text[i : i + chunk_size])
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command."""
@@ -52,7 +71,7 @@ class SentinelTelegramBot:
             update.effective_user.id,
             "Give me a quick system status: CPU, RAM, disk, and Docker containers. Be concise."
         )
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_text_safe_chunked(update.message, response)
 
     async def openclaw_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Check OpenClaw health."""
@@ -62,7 +81,7 @@ class SentinelTelegramBot:
             update.effective_user.id,
             "Check OpenClaw gateway health: is it running, any recent errors, HTTP status."
         )
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_text_safe_chunked(update.message, response)
 
     async def security_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Run security audit."""
@@ -72,7 +91,7 @@ class SentinelTelegramBot:
             update.effective_user.id,
             "Run a security audit: UFW status, failed SSH attempts, open ports, running services."
         )
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_text_safe_chunked(update.message, response)
 
     async def backup_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Trigger OpenClaw backup."""
@@ -82,7 +101,7 @@ class SentinelTelegramBot:
             update.effective_user.id,
             "Create a backup of OpenClaw's config and workspace. Report the file path and size."
         )
-        await update.message.reply_text(response, parse_mode="Markdown")
+        await self._reply_text_safe_chunked(update.message, response)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle free-text messages."""
@@ -98,12 +117,7 @@ class SentinelTelegramBot:
 
         try:
             response = self.agent.process_message(update.effective_user.id, user_message)
-            # Telegram has a 4096 char limit per message
-            if len(response) > 4000:
-                for i in range(0, len(response), 4000):
-                    await update.message.reply_text(response[i:i + 4000], parse_mode="Markdown")
-            else:
-                await update.message.reply_text(response, parse_mode="Markdown")
+            await self._reply_text_safe_chunked(update.message, response)
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
             await update.message.reply_text(f"Error: {str(e)[:200]}")
