@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "cb781cca-49d3-41b8-869b-9f09120f1644",
+      "agentId": "main",
+      "name": "Daily Brief Top5 AI (Previous Day)",
+      "enabled": true,
+      "createdAtMs": 1771939298470,
+      "updatedAtMs": 1772107860093,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10 12 * * *",
+        "tz": "UTC"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "/ai_daily_brief top5",
+        "model": "google/gemini-2.5-pro",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003826801947"
+      },
+      "state": {
+        "nextRunAtMs": 1772194200000,
+        "lastRunAtMs": 1772107800008,
+        "lastRunStatus": "error",
+        "lastStatus": "error",
+        "lastDurationMs": 60085,
+        "lastDeliveryStatus": "unknown",
+        "consecutiveErrors": 2,
+        "lastError": "cron: job execution timed out"
+      }
+    }
+  ]
+}

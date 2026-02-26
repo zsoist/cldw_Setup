@@ -117,5 +117,8 @@ with open(tmp_path, "w", encoding="utf-8") as f:
     f.write("\n")
 os.replace(tmp_path, state_path)
 os.chmod(state_path, 0o600)
+# Restore ownership to sentinel:systemd-journal so the gateway container (uid=999) can read it.
+import subprocess
+subprocess.run(["chown", "sentinel:systemd-journal", state_path], check=False)
 print(f"RECOVERED run_id={run_id} reason={stale_reason} stale_after_seconds={stale_after_seconds}")
 PY
