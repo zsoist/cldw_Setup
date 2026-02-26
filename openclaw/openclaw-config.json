@@ -31,7 +31,7 @@
         "google/gemini-2.5-flash": {}
       },
       "compaction": {
-        "mode": "aggressive"
+        "mode": "safeguard"
       },
       "workspace": "/home/node/.openclaw/workspace",
       "contextTokens": 262144,

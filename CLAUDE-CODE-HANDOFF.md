@@ -10,9 +10,53 @@
 
 ## Current State
 
-`main` now includes the 2026-02-22 hardening pass plus the 2026-02-23 AI Daily Brief channel-command/quality improvements and the 2026-02-23 Gemini integration pass.
+`main` is current through **2026-02-26 evening pass** (VPS sync + config hardening). All services healthy on VPS.
 
-Precedence rule: if historical notes below conflict, treat the **Latest pass (Gemini integration + cross-provider fallback)** as authoritative.
+Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-26 VPS sync + config hardening)** as authoritative.
+
+### Latest pass (2026-02-26, VPS sync + config hardening)
+
+All fixes applied to running VPS and committed/pushed to `main` (commit `7a4fc5d` + this commit).
+
+**What was broken:**
+
+1. **VPS 7 commits behind GitHub** — Codex made commits on GitHub and edited files directly over SSH, leaving local repo diverged from both running services and GitHub. Fixed by pulling all 7 commits and deploying to `/opt/sentinel/` and `/root/.openclaw/`.
+
+2. **`compaction.mode: "aggressive"` is INVALID** — OpenClaw schema only accepts `"default"` or `"safeguard"`. Every `SIGUSR1` reload logged `Invalid config: agents.defaults.compaction.mode: Invalid input` and the gateway silently kept running on its last good config. Fixed to `"safeguard"` in runtime `openclaw.json` and repo template `openclaw-config.json`.
+
+3. **Anthropic model fallbacks causing errors** — Codex re-added `anthropic/claude-haiku-4-5` and `anthropic/claude-sonnet-4-6` to `model.fallbacks`. Anthropic auth is unconfigured in the OpenClaw gateway. Removed from both runtime config and repo template.
+
+4. **Cron job timing out** — `jobs.json` had `timeoutSeconds: 60` which is too short for Gemini Flash to complete a daily brief with Brave search. Two consecutive error runs with `FailoverError: LLM request timed out`. Raised to `120`.
+
+5. **`openclaw.json` permission drift** — Edit tool resets ownership to `root:root 600`. Container runs as uid=999 (`openclaw`) = same as `sentinel` uid=999, but access depends on permissions. Fixed to `640 sentinel:systemd-journal` after every edit. Also: `SIGUSR1` was sent while the file was temporarily root-owned, causing `EACCES` in logs.
+
+6. **Stale placeholder group `-1001234567890`** — Removed from `groups` in runtime `openclaw.json`.
+
+7. **Sentinel features missing from VPS** — `/opt/sentinel/` was behind GitHub by 7 commits, missing: `response.text` fallback for empty Gemini responses, usage footer on all Telegram replies, configurable `max_tokens` / `usd_to_cop_rate`, crash-safe cost tracking via `cost_tracker.py`.
+
+8. **`/etc/sentinel/sentinel.env` missing vars** — Added `SENTINEL_MAX_TOKENS=768`, `SENTINEL_USD_TO_COP_RATE=4000`, and 8 cost-tracking env vars.
+
+**Files changed on VPS (not tracked in git — apply manually after pulls):**
+- `/opt/sentinel/*.py` — deployed from GitHub; `chown sentinel:sentinel` after every copy
+- `/etc/sentinel/sentinel.env` — full current content in memory notes
+- `/root/.openclaw/openclaw.json` — safeguard compaction, no Anthropic fallbacks, no placeholder group; `chown sentinel:systemd-journal` + `chmod 640` after every edit
+- `/root/.openclaw/cron/jobs.json` — `timeoutSeconds: 120`
+- `/root/.openclaw/skills/` — synced from `openclaw/skills/` in repo
+- `/root/.openclaw/AGENTS.md`, `SOUL.md`, `MEMORY.md` — synced from `openclaw/config/` in repo
+
+**Critical runtime rules (hard-won, do not repeat mistakes):**
+
+| Rule | Detail |
+|------|--------|
+| `compaction.mode` | Only `"default"` and `"safeguard"` are valid in this OpenClaw build. `"aggressive"` is silently rejected. |
+| `openclaw.json` ownership | Must be `640 sentinel:systemd-journal` after every edit. Edit tool always resets to `root:root 600`. |
+| Sentinel `.py` ownership | Must be `sentinel:sentinel` after every copy/edit. |
+| SIGUSR1 reload | If config is invalid, gateway runs silently on last good config. Check `docker logs` for `Invalid config` after reload. |
+| Cron timeout | `timeoutSeconds: 120` in `jobs.json`. 60 too short, 180 causes zombie runs. |
+| GitHub push | No SSH key or credential helper on VPS. Use PAT: `git remote set-url origin https://<token>@github.com/zsoist/cldw_Setup.git`, push, reset URL back. |
+| Pull with stash | `git stash --include-untracked` before pull, then `git stash drop` after (don't pop — stash may be old versions). |
+
+---
 
 ### Latest pass (2026-02-26, Sentinel empty-response hardening + Telegram usage footer)
 
@@ -647,6 +691,17 @@ Marker format:
 ---
 
 ## Known Follow-up Items
+
+### From 2026-02-26 pass (VPS sync + config hardening)
+1. **Migrate Sentinel to `google.genai` SDK** — `sentinel.py` uses the deprecated `google.generativeai` package. The FutureWarning appears on every Sentinel startup. Migration requires updating imports and API call patterns in `sentinel.py`. Not urgent (still works), but should be done before the package is removed.
+   ```bash
+   # current deprecation warning:
+   # "All support for the google.generativeai package has ended."
+   # "Please switch to the google.genai package"
+   ```
+2. **Configure GitHub credentials on VPS** — currently push requires a manually-supplied PAT each session. Set up SSH key or a stored credential helper to automate this.
+3. **Verify next cron run** — next `Daily Brief Top5` run is scheduled at `nextRunAtMs: 1772194200000` (2026-02-28 12:10 UTC). With `timeoutSeconds: 120` it should succeed. Confirm in `ai-brief-state.json` after the run.
+4. **Clear consecutive error count** — `consecutiveErrors: 2` left over from the 60s timeout failures. Will auto-clear on next successful run.
 
 ### From 2026-02-23 pass (channel commands + quality improvements)
 1. **Enable channel commands (VPS runtime):**

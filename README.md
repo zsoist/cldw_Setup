@@ -73,6 +73,8 @@ Heartbeat:     |------ 55 min ------|------ 55 min ------|------
 
 The OpenClaw config uses `"compaction": {"mode": "safeguard"}`, which automatically compresses long conversation histories. Without compaction, a 50-message conversation could consume 10,000+ input tokens per new request. With safeguard compaction, the effective context stays bounded.
 
+> **Note:** The only valid compaction mode values in this OpenClaw build are `"default"` and `"safeguard"`. The value `"aggressive"` is **not valid** and will cause `Invalid config` on reload — gateway falls back to last good config silently.
+
 ### 5. Silent Hours Optimization
 
 No proactive messages are sent between 23:00-07:00 COT. This reduces unnecessary API calls while preserving the single scheduled AI brief run at 07:00.
@@ -82,7 +84,7 @@ No proactive messages are sent between 23:00-07:00 COT. This reduces unnecessary
 | Component | Max Tokens |
 |-----------|-----------|
 | OpenClaw responses | 2048 |
-| Sentinel responses | 768 (env: `SENTINEL_MAX_TOKENS`) |
+| Sentinel responses | 768 (env: `SENTINEL_MAX_TOKENS`, default `768`) |
 | Bot instruction | "Keep under 300 words" |
 
 Capping response tokens prevents runaway generation costs. Sentinel is deliberately limited to 768 by default since infrastructure status reports are inherently concise.
@@ -108,11 +110,13 @@ This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either 
 
 1 scheduled job defined in `openclaw/config/CRON.md`:
 
-| # | Job | Schedule | Agent | Model |
-|---|-----|----------|-------|-------|
-| 1 | AI Daily Brief Top5 (Previous Day) | 07:00 daily | Main | Gemini Pro |
+| # | Job | Schedule (UTC) | Schedule (COT) | Agent | Model |
+|---|-----|----------------|----------------|-------|-------|
+| 1 | AI Daily Brief Top5 (Previous Day) | 12:10 daily | 07:10 daily | Main | Gemini 2.5 Flash |
 
 Everything else runs on-demand via explicit commands.
+
+> **Cron timeout:** `timeoutSeconds` is set to `120` in `jobs.json`. 60s was too short for Flash to complete a brief with Brave search; 180s caused zombie-run issues. 120s is the stable balance.
 
 ### 9. AI Daily Brief Capability
 
@@ -300,15 +304,19 @@ EOF
 
 ## Sentinel: Agentic Sysadmin Bot
 
+> **Runtime files** are in `/opt/sentinel/`. After any edit/copy, run `chown sentinel:sentinel /opt/sentinel/*.py` — the Edit tool resets ownership to `root:root`. The env file lives at `/etc/sentinel/sentinel.env`.
+
 Sentinel supports **dual providers**:
 - Google Gemini (`SENTINEL_PROVIDER=google`, default)
 - Anthropic (`SENTINEL_PROVIDER=anthropic`)
 
 Both providers run the same safe tool-execution loop with shared whitelist controls.
 
-Every Sentinel Telegram reply now appends an execution footer:
+Every Sentinel Telegram reply appends an execution footer:
 - `Tokens used: in/out - USD $... / COP $...`
 - Adds `- Brave api: N` only when Brave was used in that request.
+
+COP rate is configured via `SENTINEL_USD_TO_COP_RATE` (default `4000`) in `/etc/sentinel/sentinel.env`. Crash-safe cost tracking writes to `/var/log/sentinel/api-usage.jsonl` and `/var/log/sentinel/api-cost-summary.json`.
 
 ### Tool Architecture
 
@@ -610,7 +618,7 @@ Notes:
 | Gemini Flash as default | Most interactions are routine; Flash is lower cost and faster for baseline flows. |
 | 55-min heartbeat | Keeps recurring prompt overhead bounded with cache-friendly cadence. |
 | SOUL.md < 500 words | Sent with every request. 100 extra words x 1000 requests = 100K wasted tokens. |
-| Safeguard compaction | Prevents long conversations from inflating input token costs. |
+| Safeguard compaction | Prevents long conversations from inflating input token costs. Only `"default"` and `"safeguard"` are valid — `"aggressive"` is rejected by the OpenClaw schema. |
 | Loopback gateway binding | No public exposure — SSH tunnel only. Eliminates need for TLS cert management. |
 | systemd for Sentinel | Lighter than Docker for a single Python process. Auto-restart on crash. |
 | 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping a week of recovery points. |

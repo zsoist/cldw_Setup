@@ -1,5 +1,36 @@
 # Troubleshooting Guide
 
+> Last updated: 2026-02-26. For the current system state, see `CLAUDE-CODE-HANDOFF.md`.
+
+---
+
+## Quick Diagnostics
+
+```bash
+# Full system health
+systemctl is-active sentinel
+docker ps --format "{{.Names}}: {{.Status}}"
+
+# Sentinel logs (filtered)
+journalctl -u sentinel --since "1 hour ago" --no-pager | grep -v "getUpdates\|200 OK\|HTTP Request"
+
+# OpenClaw logs (filtered)
+docker logs openclaw-openclaw-gateway-1 --since 1h 2>&1 | grep -v "web_search"
+
+# Check if config was rejected on last reload
+docker logs openclaw-openclaw-gateway-1 --since 5m 2>&1 | grep -i "invalid\|error\|EACCES\|permission"
+
+# Validate openclaw.json before reloading
+python3 -m json.tool /root/.openclaw/openclaw.json > /dev/null && echo "JSON valid"
+
+# Reload OpenClaw config without restart
+docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
+sleep 3
+docker logs openclaw-openclaw-gateway-1 --since 5s 2>&1 | grep -i "reload\|invalid\|error"
+```
+
+---
+
 ## OpenClaw Issues
 
 ### OpenClaw container won't start
@@ -12,6 +43,90 @@ docker compose logs openclaw-gateway
 # 2. Port conflict — check if 18789 is already in use: ss -tlnp | grep 18789
 # 3. Docker build failed — rebuild: docker compose build --no-cache
 ```
+
+### OpenClaw config reload silently ignored (`Invalid config` in logs)
+
+**Symptom:** You edited `openclaw.json` and sent `SIGUSR1`, but behavior hasn't changed. Gateway logs show:
+```
+Invalid config at /home/node/.openclaw/openclaw.json:
+- agents.defaults.compaction.mode: Invalid input
+```
+
+**Cause:** An invalid value was used for `compaction.mode`. The only valid values in this OpenClaw build are `"default"` and `"safeguard"`. The value `"aggressive"` does NOT exist in the schema and will always be rejected.
+
+**Fix:**
+```bash
+# Check current value
+python3 -c "import json; d=json.load(open('/root/.openclaw/openclaw.json')); print(d['agents']['defaults'].get('compaction'))"
+
+# Fix it
+python3 -c "
+import json
+with open('/root/.openclaw/openclaw.json') as f: d = json.load(f)
+d['agents']['defaults']['compaction'] = {'mode': 'safeguard'}
+with open('/root/.openclaw/openclaw.json', 'w') as f: json.dump(d, f, indent=2)
+print('fixed')
+"
+chown sentinel:systemd-journal /root/.openclaw/openclaw.json
+chmod 640 /root/.openclaw/openclaw.json
+
+# Reload
+docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
+sleep 3
+docker logs openclaw-openclaw-gateway-1 --since 5s 2>&1 | grep -i "invalid\|error\|reload"
+# No output = success (errors are logged, success is silent)
+```
+
+### `EACCES: permission denied` reading `openclaw.json`
+
+**Symptom:** Gateway logs show:
+```
+config watcher error: Error: EACCES: permission denied, watch '/home/node/.openclaw/openclaw.json'
+Failed to read config at /home/node/.openclaw/openclaw.json Error: EACCES: permission denied
+```
+
+**Cause:** The file is owned by `root:root` (Claude's Edit tool, `cp`, or any editor running as root resets ownership). The container user `openclaw` (uid=999) can only read the file when owner is `sentinel` (also uid=999).
+
+**Fix — always run after ANY edit to openclaw.json:**
+```bash
+chown sentinel:systemd-journal /root/.openclaw/openclaw.json
+chmod 640 /root/.openclaw/openclaw.json
+ls -la /root/.openclaw/openclaw.json
+# Expected: -rw-r----- 1 sentinel systemd-journal ...
+```
+
+Then reload:
+```bash
+docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
+```
+
+**Same rule applies to all files under `/root/.openclaw/`** — always chown after editing.
+
+### Cron daily brief times out (`FailoverError: LLM request timed out`)
+
+**Symptom:** `ai-brief-state.json` shows `lastRunStatus: "error"`, `consecutiveErrors: N`, `lastError: "cron: job execution timed out"`. OpenClaw logs:
+```
+lane task error: lane=cron durationMs=60045 error="FailoverError: LLM request timed out."
+```
+
+**Cause:** `timeoutSeconds` in `jobs.json` is too short. Gemini Flash + Brave search typically takes 75-120s to complete a brief. The previous setting was `60` which is too tight.
+
+**Fix:**
+```bash
+cat /root/.openclaw/cron/jobs.json | python3 -m json.tool | grep timeoutSeconds
+# Should be 120. If not:
+
+python3 -c "
+import json
+with open('/root/.openclaw/cron/jobs.json') as f: d = json.load(f)
+for job in d['jobs']:
+    job['payload']['timeoutSeconds'] = 120
+with open('/root/.openclaw/cron/jobs.json', 'w') as f: json.dump(d, f, indent=2)
+print('set to 120')
+"
+```
+
+> **Do not set above 120** — 180s was the original value but it caused zombie runs where `last_run.status` stayed `"running"` indefinitely.
 
 ### Channel commands not working (`@MangenkyoBot /ai_daily_brief status` produces no response)
 
@@ -719,6 +834,35 @@ If you still see high call volume:
 
 ## Sentinel Issues
 
+### Sentinel files have wrong ownership (won't start or breaks on restart)
+
+**Symptom:** Sentinel starts but immediately fails with permission errors, OR Python imports fail.
+
+**Cause:** After copying or editing any `.py` file in `/opt/sentinel/` as root, ownership resets to `root:root`. The `sentinel` user (uid=999) can't read them.
+
+**Fix — always run after copying/editing sentinel Python files:**
+```bash
+chown sentinel:sentinel /opt/sentinel/*.py
+ls -la /opt/sentinel/*.py
+# Expected: -rw-r--r-- 1 sentinel sentinel ...
+systemctl restart sentinel
+journalctl -u sentinel -n 20 --no-pager
+```
+
+### Sentinel startup shows `FutureWarning: google.generativeai deprecated`
+
+**Symptom:** Every Sentinel startup logs:
+```
+FutureWarning: All support for the `google.generativeai` package has ended.
+Please switch to the `google.genai` package as soon as possible.
+```
+
+**Cause:** `sentinel.py` still imports `google.generativeai` (the old SDK). This is a **non-critical warning** — Sentinel still works correctly. The migration to `google.genai` requires updating the import pattern and API calls in `sentinel.py`.
+
+**Immediate workaround:** None needed — Gemini still responds normally.
+
+**Permanent fix (future work):** Migrate `sentinel/sentinel.py` to use `google.genai` instead of `google.generativeai`. The Google AI Python SDK README has a migration guide.
+
 ### Sentinel won't start
 ```bash
 # Check service status
@@ -853,3 +997,106 @@ If the VPS is compromised or corrupted:
 2. Create a new CPX22 with the same SSH key
 3. Re-run the deployment from Step 3 in DEPLOYMENT.md
 4. Restore from the latest backup
+
+---
+
+## GitHub / Repo Sync Procedures
+
+### VPS is behind GitHub (Codex or direct edits on GitHub)
+
+Situation: GitHub `main` has commits that aren't on the VPS yet.
+
+```bash
+cd /root/openclaw-project
+
+# Check how far behind
+git fetch origin
+git log --oneline HEAD..origin/main
+
+# Pull (stash local VPS-only files first if any)
+git stash --include-untracked
+git pull --rebase origin main
+git stash drop   # drop stash — don't pop (stash may be old versions pre-GitHub changes)
+
+# Deploy sentinel files to running service
+cp sentinel/sentinel.py sentinel/telegram_handler.py sentinel/config.py sentinel/cost_tracker.py /opt/sentinel/
+chown sentinel:sentinel /opt/sentinel/*.py
+
+# Sync openclaw skills and config docs
+rsync -av openclaw/skills/ /root/.openclaw/skills/
+cp openclaw/config/AGENTS.md /root/.openclaw/AGENTS.md
+cp openclaw/config/SOUL.md /root/.openclaw/SOUL.md
+cp openclaw/config/MEMORY.md /root/.openclaw/MEMORY.md
+
+# Restart sentinel to pick up new code
+systemctl restart sentinel
+sleep 3
+systemctl is-active sentinel
+
+# Reload OpenClaw config
+docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
+sleep 3
+docker logs openclaw-openclaw-gateway-1 --since 5s 2>&1 | grep -i "invalid\|error"
+```
+
+### Pushing VPS changes to GitHub
+
+No SSH key or credential helper is configured on the VPS. Use a GitHub PAT:
+
+```bash
+cd /root/openclaw-project
+
+# Stage and commit
+git add -p          # review changes interactively, or:
+git add <specific-files>
+git commit -m "your message"
+
+# Push with PAT (replace TOKEN with your GitHub PAT)
+git remote set-url origin "https://TOKEN@github.com/zsoist/cldw_Setup.git"
+git push origin main
+git remote set-url origin "https://github.com/zsoist/cldw_Setup.git"   # remove token from URL
+```
+
+> The PAT needs `repo` scope. Generate at GitHub → Settings → Developer Settings → Personal access tokens.
+
+### openclaw.json has secrets — what goes in the repo?
+
+The repo tracks `openclaw/openclaw-config.json` (template with `REPLACE_WITH_*` placeholders). The running file `/root/.openclaw/openclaw.json` has real tokens and is **not tracked** (it's outside the repo tree).
+
+When making structural changes to `openclaw.json`, always mirror them to the template:
+```bash
+# Edit the running config
+nano /root/.openclaw/openclaw.json
+chown sentinel:systemd-journal /root/.openclaw/openclaw.json
+chmod 640 /root/.openclaw/openclaw.json
+
+# Mirror structural changes (not secrets) to the template
+nano /root/openclaw-project/openclaw/openclaw-config.json
+
+# Validate template
+python3 -m json.tool /root/openclaw-project/openclaw/openclaw-config.json > /dev/null && echo "OK"
+
+# Commit template
+cd /root/openclaw-project
+git add openclaw/openclaw-config.json
+git commit -m "update openclaw config template"
+```
+
+### After any `git pull` — ownership checklist
+
+```bash
+# 1. Sentinel Python files
+chown sentinel:sentinel /opt/sentinel/*.py
+
+# 2. openclaw.json (if you just edited it)
+chown sentinel:systemd-journal /root/.openclaw/openclaw.json
+chmod 640 /root/.openclaw/openclaw.json
+
+# 3. Restart services to pick up changes
+systemctl restart sentinel
+docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
+
+# 4. Verify
+systemctl is-active sentinel
+docker logs openclaw-openclaw-gateway-1 --since 10s 2>&1 | grep -i "invalid\|error"
+```
