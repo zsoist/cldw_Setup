@@ -51,7 +51,7 @@ sync_sentinel_runtime() {
   local changed=0
   local requirements_changed=0
   local file src dst
-  for file in config.py sentinel.py telegram_handler.py tools.py requirements.txt; do
+  for file in config.py sentinel.py telegram_handler.py tools.py cost_tracker.py requirements.txt; do
     src="$PROJECT_DIR/sentinel/$file"
     dst="$SENTINEL_DIR/$file"
     if [ ! -f "$src" ]; then
@@ -147,6 +147,10 @@ bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \
   "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
 bash "$PROJECT_DIR/infrastructure/reconcile-ai-brief-state.sh" \
   "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
+bash "$PROJECT_DIR/infrastructure/update-api-cost-rollup.sh" \
+  "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json" \
+  "/var/log/sentinel/api-cost-summary.json" \
+  "$OPENCLAW_CFG/workspace/logs/api-cost-rollup.json" || log "WARN: failed to update API cost rollup"
 
 require_file "$OPENCLAW_CFG/openclaw.json"
 require_file "$OPENCLAW_CFG/openclaw-config.json"

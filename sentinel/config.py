@@ -35,6 +35,19 @@ def _parse_positive_int(env_name: str, default: int, minimum: int = 1, maximum: 
     return value
 
 
+def _parse_bool(env_name: str, default: bool) -> bool:
+    """Parse boolean env var with common truthy/falsey values."""
+    raw = _clean_env_value(os.getenv(env_name, ""))
+    if not raw:
+        return default
+    value = raw.lower()
+    if value in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
 def _load_env_files() -> None:
     """Load environment variables from common deployment/local paths."""
     env_hint = os.getenv("SENTINEL_ENV_FILE")
@@ -102,6 +115,22 @@ class SentinelConfig:
     max_tool_iterations: int = field(
         default_factory=lambda: _parse_positive_int("SENTINEL_MAX_TOOL_ITERATIONS", 5, minimum=1, maximum=20)
     )
+    cost_tracking_enabled: bool = field(
+        default_factory=lambda: _parse_bool("SENTINEL_COST_TRACKING_ENABLED", True)
+    )
+    api_usage_log_file: str = field(
+        default_factory=lambda: _clean_env_value(
+            os.getenv("SENTINEL_API_USAGE_LOG_FILE", "/var/log/sentinel/api-usage.jsonl")
+        )
+    )
+    api_cost_summary_file: str = field(
+        default_factory=lambda: _clean_env_value(
+            os.getenv("SENTINEL_API_COST_SUMMARY_FILE", "/var/log/sentinel/api-cost-summary.json")
+        )
+    )
+    cost_retention_days: int = field(
+        default_factory=lambda: _parse_positive_int("SENTINEL_COST_RETENTION_DAYS", 180, minimum=30, maximum=3650)
+    )
 
     # System
     openclaw_container_name: str = "openclaw-openclaw-gateway-1"
@@ -130,4 +159,6 @@ class SentinelConfig:
             errors.append("SENTINEL_CONVERSATION_TTL_SECONDS must be > 0")
         if self.max_tool_iterations <= 0:
             errors.append("SENTINEL_MAX_TOOL_ITERATIONS must be > 0")
+        if self.cost_retention_days <= 0:
+            errors.append("SENTINEL_COST_RETENTION_DAYS must be > 0")
         return errors

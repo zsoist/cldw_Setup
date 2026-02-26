@@ -619,6 +619,25 @@ docker compose up -d --force-recreate
 4. Review conversation logs for unnecessary Gemini Pro/Sonnet/Opus escalations
 5. Ensure compaction mode is "safeguard" in openclaw-config.json
 
+### API cost tracking file missing or stale
+Sentinel now writes API usage/cost events continuously and the rollout script builds a unified rollup.
+
+Regenerate and inspect:
+```bash
+cd /root/openclaw-project
+./infrastructure/update-api-cost-rollup.sh \
+  /root/.openclaw/workspace/logs/ai-brief-state.json \
+  /var/log/sentinel/api-cost-summary.json \
+  /root/.openclaw/workspace/logs/api-cost-rollup.json
+
+python3 -m json.tool /root/.openclaw/workspace/logs/api-cost-rollup.json | sed -n '1,160p'
+```
+
+Expected files:
+- `/var/log/sentinel/api-usage.jsonl` (append-only events)
+- `/var/log/sentinel/api-cost-summary.json` (Sentinel daily/weekly/monthly aggregates)
+- `/root/.openclaw/workspace/logs/api-cost-rollup.json` (combined AI Brief + Sentinel totals)
+
 ### OpenClaw out of memory (OOM killed)
 ```bash
 # Check if container was OOM killed

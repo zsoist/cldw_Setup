@@ -246,6 +246,42 @@ else
   fail "AI brief state file missing ($STATE_FILE)"
 fi
 
+API_COST_ROLLUP_FILE="/root/.openclaw/workspace/logs/api-cost-rollup.json"
+if [ -f "$API_COST_ROLLUP_FILE" ]; then
+  ROLLUP_SUMMARY="$(python3 - <<'PY' "$API_COST_ROLLUP_FILE"
+import json, sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+totals = (data.get("totals") or {}).get("all_time") or {}
+print("all_time_usd", float(totals.get("usd") or 0.0))
+print("ai_brief_runs", int(totals.get("ai_brief_runs") or 0))
+print("sentinel_api_calls", int(totals.get("sentinel_api_calls") or 0))
+daily = (data.get("totals") or {}).get("daily") or {}
+if daily:
+    latest_key = sorted(daily.keys())[-1]
+    latest = daily[latest_key] if isinstance(daily.get(latest_key), dict) else {}
+    print("latest_day", latest_key)
+    print("latest_day_usd", float(latest.get("usd") or 0.0))
+else:
+    print("latest_day", "")
+    print("latest_day_usd", 0.0)
+PY
+)"
+  ALL_TIME_USD="$(echo "$ROLLUP_SUMMARY" | awk '/^all_time_usd /{print $2}' | tail -n1)"
+  AI_RUNS="$(echo "$ROLLUP_SUMMARY" | awk '/^ai_brief_runs /{print $2}' | tail -n1)"
+  SENTINEL_CALLS="$(echo "$ROLLUP_SUMMARY" | awk '/^sentinel_api_calls /{print $2}' | tail -n1)"
+  LATEST_DAY="$(echo "$ROLLUP_SUMMARY" | awk '/^latest_day /{print $2}' | tail -n1)"
+  LATEST_DAY_USD="$(echo "$ROLLUP_SUMMARY" | awk '/^latest_day_usd /{print $2}' | tail -n1)"
+  pass "API cost rollup present (${API_COST_ROLLUP_FILE})"
+  echo "API cost all-time USD: ${ALL_TIME_USD:-0.0} (ai_brief_runs=${AI_RUNS:-0}, sentinel_api_calls=${SENTINEL_CALLS:-0})"
+  if [ -n "${LATEST_DAY:-}" ]; then
+    echo "API cost latest day: ${LATEST_DAY} (usd=${LATEST_DAY_USD:-0.0})"
+  fi
+else
+  warn "API cost rollup file missing (${API_COST_ROLLUP_FILE}); run: /root/openclaw-project/infrastructure/update-api-cost-rollup.sh"
+fi
+
 if [ -f "$ENV_FILE" ]; then
   GW_TOKEN_LINES="$(grep -c '^OPENCLAW_GATEWAY_TOKEN=' "$ENV_FILE" || true)"
   if [ "${GW_TOKEN_LINES}" -gt 1 ]; then

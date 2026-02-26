@@ -152,6 +152,19 @@ else
     check "OpenClaw config file exists" 1
 fi
 
+# 11. API cost tracking artifacts
+if [ -f /var/log/sentinel/api-cost-summary.json ]; then
+    check "Sentinel API cost summary present" 0
+else
+    warn "Sentinel API cost summary missing (/var/log/sentinel/api-cost-summary.json)"
+fi
+
+if [ -f /root/.openclaw/workspace/logs/api-cost-rollup.json ]; then
+    check "Unified API cost rollup present" 0
+else
+    warn "Unified API cost rollup missing (/root/.openclaw/workspace/logs/api-cost-rollup.json)"
+fi
+
 echo ""
 echo "=== Summary: $PASS passed, $FAIL failed, $WARN warnings ==="
 

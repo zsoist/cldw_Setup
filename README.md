@@ -150,6 +150,7 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
   - `infrastructure/vps-rollout-aibrief.sh`
   - `infrastructure/aibrief-smoke-test.sh`
   - `infrastructure/reconcile-ai-brief-state.sh`
+  - `infrastructure/update-api-cost-rollup.sh`
   - `infrastructure/set-aibrief-output-channel.sh`
 - Rollout hardening:
   - config sync preserves gateway runtime ownership for `/root/.openclaw/openclaw.json`
@@ -172,6 +173,11 @@ The `ai-daily-brief` skill delivers a source-grounded AI briefing with one sched
   - config-only rollout now syncs Sentinel runtime code into `/opt/sentinel` (and refreshes deps when `requirements.txt` changes) to avoid deployment drift between repo and systemd runtime
   - rollout now removes deprecated runtime skill folders (`aibrief*`, `daily-brief*`) to prevent duplicate slash-trigger ownership and routing drift
   - `set-aibrief-output-channel.sh` now also updates `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` when target is numeric chat ID
+  - Sentinel now writes crash-safe API usage accounting to:
+    - `/var/log/sentinel/api-usage.jsonl` (append-only events)
+    - `/var/log/sentinel/api-cost-summary.json` (daily/weekly/monthly/all-time aggregates)
+  - Unified rollup script merges AI Brief run costs + Sentinel API costs into:
+    - `/root/.openclaw/workspace/logs/api-cost-rollup.json`
 - Runtime bootstrap files used by command routing are loaded from:
   - `/root/.openclaw/workspace/AGENTS.md`
   - `/root/.openclaw/workspace/SOUL.md`
@@ -265,6 +271,9 @@ Manual Telegram validation after rollout:
   - `cd /root/openclaw-project && ./infrastructure/reset-openclaw-telegram-sessions.sh`
 - runtime now pins `thinkingDefault=off` to prevent model thinking blocks from being surfaced in Telegram responses
 - avoid `openclaw doctor --fix` during AI brief rollout/troubleshooting because it can rewrite channel config and break token wiring
+- cost report refresh:
+  - `/root/openclaw-project/infrastructure/update-api-cost-rollup.sh`
+  - inspect `/root/.openclaw/workspace/logs/api-cost-rollup.json` for daily/weekly/monthly totals
 
 Job Radar quick validation:
 ```bash

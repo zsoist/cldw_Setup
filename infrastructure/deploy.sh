@@ -115,6 +115,10 @@ bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \
     "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
 bash "$PROJECT_DIR/infrastructure/reconcile-ai-brief-state.sh" \
     "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
+bash "$PROJECT_DIR/infrastructure/update-api-cost-rollup.sh" \
+    "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json" \
+    "/var/log/sentinel/api-cost-summary.json" \
+    "$OPENCLAW_CONFIG/workspace/logs/api-cost-rollup.json" || true
 if [ -d "$PROJECT_DIR/openclaw/skills" ]; then
     while IFS= read -r -d '' skill_file; do
         rel_path="${skill_file#$PROJECT_DIR/openclaw/skills/}"
@@ -130,7 +134,14 @@ for deprecated in \
     aibrief_top5 \
     aibrief_builder \
     aibrief_watchlist \
-    aibrief_status; do
+    aibrief_status \
+    daily-brief \
+    daily-brief-morning \
+    daily-brief-evening \
+    daily-brief-top5 \
+    daily-brief-builder \
+    daily-brief-watchlist \
+    daily-brief-status; do
     rm -rf "$OPENCLAW_CONFIG/skills/$deprecated"
 done
 
@@ -145,7 +156,7 @@ fi
 usermod -aG docker,adm sentinel
 
 mkdir -p "$SENTINEL_DIR"
-for f in config.py sentinel.py telegram_handler.py tools.py; do
+for f in config.py sentinel.py telegram_handler.py tools.py cost_tracker.py; do
     copy_checked "$PROJECT_DIR/sentinel/$f" "$SENTINEL_DIR/$f"
 done
 copy_checked "$PROJECT_DIR/sentinel/requirements.txt" "$SENTINEL_DIR/requirements.txt"

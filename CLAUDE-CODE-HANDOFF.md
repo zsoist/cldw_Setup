@@ -45,6 +45,34 @@ Operational validation on VPS (2026-02-26 UTC):
 - `health-check.sh`: pass (13/13).
 - `aibrief-smoke-test.sh`: pass with no failures (warnings only for expected no-inbound/no-output-yet conditions).
 
+### Latest pass (2026-02-26, crash-safe API cost tracking + rollups)
+
+- `sentinel/cost_tracker.py` (new)
+  - append-only event log + atomic summary snapshots.
+  - tracks API usage with estimated USD and daily/weekly/monthly/all-time aggregates.
+  - provider/model breakdown included.
+- `sentinel/sentinel.py`
+  - records usage on every Anthropic/Gemini API call in tool loop.
+  - records error events when provider calls fail, so failures are visible in cost telemetry.
+- `sentinel/config.py`
+  - new config/env support:
+    - `SENTINEL_COST_TRACKING_ENABLED`
+    - `SENTINEL_API_USAGE_LOG_FILE`
+    - `SENTINEL_API_COST_SUMMARY_FILE`
+    - `SENTINEL_COST_RETENTION_DAYS`
+- `infrastructure/update-api-cost-rollup.sh` (new)
+  - merges AI Brief run costs (`ai-brief-state.json`) + Sentinel summary into:
+    - `/root/.openclaw/workspace/logs/api-cost-rollup.json`
+  - outputs daily/weekly/monthly/all-time totals.
+- rollout/deploy integration:
+  - `infrastructure/vps-rollout-aibrief.sh` now refreshes rollup automatically.
+  - `infrastructure/deploy.sh` now refreshes rollup during deployment bootstrap.
+- health/smoke visibility:
+  - `infrastructure/health-check.sh` checks presence of cost summary and unified rollup.
+  - `infrastructure/aibrief-smoke-test.sh` reports unified cost rollup totals when present.
+- test coverage:
+  - `sentinel/tests/test_cost_tracker.py` added.
+
 ### Latest pass (2026-02-26, Job Radar performance/efficiency/cost hardening)
 
 Runtime changes applied on VPS (`/root/job-radar`):

@@ -21,6 +21,7 @@ except ImportError:  # pragma: no cover - dependency may be unavailable in local
     Anthropic = None
 
 from config import SentinelConfig
+from cost_tracker import APICostTracker
 from tools import GOOGLE_TOOLS, TOOLS, execute_tool
 
 logging.basicConfig(
@@ -108,6 +109,16 @@ class SentinelAgent:
         self._audit_prev_hash = ""
         self._prepare_audit_log()
         self._configure_file_logging()
+        self._cost_tracker: APICostTracker | None = None
+        if self.config.cost_tracking_enabled:
+            try:
+                self._cost_tracker = APICostTracker(
+                    usage_log_file=self.config.api_usage_log_file,
+                    summary_file=self.config.api_cost_summary_file,
+                    retention_days=self.config.cost_retention_days,
+                )
+            except Exception:
+                logger.exception("Failed to initialize API cost tracker; continuing without cost tracking")
 
     @staticmethod
     def _normalize_google_model_name(raw_model: str) -> str:
@@ -306,6 +317,60 @@ class SentinelAgent:
             return history
         return history[-20:]
 
+    def _record_api_usage(
+        self,
+        *,
+        provider: str,
+        model: str,
+        status: str,
+        user_id: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        error: Exception | None = None,
+    ) -> None:
+        if self._cost_tracker is None:
+            return
+        error_type = type(error).__name__ if error else None
+        error_preview = str(error) if error else None
+        try:
+            self._cost_tracker.record(
+                provider=provider,
+                model=model,
+                status=status,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                user_id=user_id,
+                error_type=error_type,
+                error_preview=error_preview,
+            )
+        except Exception:
+            logger.exception("API cost tracking failed")
+
+    def _extract_anthropic_usage(self, response: Any) -> tuple[int, int]:
+        usage = self._coerce_mapping(getattr(response, "usage", None))
+        input_tokens = int(usage.get("input_tokens") or usage.get("inputTokens") or 0)
+        output_tokens = int(usage.get("output_tokens") or usage.get("outputTokens") or 0)
+        return max(input_tokens, 0), max(output_tokens, 0)
+
+    def _extract_google_usage(self, response: Any) -> tuple[int, int]:
+        usage_obj = getattr(response, "usage_metadata", None)
+        if usage_obj is None:
+            usage_obj = getattr(response, "usageMetadata", None)
+        usage = self._coerce_mapping(usage_obj)
+        input_tokens = int(usage.get("prompt_token_count") or usage.get("promptTokenCount") or 0)
+        output_tokens = int(
+            usage.get("candidates_token_count")
+            or usage.get("candidatesTokenCount")
+            or usage.get("output_token_count")
+            or usage.get("outputTokenCount")
+            or 0
+        )
+        if output_tokens == 0:
+            total_tokens = int(usage.get("total_token_count") or usage.get("totalTokenCount") or 0)
+            if total_tokens > 0 and input_tokens > 0:
+                output_tokens = max(0, total_tokens - input_tokens)
+        return max(input_tokens, 0), max(output_tokens, 0)
+
     def _call_anthropic(self, history: list[dict[str, Any]]) -> Any:
         if self.anthropic_client is None:
             raise RuntimeError("Anthropic client is not initialized")
@@ -370,7 +435,27 @@ class SentinelAgent:
     def _run_anthropic_loop(self, user_id: int, history: list[dict[str, Any]], persist_history: bool = True) -> str:
         """Run Anthropic tool-use loop until a final text response is produced."""
         for _ in range(self.config.max_tool_iterations):
-            response = self._call_anthropic(history)
+            try:
+                response = self._call_anthropic(history)
+            except Exception as exc:
+                self._record_api_usage(
+                    provider="anthropic",
+                    model=self.config.model,
+                    status="error",
+                    user_id=user_id,
+                    error=exc,
+                )
+                raise
+
+            input_tokens, output_tokens = self._extract_anthropic_usage(response)
+            self._record_api_usage(
+                provider="anthropic",
+                model=self.config.model,
+                status="success",
+                user_id=user_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
 
             if response.stop_reason == "tool_use":
                 assistant_content = response.content
@@ -435,8 +520,30 @@ class SentinelAgent:
     ) -> str:
         """Run Gemini function-calling loop until a final text response is produced."""
         latest_tool_result = ""
+        google_model = self._normalize_google_model_name(self.config.model)
         for _ in range(self.config.max_tool_iterations):
-            response = self._call_google(history, client=client)
+            try:
+                response = self._call_google(history, client=client)
+            except Exception as exc:
+                self._record_api_usage(
+                    provider="google",
+                    model=google_model,
+                    status="error",
+                    user_id=user_id,
+                    error=exc,
+                )
+                raise
+
+            input_tokens, output_tokens = self._extract_google_usage(response)
+            self._record_api_usage(
+                provider="google",
+                model=google_model,
+                status="success",
+                user_id=user_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+
             text_response, tool_calls, assistant_turn = self._extract_google_response(response)
             history.append(assistant_turn)
 
