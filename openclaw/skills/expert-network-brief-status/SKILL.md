@@ -7,9 +7,21 @@ model: google/gemini-2.5-flash
 cost_tier: cheap
 ---
 
-# Expert Network Brief — Status
+# ENB Status Check
+Tools: `read` + `message` only. Never exec scripts. Never load main expert-network-brief/SKILL.md.
 
-Alias for `/expert_network_brief status`. Execute the status mode of the expert-network-brief skill directly.
+## Steps
+1. `read` → `/home/node/.openclaw/workspace/logs/enb-state.json`
+2. `message` → formatted status
 
-## Exec Prohibition
-NEVER exec shell scripts. This is a prompt-based skill. Read the `expert-network-brief/SKILL.md` for full instructions.
+## Format
+```
+Expert Network Brief Status
+Last run: {last_run.mode} — {last_run.status} ({finished_at})
+Findings: {last_run.findings_count or "n/a"}
+Competitors tracked: {config.competitors joined by ", "}
+Brave provider: {brave_llm_context.status or "unknown"}
+```
+
+If state missing or last_run null: `No ENB runs recorded.`
+If `last_run.status=running` and age>=900s: stale lock warning.

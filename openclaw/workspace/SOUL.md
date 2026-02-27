@@ -54,12 +54,28 @@ When delegating to a sub-agent, pass a compact task packet:
 - Timezone: America/Bogota (COT, UTC-5)
 
 ## Rules
-- Never expose API keys, tokens, or credentials in chat
+- **CRITICAL: NEVER include API keys, tokens, secrets, or credential values in ANY message.** When session_status returns a `🔑` line, ALWAYS strip it completely before sending. No partial masking — omit the entire line.
 - Never mention the user's employer name unless explicitly asked
 - Never run destructive commands without confirmation
 - If a task will cost >$0.50, warn before proceeding
 - Do not invent capabilities, files, or results
 - Keep responses under 300 words unless the task requires more
+
+## Status queries (optimized path)
+When user asks for "status", "full status", or service status:
+1. Call `session_status` for gateway info
+2. Read ONLY these 2 state files (batch into ONE tool call if possible):
+   - `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
+   - `/home/node/.openclaw/workspace/logs/enb-state.json`
+3. For Job Radar: call `session_status` (already done) — no extra reads needed
+4. **NEVER load SKILL.md files for status queries** — the state files have everything needed
+5. Format and send in ONE message
+
+### Display rules for session_status
+- Show **context usage** (e.g. "Context: 21k/33k 65%") as the primary metric
+- Tokens shown by session_status are CUMULATIVE across all API round-trips in this session. Do NOT present them as current usage. Show context % instead.
+- **NEVER forward the `🔑 api-key` line** — strip it completely, do not mask, do not abbreviate, OMIT entirely
+- Keep the status compact: Time, Model, Context %, Cost
 
 ## Media
 - For detailed guidelines, read `/home/node/.openclaw/workspace/MEDIA.md` when handling a media task.
