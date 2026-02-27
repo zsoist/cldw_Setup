@@ -254,9 +254,11 @@ class SentinelTelegramBot:
         try:
             result = execute_check_openclaw_health()
             lines = ["*OpenClaw Health*"]
-            lines.append(f"Container: {_escape_md(str(result.get('container_status', '?')))}")
+            lines.append(f"Container: {_escape_md(str(result.get('status', '?')))}")
+            health_badge = "✅" if result.get("gateway_ready") else "⚠️"
+            lines.append(f"Health: {health_badge} {_escape_md(str(result.get('docker_health', '?')))}")
             lines.append(f"Uptime: {_escape_md(str(result.get('uptime', '?')))}")
-            lines.append(f"HTTP: {_escape_md(str(result.get('http_status', '?')))}")
+            lines.append(f"HTTP: {_escape_md(str(result.get('http_fallback_status', '?')))}")
             errors = result.get("recent_errors", [])
             if errors:
                 lines.append(f"\n*Recent Errors ({len(errors)}):*")
@@ -279,7 +281,7 @@ class SentinelTelegramBot:
         try:
             result = execute_check_security()
             lines = ["*Security Audit*"]
-            for section in ["ufw_status", "open_ports", "failed_ssh_attempts", "running_services"]:
+            for section in ["ufw", "listening_ports", "failed_ssh_attempts", "running_services_count"]:
                 val = result.get(section, "N/A")
                 label = section.replace("_", " ").title()
                 if isinstance(val, list):
@@ -305,8 +307,8 @@ class SentinelTelegramBot:
             if result.get("status") == "success":
                 response = (
                     f"*Backup Complete*\n"
-                    f"File: `{_escape_md(str(result.get('backup_file', '?')))}`\n"
-                    f"Size: {result.get('size_bytes', 0) / 1024 / 1024:.1f} MB"
+                    f"File: `{_escape_md(str(result.get('path', '?')))}`\n"
+                    f"Size: {result.get('size_mb', 0):.1f} MB"
                 )
             else:
                 response = f"Backup failed: {_safe_str(result.get('error', 'unknown'))}"
@@ -326,20 +328,20 @@ class SentinelTelegramBot:
             period = raw_arg.lower().strip() if raw_arg.lower().strip() in _COST_PERIODS else "today"
             result = execute_cost_summary(period)
             lines = [f"*API Cost Summary ({_escape_md(period)})*"]
-            for svc_name, svc_data in result.items():
-                if svc_name in ("grand_total", "daily_budget_remaining"):
-                    continue
-                if not isinstance(svc_data, dict):
+            for svc_name, svc_data in result.get("services", {}).items():
+                if not isinstance(svc_data, dict) or "error" in svc_data:
+                    if isinstance(svc_data, dict) and "error" in svc_data:
+                        lines.append(f"\n*{_escape_md(str(svc_name))}:* {_safe_str(svc_data['error'])}")
                     continue
                 in_t = svc_data.get("input_tokens", 0)
                 out_t = svc_data.get("output_tokens", 0)
-                usd = svc_data.get("estimated_usd", 0)
+                usd = svc_data.get("usd", 0)
                 lines.append(f"\n*{_escape_md(str(svc_name))}:* {in_t}/{out_t} tokens — ${usd:.6f}")
-            total = result.get("grand_total", {})
+            total = result.get("total", {})
             if total:
-                cop = total.get("estimated_cop", 0)
-                lines.append(f"\n*Total:* ${total.get('estimated_usd', 0):.6f} USD / ${cop:,.0f} COP")
-            remaining = result.get("daily_budget_remaining")
+                cop = total.get("cop", 0)
+                lines.append(f"\n*Total:* ${total.get('usd', 0):.6f} USD / ${cop:,.0f} COP")
+            remaining = total.get("daily_budget_remaining") if total else None
             if remaining is not None:
                 lines.append(f"Daily budget remaining: ${remaining:.4f}")
             response = "\n".join(lines)

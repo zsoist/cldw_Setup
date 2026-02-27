@@ -4,6 +4,7 @@ Each tool is a function that can be called by Claude via tool_use.
 Tools are restricted to safe operations. Destructive commands require confirmation.
 """
 import os
+import json
 import subprocess
 import shlex
 import re
@@ -389,6 +390,7 @@ def execute_system_stats() -> dict[str, Any]:
     cpu_percent = psutil.cpu_percent(interval=0.25)
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage("/")
+    swap = psutil.swap_memory()
     boot_time = psutil.boot_time()
 
     import datetime
@@ -402,6 +404,8 @@ def execute_system_stats() -> dict[str, Any]:
         "disk_total_gb": round(disk.total / (1024**3), 2),
         "disk_used_gb": round(disk.used / (1024**3), 2),
         "disk_percent": disk.percent,
+        "swap_total_gb": round(swap.total / (1024**3), 2),
+        "swap_used_gb": round(swap.used / (1024**3), 2),
         "uptime": str(uptime).split(".")[0]
     }
 
@@ -583,7 +587,7 @@ def execute_backup_openclaw() -> dict[str, str]:
     from pathlib import Path
 
     backup_dir = Path("/var/backups/openclaw")
-    timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
     backup_path = backup_dir / f"openclaw-{timestamp}.tar"
 
     try:
