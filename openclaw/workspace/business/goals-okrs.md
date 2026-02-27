@@ -2,7 +2,7 @@
 
 ## Current Objectives
 
-### Objective 1: Deliver high-quality Dialectica TMT engagements
+### Objective 1: Deliver high-quality TMT consulting engagements
 - KR1: Complete all assigned projects on time
 - KR2: Maintain expert interview quality standards
 - KR3: Build reusable TMT research templates
@@ -13,7 +13,7 @@
 - KR3: Complete ML coursework milestones on schedule
 
 ## Current Risks
-- Time split between Dialectica, coursework, and job search
+- Time split between consulting work, coursework, and job search
 - Job market timing uncertainty for AI roles
 
 ## Current Priorities (This Week)

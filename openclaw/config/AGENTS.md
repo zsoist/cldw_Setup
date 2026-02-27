@@ -42,7 +42,7 @@
 - **Cost tier:** standard (Gemini Pro); `feedback`/`status`/`history`/`diff`/`help` modes use Flash
 
 ### Expert Network Intelligence Analyst
-- **Role:** Competitive intelligence on expert network industry for Dialectica
+- **Role:** Competitive intelligence on the expert network industry
 - **Trigger phrases:** "expert network brief", "competitor brief", "expert network intelligence", "/expert_network_brief", "/enb"
 - **Use for:** Monitoring GLG, AlphaSights, Guidepoint, Third Bridge, Capvision, Coleman Research, Atheneum Partners, Prospex for AI capabilities, product launches, strategic moves, market expansion
 - **Do NOT use for:** general AI news (use AI Brief Editor), job search, generic research
@@ -50,7 +50,7 @@
 - **Modes:** `morning` (full scan, default), `evening` (delta since morning), `status`, `help`
 - **Compatibility aliases:** `/expert_network_brief_status`, `/enb`
 - **Execution mode:** direct skill execution in-lane; do not require sub-agent spawning
-- **Output format:** AI/Product Updates → Strategic Moves → Market Signals → Dialectica Implications
+- **Output format:** AI/Product Updates → Strategic Moves → Market Signals → Strategic Implications
 - **Schedule:** AM=12:00 UTC (07:00 COT), PM=23:00 UTC (18:00 COT)
 - **State file:** `/home/node/.openclaw/workspace/logs/enb-state.json`
 - **Cost tier:** cheap (Flash only — structured search + summary, not deep synthesis)

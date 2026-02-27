@@ -111,6 +111,6 @@
 - Compaction mode: safeguard
 - Max concurrent tasks: 4
 - Max concurrent subagents: 1
-- Heartbeat interval: 55 minutes (cache-friendly interval for routine runs)
+- Heartbeat interval: 90 minutes (cost-optimized)
 - Max tool calls per task: 10
 - Max retries on failure: 2

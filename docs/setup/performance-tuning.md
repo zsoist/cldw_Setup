@@ -47,7 +47,7 @@ Our config: `"compaction": {"mode": "safeguard"}` — auto-compacts when approac
 
 ## 4. Heartbeat-Cache Alignment
 
-Anthropic's prompt cache has a **60-minute TTL**. Our heartbeat interval is **55 minutes** — just under the cache expiry.
+Our heartbeat interval is **90 minutes** (cost-optimized). Cache alignment is no longer the primary driver — Gemini Flash is the default model.
 
 ```
 Cache TTL:     |-------- 60 min --------|-------- 60 min --------|

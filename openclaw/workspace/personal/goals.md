@@ -6,12 +6,12 @@
 3. Stabilize OpenClaw + Sentinel as a daily productivity system
 
 ## This Month
-- Finish current Dialectica TMT engagements
+- Finish current TMT consulting engagements
 - Submit 3+ targeted AI job applications
 - Get OpenClaw cron jobs running reliably on VPS
 
 ## Constraints
-- Time: full-time Dialectica + part-time coursework + job search
+- Time: full-time consulting + part-time coursework + job search
 - Budget: <$33/month total infrastructure spend
 - Energy: prioritize deep work mornings, admin afternoons
 

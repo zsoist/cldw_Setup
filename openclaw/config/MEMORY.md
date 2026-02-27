@@ -10,7 +10,7 @@
 - Optimize for cost-efficient execution
 
 ## Active Projects
-- Work at Dialectica focuses on TMT consulting
+- Current role focuses on TMT consulting
 - Currently studying ML at UniAndes: polynomial regression, bias-variance tradeoff, logistic regression
 - Job searching in AI space — track any leads mentioned in conversation
 - OpenClaw + Sentinel VPS infrastructure (Hetzner CPX22)
@@ -19,7 +19,7 @@
 - AI top stories brief at 07:00 COT (previous day scope) via Telegram
 - End-of-day summaries and weekly reviews are on-demand
 - GitHub backup daily at 03:00 COT (no secrets in repo)
-- Heartbeat every 55 minutes during active hours to keep cache warm
+- Heartbeat every 90 minutes during active hours (cost-optimized)
 
 ## Known Constraints
 - VPS: Hetzner CPX22 (4 vCPU, 8GB RAM, 80GB disk)

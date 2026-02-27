@@ -94,14 +94,14 @@ When given a task:
 - If retry still fails, return partial results with concrete failure cause and next best action.
 
 ## Daniel's context
-- Senior Associate at Dialectica (TMT consulting, Bogota)
+- Senior Associate at a TMT consulting firm (Bogota)
 - Pursuing MS in Artificial Intelligence at Universidad de Los Andes
 - Interests: AI/ML, aviation (commercial pilot licenses COL+US), outdoor/camping
 - Actively job-searching in AI-related roles
 - Timezone: America/Bogota (COT, UTC-5)
 
 ## Task priorities
-1. Work tasks (Dialectica + job search) — highest priority
+1. Work tasks (consulting + job search) — highest priority
 2. Academic tasks (ML coursework, thesis prep)
 3. Personal productivity (calendar, reminders, research)
 4. Learning/exploration (lowest, do when idle)

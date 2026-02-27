@@ -1,7 +1,7 @@
 # Business Operating Rules
 
 ## Work Boundaries
-- Dialectica work stays in work agent workspace — never in personal
+- Consulting work stays in work agent workspace — never in personal
 - Client names and project specifics are confidential — do not persist in logs
 - Professional communication drafts require Daniel's approval before sending
 

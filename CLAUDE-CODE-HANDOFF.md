@@ -39,7 +39,7 @@ All services healthy. Branch: `main`. Recent work:
 2. **Gemini best practices** — XML-structured system prompts, `temperature: 0.2` for Sentinel (deterministic sysadmin), 60s API timeouts, media understanding enabled in OpenClaw.
 3. **Cost optimization** — Pricing table corrected (Flash was 3x underreported), memory leak fix, pruning throttle, dead fallback code removed.
 4. **Model optimization** — Haiku purged from all active code paths, auto-fallback disabled, all Anthropic usage is manual-only.
-5. **Expert Network Brief** — Competitive intelligence for Dialectica (8 competitors, Flash only, 2x daily).
+5. **Expert Network Brief** — Expert network competitive intelligence (8 competitors, Flash only, 2x daily).
 
 ---
 

@@ -204,10 +204,10 @@ Compatibility aliases: `/ai_daily_brief_top5`, `/ai_daily_brief_morning`, etc.
 
 ## Expert Network Intelligence Brief
 
-Automated competitive intelligence on the expert network industry, tailored for Dialectica. Monitors 8 competitors for AI capabilities, product launches, and strategic moves.
+Automated competitive intelligence on the expert network industry. Monitors 8 competitors for AI capabilities, product launches, and strategic moves.
 
 ### Competitors Monitored
-GLG, AlphaSights, Guidepoint, Third Bridge, Capvision, Prospex (by Capvision), Coleman Research, Atheneum Partners. Also tracks Dialectica for market positioning context.
+GLG, AlphaSights, Guidepoint, Third Bridge, Capvision, Prospex (by Capvision), Coleman Research, Atheneum Partners. Also tracks the consulting firm for market positioning context.
 
 ### Commands
 ```
@@ -221,7 +221,7 @@ GLG, AlphaSights, Guidepoint, Third Bridge, Capvision, Prospex (by Capvision), C
 ```
 
 ### Intelligence Priorities (ranked)
-1. **AI capabilities, features, products** (HIGHEST — Dialectica's strategic focus)
+1. **AI capabilities, features, products** (HIGHEST — strategic focus)
 2. Strategic moves — acquisitions, mergers, partnerships, funding
 3. Market expansion — new geographies, verticals, client segments
 4. Leadership changes, industry trends

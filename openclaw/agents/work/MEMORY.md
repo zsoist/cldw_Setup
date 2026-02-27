@@ -3,7 +3,7 @@
 # Memory — Work Agent
 
 ## Active Projects
-- Dialectica TMT consulting engagements (details kept confidential)
+- TMT consulting engagements (details kept confidential)
 - AI job search — tracking applications and leads
 
 ## Job Search Tracker

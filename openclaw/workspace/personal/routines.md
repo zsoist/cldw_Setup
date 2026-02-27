@@ -2,7 +2,7 @@
 
 ## Daily
 - **Morning (07:00-08:00):** Review daily brief, set top 3 priorities, check calendar
-- **Deep work (08:00-12:00):** Dialectica or coursework — no interruptions
+- **Deep work (08:00-12:00):** Consulting work or coursework — no interruptions
 - **Afternoon (14:00-18:00):** Meetings, admin, job search activities
 - **Evening (20:00-20:30):** EOD review, carry forward items, update memory
 

@@ -32,6 +32,6 @@
 
 ## Usage Notes
 - Keep under 500 words for routine briefs
-- Use for Dialectica project summaries, job search analysis, strategic decisions
+- Use for consulting project summaries, job search analysis, strategic decisions
 - Save to workspace/outputs/drafts/ while in progress
 - Move to workspace/outputs/reports/ when finalized

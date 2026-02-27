@@ -40,7 +40,7 @@
 ## Verification — Work Agent
 - [ ] Switch to work agent context
 - [ ] "What are my current OKRs?" -> reads business/goals-okrs.md
-- [ ] "Draft a follow-up email for a Dialectica project" -> professional tone
+- [ ] "Draft a follow-up email for a consulting project" -> professional tone
 - [ ] Confirm work agent cannot access personal/ workspace files
 
 ## Verification — Sentinel
