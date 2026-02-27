@@ -107,6 +107,21 @@ TOOLS = [
             "properties": {},
             "required": []
         }
+    },
+    {
+        "name": "cost_summary",
+        "description": "Get API cost and token usage summary for all services (Sentinel + OpenClaw). Shows daily, weekly, monthly totals broken down by provider and model.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "period": {
+                    "type": "string",
+                    "description": "Time period: 'today', 'week', 'month', 'all' (default: 'today')",
+                    "enum": ["today", "week", "month", "all"]
+                }
+            },
+            "required": []
+        }
     }
 ]
 
@@ -142,7 +157,7 @@ UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9_.@-]+$")
 FQDN_RE = re.compile(
     r"^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$"
 )
-ALLOWED_DOCKER_CONTAINERS = {"openclaw-openclaw-gateway-1"}
+ALLOWED_DOCKER_CONTAINERS = {"openclaw-openclaw-gateway-1", "job-radar-api", "job-radar-db"}
 
 
 def _is_bounded_int(value: str, min_value: int, max_value: int) -> bool:
@@ -589,6 +604,126 @@ def execute_backup_openclaw() -> dict[str, str]:
         return {"status": "failed", "error": str(e)}
 
 
+def execute_cost_summary(period: str = "today") -> dict[str, Any]:
+    """Get API cost and token usage summary from Sentinel + OpenClaw."""
+    import datetime as _dt
+
+    result: dict[str, Any] = {"period": period, "services": {}}
+
+    # --- Sentinel costs (from cost summary JSON) ---
+    sentinel_summary_path = "/var/log/sentinel/api-cost-summary.json"
+    try:
+        with open(sentinel_summary_path) as f:
+            summary = json.load(f)
+
+        totals = summary.get("totals", {})
+        today_key = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+        week_key = _dt.datetime.now(_dt.timezone.utc).strftime("%G-W%V")
+        month_key = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m")
+
+        if period == "today":
+            bucket = totals.get("daily", {}).get(today_key, {})
+        elif period == "week":
+            bucket = totals.get("weekly", {}).get(week_key, {})
+        elif period == "month":
+            bucket = totals.get("monthly", {}).get(month_key, {})
+        else:
+            bucket = totals.get("all_time", {})
+
+        result["services"]["sentinel"] = {
+            "usd": round(float(bucket.get("usd", 0)), 6),
+            "input_tokens": int(bucket.get("input_tokens", 0)),
+            "output_tokens": int(bucket.get("output_tokens", 0)),
+            "calls": int(bucket.get("calls", 0)),
+            "errors": int(bucket.get("error_calls", 0)),
+        }
+
+        # Model breakdown
+        models = summary.get("models", {})
+        model_breakdown = {}
+        for model_name, model_data in models.items():
+            if period == "today":
+                mbucket = model_data.get("daily", {}).get(today_key, {})
+            elif period == "week":
+                mbucket = model_data.get("weekly", {}).get(week_key, {})
+            elif period == "month":
+                mbucket = model_data.get("monthly", {}).get(month_key, {})
+            else:
+                mbucket = model_data.get("all_time", {})
+            if mbucket.get("calls", 0) > 0:
+                model_breakdown[model_name] = {
+                    "usd": round(float(mbucket.get("usd", 0)), 6),
+                    "calls": int(mbucket.get("calls", 0)),
+                    "input_tokens": int(mbucket.get("input_tokens", 0)),
+                    "output_tokens": int(mbucket.get("output_tokens", 0)),
+                }
+        if model_breakdown:
+            result["services"]["sentinel"]["by_model"] = model_breakdown
+
+    except FileNotFoundError:
+        result["services"]["sentinel"] = {"error": "No cost data yet"}
+    except Exception as e:
+        result["services"]["sentinel"] = {"error": str(e)[:200]}
+
+    # --- OpenClaw costs (from gateway usage API) ---
+    try:
+        token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
+        if not token:
+            # Try reading from the env file
+            env_path = "/root/openclaw/.env"
+            if os.path.exists(env_path):
+                with open(env_path) as f:
+                    for line in f:
+                        if line.startswith("OPENCLAW_GATEWAY_TOKEN="):
+                            token = line.split("=", 1)[1].strip()
+                            break
+
+        if token:
+            import urllib.request
+            import urllib.error
+
+            url = "http://127.0.0.1:18789/api/sessions.usage.summary"
+            req = urllib.request.Request(
+                url,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                data=json.dumps({}).encode(),
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                oc_data = json.loads(resp.read())
+                oc_result = oc_data.get("result", {})
+                result["services"]["openclaw"] = {
+                    "usd": round(float(oc_result.get("totalCost", 0)), 6),
+                    "input_tokens": int(oc_result.get("totalInputTokens", 0)),
+                    "output_tokens": int(oc_result.get("totalOutputTokens", 0)),
+                    "sessions": int(oc_result.get("totalSessions", 0)),
+                }
+        else:
+            result["services"]["openclaw"] = {"error": "No gateway token available"}
+    except Exception as e:
+        result["services"]["openclaw"] = {"error": str(e)[:200]}
+
+    # --- Grand total ---
+    total_usd = 0.0
+    total_input = 0
+    total_output = 0
+    for svc in result["services"].values():
+        if isinstance(svc, dict) and "usd" in svc:
+            total_usd += svc["usd"]
+            total_input += svc.get("input_tokens", 0)
+            total_output += svc.get("output_tokens", 0)
+
+    result["total"] = {
+        "usd": round(total_usd, 6),
+        "cop": round(total_usd * 4000, 2),
+        "input_tokens": total_input,
+        "output_tokens": total_output,
+        "daily_budget_remaining": round(5.0 - total_usd, 6) if period == "today" else None,
+    }
+
+    return result
+
+
 # --- TOOL DISPATCHER ---
 
 def execute_tool(tool_name: str, tool_input: dict) -> Any:
@@ -602,6 +737,7 @@ def execute_tool(tool_name: str, tool_input: dict) -> Any:
         "check_security": lambda _: execute_check_security(),
         "check_openclaw_health": lambda _: execute_check_openclaw_health(),
         "backup_openclaw": lambda _: execute_backup_openclaw(),
+        "cost_summary": lambda inp: execute_cost_summary(inp.get("period", "today")),
     }
 
     executor = executors.get(tool_name)

@@ -40,9 +40,8 @@
         "archiveAfterMinutes": 30
       },
       "heartbeat": {
-        "every": 55,
+        "every": "55m",
         "model": "google/gemini-2.5-flash",
-        "target": "gateway",
         "ackMaxChars": 100,
         "activeHours": {
           "start": "07:00",
@@ -91,6 +90,13 @@
       "allowFrom": [
         "6182588021"
       ]
+    }
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "provider": "brave"
+      }
     }
   },
   "plugins": {

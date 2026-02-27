@@ -897,7 +897,10 @@ class SentinelAgent:
             model=self._resolve_model_for_provider(self.provider),
         )
         if static_response is not None:
-            request_stats["status"] = "success"
+            request_stats["status"] = "cached"
+            request_stats["input_tokens"] = 0
+            request_stats["output_tokens"] = 0
+            request_stats["estimated_usd"] = 0.0
             self._store_last_request_stats(user_id, request_stats)
             return static_response
 
