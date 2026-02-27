@@ -1,97 +1,117 @@
-# OpenClaw + Sentinel: Cost-Optimized Dual-Bot AI System
+# OpenClaw + Sentinel + Job Radar: Cost-Optimized AI System
 
-A production-ready, budget-conscious deployment of a two-layer AI assistant system on a Hetzner CPX22 VPS. OpenClaw serves as a personal AI gateway accessed via Telegram, while Sentinel acts as an autonomous sysadmin bot managing the infrastructure itself — using a Gemini-first model stack with Anthropic fallbacks for resilience and cost control.
+A production dual-bot AI system on a Hetzner CPX22 VPS, targeting **$14-23/month total** (VPS + API). OpenClaw is the personal AI gateway, Sentinel is the autonomous sysadmin bot, and Job Radar handles automated job discovery and digests -- all on a Gemini-first model stack with Anthropic fallbacks.
 
 ## Architecture
 
 ```
-                        ┌───────────────────────────────────────────────────────┐
-                        │              Hetzner CPX22 VPS                        │
-                        │         Ubuntu 24.04 LTS | 3 vCPU | 4GB RAM          │
-                        │                                                       │
-  Telegram ────────────>│  ┌───────────────────────┐  ┌─────────────────────┐  │
-  (OpenClaw Bot)        │  │   Docker Container     │  │   systemd service   │  │
-                        │  │                        │  │                     │  │
-                        │  │   OpenClaw Gateway     │  │   Sentinel Bot      │  │
-                        │  │   Port 18789 (lo)      │  │   Python + SDK      │  │
-                        │  │                        │  │                     │  │
-                        │  │  ┌─────┐  ┌────────┐  │  │   Flash default    │  │
-                        │  │  │main │  │  work  │  │  │   8 tool functions  │  │
-  Telegram ────────────>│  │  │agent│  │ agent  │  │  │   Strict whitelist  │  │
-  (Sentinel Bot)        │  │  │     │  │sandbox │  │  └─────────────────────┘  │
-                        │  │  └─────┘  └────────┘  │                           │
-                        │  └───────────────────────┘                           │
-                        │                                                       │
-  SSH Tunnel ──────────>│  UFW (SSH only) + fail2ban + key-only auth           │
-  (Mac Client)          └───────────────────────────────────────────────────────┘
+                        +-----------------------------------------------------------+
+                        |              Hetzner CPX22 VPS                            |
+                        |         Ubuntu 24.04 LTS | 3 vCPU | 4GB RAM              |
+                        |                                                           |
+  Telegram ----------->|  +-------------------------+  +-----------------------+   |
+  (OpenClaw Bot)       |  |    Docker Container      |  |   systemd service     |   |
+                        |  |                          |  |                       |   |
+                        |  |    OpenClaw Gateway      |  |   Sentinel Bot        |   |
+                        |  |    Port 18789 (lo)       |  |   Python + SDK        |   |
+                        |  |                          |  |                       |   |
+                        |  |  +------+  +----------+  |  |   Flash default       |   |
+                        |  |  | main |  |   work   |  |  |   9 tool functions    |   |
+  Telegram ----------->|  |  | agent|  |  agent   |  |  |   Strict whitelist    |   |
+  (Sentinel Bot)       |  |  |      |  | sandbox  |  |  +-----------------------+   |
+                        |  |  +------+  +----------+  |                             |
+                        |  +-------------------------+                             |
+                        |                                                           |
+                        |  +-------------------------+  +-----------------------+   |
+                        |  |   job-radar-api          |  |   job-radar-db        |   |
+                        |  |   FastAPI / Port 8080    |  |   PostgreSQL 16       |   |
+  Telegram <-----------|  |   Brave + HN + RemoteOK  |  |   jobs_normalized     |   |
+  (Digest Channel)     |  +-------------------------+  +-----------------------+   |
+                        |                                                           |
+  SSH Tunnel --------->|  UFW (SSH only) + fail2ban + key-only auth               |
+  (Mac Client)        +-----------------------------------------------------------+
 ```
 
-### Design Philosophy
+## Design Philosophy
 
-**Gateway Runtime Model:** OpenClaw is a persistent gateway process — not just a chatbot. It maintains long-running channel connections, dispatches messages to agent runtimes, and manages tool execution. This framing drives decisions about security, availability, and remote access.
+**Gateway Runtime Model.** OpenClaw is a persistent gateway process -- not just a chatbot. It maintains long-running Telegram channel connections, dispatches messages to agent runtimes, and manages tool execution.
 
-**Multi-Agent Architecture:** Two agent profiles run within the gateway — `main` (personal) and `work` (professional). Each has separate workspace files, memory, tool policies, and risk profiles. The work agent runs in an agent-scope sandbox for data isolation.
+**Multi-Agent Architecture.** Two agent profiles run within the gateway -- `main` (personal) and `work` (professional). Each has separate workspace files, memory, tool policies, and risk profiles. The work agent runs in an agent-scope sandbox for data isolation.
 
-**Tenant-Landlord Model:** OpenClaw is the "tenant" — it handles user-facing tasks (research, scheduling, task management) inside a resource-constrained Docker container. Sentinel is the "landlord" — it monitors the system, manages Docker, runs security audits, and creates backups. Neither can interfere with the other, and Sentinel has a strict command whitelist preventing destructive operations.
+**Tenant-Landlord Model.** OpenClaw is the "tenant" -- it handles user-facing tasks inside a resource-constrained Docker container. Sentinel is the "landlord" -- it monitors the system, manages Docker, runs security audits, and creates backups. Neither can interfere with the other.
 
-**Zero-Trust API Cost Control:** Every design decision prioritizes minimizing LLM API spend without sacrificing utility. The system targets **$14-23/month total** (VPS + API combined).
+**Zero-Trust API Cost Control.** Every design decision prioritizes minimizing LLM API spend without sacrificing utility. The system targets **$14-23/month total** (VPS + API combined).
 
 ## Token Optimization Strategy
-
-This project demonstrates several production-grade techniques for minimizing API costs while maintaining a responsive, useful AI assistant.
 
 ### 1. Four-Tier Model Routing (Gemini-first)
 
 | Tier | Model | Use Case | Cost Factor |
 |------|-------|----------|-------------|
-| **Default** | Gemini 2.5 Flash | Chat, Q&A, reminders, heartbeat, task tracking | ~0.3x |
-| **Standard** | Gemini 2.5 Pro | Code generation, research synthesis, AI brief, multi-step tools | ~2x |
-| **Premium** | Claude Sonnet 4.6 | "Think harder" tasks and production-grade quality rescue | ~5x |
-| **Manual Only** | Claude Opus 4.6 | Architecture decisions, complex analysis | ~60x |
+| **Default** | Gemini 2.5 Flash | Chat, Q&A, heartbeat, task tracking, sub-agents | ~0.3x |
+| **Standard** | Gemini 2.5 Pro | AI Daily Brief cron synthesis, research | ~2x |
+| **Premium** | Claude Sonnet 4.6 | "Think harder" / production-grade (manual) | ~5x |
+| **Manual Only** | Claude Opus 4.6 | Complex architecture decisions | ~60x |
 
-The routing is configured in `openclaw/config/AGENTS.md`. Default traffic stays on Flash, escalates to Pro when needed, then to Sonnet only when quality requires it.
+Default traffic stays on Flash. Escalation to Pro happens for synthesis-heavy cron jobs. Sonnet and Opus are manual-only.
 
-### 2. Prompt Cache Alignment
+### 2. Heartbeat Alignment
 
-The heartbeat interval is set to **55 minutes** to keep recurring prompts cache-friendly and limit repeated static prompt cost.
+The heartbeat interval is set to **90 minutes** to minimize recurring prompt overhead while maintaining session awareness.
 
 ```
-Cache TTL:     |-------- 60 min --------|-------- 60 min --------|
-Heartbeat:     |------ 55 min ------|------ 55 min ------|------
-                     ↑ cache warm         ↑ cache warm
+Heartbeat:  |-------- 90 min --------|-------- 90 min --------|
+                   ^ low-cost pulse          ^ low-cost pulse
 ```
 
-### 3. System Prompt Engineering for Token Efficiency
+Active hours are bounded -- no heartbeat during silent hours (23:00-07:00 COT).
 
-`SOUL.md` is capped at **500 words** (target ~400). Every word in this file is sent with every API request, so the cost compounds across thousands of interactions. The prompt is:
+### 3. System Prompt Engineering
 
-- **Structured for LLM parsing** — headers, bullet points, no prose
-- **Specificity-balanced** — enough context to be useful, not so much it wastes tokens
-- **Priority-ordered** — most important rules first (early attention gets weighted more)
+`SOUL.md` is engineered to **~800 tokens (~3.2KB)** -- trimmed 63% from the original 8.8KB. Every token in this file is sent with every API request, so the cost compounds across thousands of interactions.
+
+- Structured for LLM parsing -- headers, bullet points, no prose
+- Specificity-balanced -- enough context to be useful, not so much it wastes tokens
+- Priority-ordered -- most important rules first (early attention gets weighted more)
 
 ### 4. Conversation Compaction
 
-The OpenClaw config uses `"compaction": {"mode": "safeguard"}`, which automatically compresses long conversation histories. Without compaction, a 50-message conversation could consume 10,000+ input tokens per new request. With safeguard compaction, the effective context stays bounded.
+Compaction mode: `safeguard`. Automatically compresses long conversation histories. Without compaction, a 50-message conversation could consume 10,000+ input tokens per new request.
 
-> **Note:** The only valid compaction mode values in this OpenClaw build are `"default"` and `"safeguard"`. The value `"aggressive"` is **not valid** and will cause `Invalid config` on reload — gateway falls back to last good config silently.
+> **Note:** The only valid compaction mode values are `"default"` and `"safeguard"`. The value `"aggressive"` is **not valid** and causes `Invalid config` on reload -- the gateway silently keeps the last good config.
 
-### 5. Silent Hours Optimization
+### 5. Context Pruning
 
-No proactive messages are sent between 23:00-07:00 COT. This reduces unnecessary API calls while preserving the single scheduled AI brief run at 07:00.
+```json
+{
+  "contextPruning": {
+    "mode": "cache-ttl",
+    "ttl": "30m",
+    "keepLastAssistants": 3,
+    "minPrunableToolChars": 50000
+  }
+}
+```
 
-### 6. Response Token Caps
+Prunes stale tool results and old assistant turns from context after 30 minutes, keeping the 3 most recent assistant messages. Only prunes tool output blocks larger than 50K characters.
+
+### 6. Context Token Limit
+
+`contextTokens` is set to **65,536** per session (reduced from the 131K default and 1M overrides). This hard-caps the context window to prevent runaway input token costs.
+
+### 7. Silent Hours Optimization
+
+No proactive messages between 23:00-07:00 COT. This eliminates unnecessary API calls while preserving the single scheduled AI brief run at 07:10 COT.
+
+### 8. Response Token Caps
 
 | Component | Max Tokens |
 |-----------|-----------|
-| OpenClaw responses | 2048 |
-| Sentinel responses | 768 (env: `SENTINEL_MAX_TOKENS`, default `768`) |
+| OpenClaw responses | 2,048 |
+| Sentinel responses | 768 (`SENTINEL_MAX_TOKENS`) |
 | Bot instruction | "Keep under 300 words" |
 
-Capping response tokens prevents runaway generation costs. Sentinel is deliberately limited to 768 by default since infrastructure status reports are inherently concise.
-
-### 7. Resource-Constrained Container Limits
-
-The Docker Compose configuration enforces hard resource limits tuned for the CPX22's 3 vCPU / 4GB RAM:
+### 9. Resource-Constrained Container Limits
 
 ```yaml
 deploy:
@@ -104,265 +124,196 @@ deploy:
       memory: 1024M
 ```
 
-This leaves 1 vCPU and ~1.5GB RAM for Sentinel + OS overhead, preventing either service from starving the other.
+Leaves 1 vCPU and ~1.5GB RAM for Sentinel + Job Radar + OS overhead.
 
-### 8. Cron Job Architecture
+### 10. Sub-agent Constraints
 
-1 scheduled job defined in `openclaw/config/CRON.md`:
+- Model: Gemini 2.5 Flash (same as default -- no accidental Pro escalation)
+- `maxConcurrent`: 1
+- `runTimeoutSeconds`: 90
+- `archiveAfterMinutes`: 30
 
-| # | Job | Schedule (UTC) | Schedule (COT) | Agent | Model |
-|---|-----|----------------|----------------|-------|-------|
-| 1 | AI Daily Brief Top5 (Previous Day) | 12:10 daily | 07:10 daily | Main | Gemini 2.5 Flash |
+### 11. Zero-Cost Operations
 
-Everything else runs on-demand via explicit commands.
+Several interaction paths bypass the LLM entirely:
 
-> **Cron timeout:** `timeoutSeconds` is set to `120` in `jobs.json`. 60s was too short for Flash to complete a brief with Brave search; 180s caused zombie-run issues. 120s is the stable balance.
+| Path | Mechanism |
+|------|-----------|
+| Sentinel `/status`, `/openclaw`, `/security`, `/backup`, `/cost` | Direct tool execution + Python formatting |
+| Sentinel "hi", "hello", "thanks", "ok", "help", "ping" | Static response handler |
+| Telegram idle polling (10s long-poll) | HTTP to Telegram only -- zero token cost |
 
-### 9. AI Daily Brief Capability
+### 12. Cron Architecture
 
-The `ai-daily-brief` skill delivers a source-grounded AI briefing with one scheduled daily run and on-demand modes:
+1 scheduled job. Everything else runs on-demand.
 
-- Canonical command: `/ai_daily_brief` (single stable command path).
-- Slot/mode selection via arguments:
-  - `/ai_daily_brief morning|evening|top5|builder|watchlist|status`
-  - `/ai_daily_brief top5 12h|week|month|month YYYY-MM`
-- Extended commands:
-  - `/ai_daily_brief watchlist add <topic>` / `watchlist remove <topic>` — manage watchlist dynamically
-  - `/ai_daily_brief feedback <run_id> <1-5> [comment]` — rate briefs for adaptive tuning
-  - `/ai_daily_brief history [n]` — show last N runs with status + cost
-  - `/ai_daily_brief diff` — compare last two runs (new/dropped/moved stories)
-  - `/ai_daily_brief help` — full command reference in Telegram-friendly format
-- Compatibility aliases are also supported:
-  - `/ai_daily_brief_morning`, `/ai_daily_brief_evening`, `/ai_daily_brief_top5`, `/ai_daily_brief_builder`, `/ai_daily_brief_watchlist`, `/ai_daily_brief_status`
-- Channel context: `/ai_daily_brief@BotName status` strips `@BotName` suffix automatically; approved group/supergroup chats treated identically to DM.
-- Execution policy: `/ai_daily_brief*` runs directly in-lane (skill-first), not via mandatory sub-agent spawn.
-- Deduplication and update suppression using `/home/node/.openclaw/workspace/logs/ai-brief-state.json`.
-- **State file resilience:** if cron times out mid-write, `ai-brief-state.json` can be left with malformed JSON (e.g. `]` instead of `}` closing the `providers` block). Fix with Python string replacement and verify with `json.loads()`. Stale `last_run.status="running"` locks (finished_at=null) are cleared by `infrastructure/reconcile-ai-brief-state.sh`.
-- State schema v5: includes `history[]` (last 20 runs), `feedback[]`, `cost_estimate` per run, `last_probe_at` on Brave provider, plus Brave request controls (`request_method`, `threshold_by_mode`, `query_constraints`, `min_inter_query_delay_seconds`).
-- Story output enforces **precise `YYYY-MM-DD` event dates** per story — vague or undated stories are rejected.
-- Story output includes **Technical Details** per top story: architecture type, parameter count (or disclosure status), context window, capability delta vs prior version, benchmarks with methodology.
-- Brave LLM Context grounding via `https://api.search.brave.com/res/v1/llm/context` with mode-specific token budgets.
-- Scheduled automation is limited to one run at `07:00` COT for previous-day top stories.
-- All other modes/reports run only on-demand.
-- Monthly story archive: `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json` for trend analysis / thesis research.
-- Optional channel routing via `config.output_channel` in state (full brief goes to target channel; originating chat gets ACK/status).
-- Channel command setup: set `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` + configure BotFather privacy mode — see `openclaw/config/CHANNELS.md` for step-by-step guide.
-- Weighted anti-hype ranking (impact 0.28, credibility 0.22, novelty 0.18, relevance 0.14, freshness 0.10, confidence 0.08).
-- Mandatory citations, builder corner, strategic take, and explicit confidence/gaps section.
-- Source references must be clickable markdown hyperlinks (`[Outlet](https://...)`).
-- Brave LLM Context latency profile tuned for speed+coverage (adaptive 1-2 query fan-out instead of fixed multi-query expansion).
-- VPS operational scripts for rollout and smoke-testing:
-  - `infrastructure/vps-rollout-aibrief.sh`
-  - `infrastructure/aibrief-smoke-test.sh`
-  - `infrastructure/reconcile-ai-brief-state.sh`
-  - `infrastructure/update-api-cost-rollup.sh`
-  - `infrastructure/set-aibrief-output-channel.sh`
-- Rollout hardening:
-  - config sync preserves gateway runtime ownership for `/root/.openclaw/openclaw.json`
-  - config sync writes `/root/.openclaw/secrets/telegram-default.token` and wires `channels.telegram(.accounts.default).tokenFile` to avoid token drift after config rewrites
-  - config sync now writes `gateway.controlUi` defaults required by latest OpenClaw builds on non-loopback bind:
-    - default `dangerouslyAllowHostHeaderOriginFallback=true` for `bind != loopback`
-    - optional explicit allowlist via `OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS`
-  - gateway container receives `TELEGRAM_BOT_TOKEN`/`OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` from `.env`
-  - gateway startup now waits for mounted runtime config readiness and auto-clears Telegram webhooks to force polling mode
-  - config sync maps DM authorization from `OPENCLAW_TELEGRAM_ALLOW_FROM` (or fallback `SENTINEL_ALLOWED_USERS`) and sets Telegram `dmPolicy=allowlist` automatically when IDs are present
-  - config sync supports Telegram command toggles via `OPENCLAW_TELEGRAM_NATIVE_COMMANDS` / `OPENCLAW_TELEGRAM_NATIVE_SKILLS`
-  - config sync supports interactive-chat anonymous/channel compatibility via `OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER=1` (sets `groups.<chat>.allowFrom=["*"]` for approved interactive chats)
-  - config-only rollout now syncs `infrastructure/docker-compose.yml` into `/root/openclaw` before restart
-  - rollout now detects active Telegram webhooks via `getWebhookInfo`, clears them, and restarts gateway before final health validation
-  - rollout now auto-reconciles stale AI brief locks (`last_run.status=running` older than 15m) before restart
-  - rollout/smoke diagnostics now read gateway auth token from `/root/.openclaw/openclaw.json` first (env fallback only), preventing false `device token mismatch` checks caused by stale `.env` duplicates
-  - smoke test verifies Telegram ingest runtime (`running=true`, `tokenSource!=none`), tokenFile readability, webhook conflict absence, direct in-lane AI brief policy markers in workspace SOUL/AGENTS, and container-visible Brave key
-  - smoke test now fails hard when `dmPolicy=pairing` with empty `allowFrom` because DM commands are gated until pairing approval
-  - rollout refreshes `/usr/local/sbin/sync-sentinel-env.sh` and `/usr/local/sbin/sync-openclaw-config.sh` from repo before execution to prevent stale helper-script behavior
-  - config-only rollout now syncs Sentinel runtime code into `/opt/sentinel` (and refreshes deps when `requirements.txt` changes) to avoid deployment drift between repo and systemd runtime
-  - rollout now removes deprecated runtime skill folders (`aibrief*`, `daily-brief*`) to prevent duplicate slash-trigger ownership and routing drift
-  - `set-aibrief-output-channel.sh` now also updates `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` when target is numeric chat ID
-  - Sentinel now writes crash-safe API usage accounting to:
-    - `/var/log/sentinel/api-usage.jsonl` (append-only events)
-    - `/var/log/sentinel/api-cost-summary.json` (daily/weekly/monthly/all-time aggregates)
-  - Unified rollup script merges AI Brief run costs + Sentinel API costs into:
-    - `/root/.openclaw/workspace/logs/api-cost-rollup.json`
-- Runtime bootstrap files used by command routing are loaded from:
-  - `/root/.openclaw/workspace/AGENTS.md`
-  - `/root/.openclaw/workspace/SOUL.md`
-  - `/root/.openclaw/workspace/TOOLS.md`
-  - `/root/.openclaw/workspace/HEARTBEAT.md`
+| Job | Schedule (UTC) | Schedule (COT) | Model |
+|-----|----------------|----------------|-------|
+| AI Daily Brief Top5 (Previous Day) | `10 12 * * *` | 07:10 daily | Gemini 2.5 Pro |
 
-### 10. Job Radar Performance Profile (Brave-only)
+Session: isolated. Timeout: 180s. Delivery: Telegram channel. Max concurrent runs: 1.
 
-Job Radar runs as a separate backend on the VPS (`/root/job-radar`, API on `127.0.0.1:8080`) and is optimized for low-cost, high-signal discovery.
-OpenClaw command routing for Job Radar is now tracked in-repo at `openclaw/skills/job-radar/SKILL.md` to avoid runtime-only drift.
+### 13. Additional Tuning
 
-Production routing and filtering:
-- Discovery source: Brave LLM Context API only (`/res/v1/llm/context`)
-- Connector mode: `job_search_brave_only=true` (RemoteOK/HN connectors disabled)
-- Source quality filter: only ATS hosts (`greenhouse.io`, `lever.co`, `workable.com`)
-- Discovery fan-out cap: stop querying once `brave_discovery_target_jobs=24` is reached
-- Stale suppression: skip jobs older than `job_max_age_days=45` when `posted_at` is known
+- `thinkingDefault`: off (prevents thinking blocks in Telegram responses)
+- `verboseDefault`: off
+- `maxConcurrentTasks`: 4
+- `imageModel`: Gemini 2.5 Flash (not Pro)
+- Session timeout: 300s
 
-Cost/latency defaults:
-- `BRAVE_RESULTS_PER_QUERY=8`
-- `BRAVE_CONTEXT_MAX_TOKENS=3072`
-- `BRAVE_CONTEXT_MAX_SNIPPETS=20`
-- `BRAVE_CONTEXT_THRESHOLD_MODE=strict`
-- `BRAVE_DISCOVERY_TARGET_JOBS=24`
-- `JOB_MAX_AGE_DAYS=45`
-- `HEALTH_LOG_INTERVAL_MINUTES=180`
-- `HEALTH_EXTERNAL_CHECK_TTL_SECONDS=120`
+## AI Daily Brief
 
-Health endpoint optimization:
-- `/health/full` caches external API checks (Brave/Anthropic/Telegram/OpenClaw) for 120s.
-- This preserves diagnostics while reducing repeated token/API spend from dashboards and polls.
+Source-grounded AI briefing with Brave LLM Context API grounding. One automated daily run plus on-demand modes.
 
-### AI Daily Brief + Gemini VPS Rollout (Fast Path)
+### Commands
 
-```bash
-ssh root@YOUR_VPS_IP <<'EOF'
-set -euo pipefail
-cd /root/openclaw-project
-# Pin latest stable OpenClaw build (default in this repo: v2026.2.22)
-sed -i '/^OPENCLAW_REF=/d' /root/openclaw/.env
-echo "OPENCLAW_REF=v2026.2.22" >> /root/openclaw/.env
-# Set keys (Gemini default + Brave grounding)
-sed -i '/^GEMINI_API_KEY=/d' /root/openclaw/.env
-echo "GEMINI_API_KEY=YOUR_REAL_GEMINI_KEY" >> /root/openclaw/.env
-sed -i '/^BRAVE_API_KEY=/d' /root/openclaw/.env
-echo "BRAVE_API_KEY=YOUR_REAL_BRAVE_KEY" >> /root/openclaw/.env
-
-# Optional: verify pinned binary sees google provider/models
-docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs models list --provider google 2>&1 || true
-docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs models auth status --provider google 2>&1 || true
-
-# Rebuild gateway at pinned ref and apply config/skills/docs rollout
-cd /root/openclaw
-docker compose build --pull openclaw-gateway
-docker compose up -d --force-recreate openclaw-gateway
-cd /root/openclaw-project
-./infrastructure/vps-rollout-aibrief.sh
-./infrastructure/aibrief-smoke-test.sh
-
-# Verify default + image model routing (nano-banana-pro alias)
-docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs models status --json | \
-  python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({k:d.get(k) for k in ("defaultModel","fallbacks","imageModel","imageFallbacks","aliases")}, indent=2))'
-EOF
+```
+/ai_daily_brief top5              # Previous day top 5 (default cron mode)
+/ai_daily_brief top5 12h|week     # Adjustable time window
+/ai_daily_brief morning           # Morning planning brief (Pro)
+/ai_daily_brief evening           # Evening recap (Pro)
+/ai_daily_brief builder           # Builder/developer focus (Pro)
+/ai_daily_brief watchlist         # Custom topic watchlist (Flash)
+/ai_daily_brief status            # Diagnostic: last run, state health (Flash)
+/ai_daily_brief help              # Full command reference
+/ai_daily_brief history [n]       # Last N runs with status + cost
+/ai_daily_brief diff              # Compare last two runs
+/ai_daily_brief feedback <id> <1-5> [comment]
+/ai_daily_brief watchlist add|remove <topic>
 ```
 
-Smoke test must pass these lines before Telegram command validation:
-- `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
-- `Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)`
-- `Telegram DM allowFrom configured (...)`
-- `Telegram ingest runtime is running`
-- `Gateway Telegram token source is ...` (not `none`)
-- `SOUL policy enforces direct in-lane execution for /ai_daily_brief*`
-- `AGENTS policy confirms /ai_daily_brief* does not require sub-agent spawn`
-- `Gateway container has BRAVE_API_KEY in environment` (or explicit fallback warning if intentionally unconfigured)
-- `Gateway container has GEMINI_API_KEY in environment` (or intentional Claude-only fallback mode)
+Compatibility aliases: `/ai_daily_brief_top5`, `/ai_daily_brief_morning`, etc.
 
-Manual Telegram validation after rollout:
-- send `/ai_daily_brief status`
-- send `/ai_daily_brief top5 12h`
-- send compatibility alias `/ai_daily_brief_top5` (must return equivalent output path)
-- if `OPENCLAW_TELEGRAM_NATIVE_COMMANDS=0`, menu command registration is intentionally disabled; use text commands in approved interactive chat instead.
-- run commands from DM with the OpenClaw bot; output channel receives the full brief when configured
-- if interactive channel commands are required, ensure channel/supergroup ID is present in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`
-- note: `/ai_daily_brief_status` is diagnostic and may not mutate `last_run`; `/ai_daily_brief_top5` should create/update `last_run.run_id/status`
-- if smoke test reports stale running lock, run: `./infrastructure/reconcile-ai-brief-state.sh /root/.openclaw/workspace/logs/ai-brief-state.json`
-- if status reports `provider unconfigured`, re-check `BRAVE_API_KEY` in `/root/openclaw/.env`
-- if smoke test shows `BRAVE_API_KEY appears invalid (len=...)`, rotate the key in `/root/openclaw/.env` (no quotes/comments on the same line)
-- if Gemini appears unavailable, inspect `docker compose logs --since=120s openclaw-gateway | grep -Ei 'gemini|google|fallback|529|overload'`
-- for image-generation routing, `models status --json` should show `imageModel=google/gemini-2.5-pro` and alias `nano-banana-pro`
-- if replies show stale internal narration (`Reasoning:`, "I will now...", "I need to verify..."), reset runtime sessions:
-  - `cd /root/openclaw-project && ./infrastructure/reset-openclaw-telegram-sessions.sh`
-- runtime now pins `thinkingDefault=off` to prevent model thinking blocks from being surfaced in Telegram responses
-- avoid `openclaw doctor --fix` during AI brief rollout/troubleshooting because it can rewrite channel config and break token wiring
-- cost report refresh:
-  - `/root/openclaw-project/infrastructure/update-api-cost-rollup.sh`
-  - inspect `/root/.openclaw/workspace/logs/api-cost-rollup.json` for daily/weekly/monthly totals
+### Quality Gates
 
-Job Radar quick validation:
-```bash
-ssh root@YOUR_VPS_IP <<'EOF'
-set -euo pipefail
-cd /root/job-radar
-docker compose -f docker-compose.job-radar.yml ps
-curl -sS http://127.0.0.1:8080/health/full | python3 -m json.tool | sed -n '1,120p'
-curl -sS -X POST http://127.0.0.1:8080/api/v1/ingestion/sync
-sleep 6
-docker compose -f docker-compose.job-radar.yml logs --tail=220 job-radar-api | \
-  grep -E 'pipeline.start|connectors|target_reached|stale_filtered|llm/context' || true
-EOF
-```
+- Weighted anti-hype ranking (impact 0.28, credibility 0.22, novelty 0.18, relevance 0.14, freshness 0.10, confidence 0.08)
+- Mandatory `YYYY-MM-DD` event dates per story -- vague or undated stories are rejected
+- Technical details per top story: architecture, parameter count, context window, benchmarks
+- Mandatory citations as clickable markdown hyperlinks
+- Builder corner, strategic take, and explicit confidence/gaps section
 
-Configure dedicated AI brief channel (optional):
-```bash
-ssh root@YOUR_VPS_IP <<'EOF'
-set -euo pipefail
-cd /root/openclaw-project
-./infrastructure/set-aibrief-output-channel.sh @dandailybriefAI
-EOF
-```
+### State Management
+
+- State file: `workspace/logs/ai-brief-state.json` (schema v5)
+- Deduplication and update suppression prevent duplicate runs
+- Stale `last_run.status="running"` locks cleared by `infrastructure/reconcile-ai-brief-state.sh`
+- Monthly archive: `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json`
+- Output channel: `-1003826801947` (Telegram channel, bot is admin)
+
+## Job Radar
+
+Automated job discovery and digest system running as separate Docker containers.
+
+### Production Config
+
+| Setting | Value |
+|---------|-------|
+| `JOB_SEARCH_BRAVE_ONLY` | `false` (HN + RemoteOK connectors enabled alongside Brave) |
+| `BRAVE_RESULTS_PER_QUERY` | 8 |
+| `BRAVE_CONTEXT_MAX_TOKENS` | 3,072 |
+| `BRAVE_CONTEXT_MAX_SNIPPETS` | 20 |
+| `BRAVE_DISCOVERY_TARGET_JOBS` | 24 |
+| `JOB_MAX_AGE_DAYS` | 45 |
+| `HEALTH_EXTERNAL_CHECK_TTL_SECONDS` | 10,800 (3 hours) |
+| `llm_standard_model` | Gemini 2.5 Flash |
+
+### Connectors
+
+- **Brave Web Search** -- ATS-filtered (greenhouse.io, lever.co, workable.com)
+- **Hacker News** -- "Who's Hiring" threads
+- **RemoteOK RSS** -- remote job feed (company field fix applied)
+
+### Health Optimization
+
+Health checks are zero-cost:
+- Brave: uses cheap web search endpoint
+- Anthropic: empty-messages validation (400 = key valid)
+- External check TTL: 3 hours (prevents excessive API calls from dashboards)
+
+### Digest Schedule
+
+| Digest | UTC | COT |
+|--------|-----|-----|
+| AM | 13:00 | 08:00 |
+| PM | 23:00 | 18:00 |
+
+Digests are sent directly via Telegram Bot API to channel `-1003826801947` (not via OpenClaw).
+
+Content-based dedup hash ensures identical job sets don't produce duplicate digests.
 
 ## Sentinel: Agentic Sysadmin Bot
 
-> **Runtime files** are in `/opt/sentinel/`. After any edit/copy, run `chown sentinel:sentinel /opt/sentinel/*.py` — the Edit tool resets ownership to `root:root`. The env file lives at `/etc/sentinel/sentinel.env`.
-
-Sentinel supports **dual providers**:
-- Google Gemini (`SENTINEL_PROVIDER=google`, default)
-- Anthropic (`SENTINEL_PROVIDER=anthropic`)
-
-Both providers run the same safe tool-execution loop with shared whitelist controls.
-
-Every Sentinel Telegram reply appends an execution footer:
-- `Tokens used: in/out - USD $... / COP $...`
-- Adds `- Brave api: N` only when Brave was used in that request.
-
-COP rate is configured via `SENTINEL_USD_TO_COP_RATE` (default `4000`) in `/etc/sentinel/sentinel.env`. Crash-safe cost tracking writes to `/var/log/sentinel/api-usage.jsonl` and `/var/log/sentinel/api-cost-summary.json`.
+Runs as a systemd service at `/opt/sentinel/`. Dual-provider: Google Gemini Flash (primary), Anthropic fallback.
 
 ### Tool Architecture
 
-8 tools with strict safety controls:
+9 tools with strict safety controls:
 
 | Tool | Description | Safety |
 |------|-------------|--------|
 | `system_stats` | CPU, RAM, disk, uptime | Read-only |
 | `docker_status` | List all containers | Read-only |
-| `docker_restart` | Restart a container | Requires confirmation in prompt |
+| `docker_restart` | Restart a container | Requires confirmation |
 | `docker_logs` | Tail container logs (max 200 lines) | Read-only, truncated |
 | `run_command` | Execute shell command | **Whitelist-only**, blocklist enforced |
 | `check_security` | UFW, fail2ban, open ports audit | Read-only |
-| `check_openclaw_health` | Container state + Docker health + recent errors | Read-only |
+| `check_openclaw_health` | Container state + health + recent errors | Read-only |
 | `backup_openclaw` | Tar.gz config + workspace | Write (safe location only) |
+| `cost_summary` | API cost tracking summary | Read-only |
 
-### Command Whitelist Security Model
+### Zero-Cost Slash Commands
+
+These commands execute tools directly and format results in Python -- no LLM call:
+
+- `/status` -- system stats
+- `/openclaw` -- OpenClaw health
+- `/security` -- security audit
+- `/backup` -- run backup
+- `/cost` -- cost summary
+
+### Command Whitelist Security
 
 The `run_command` tool implements a **dual-layer filter**:
 
-1. **Blocklist check** (runs first): Rejects any command containing dangerous patterns (`rm`, `sudo su`, `apt`, `wget`, `reboot`, `chmod 777`, arbitrary script execution)
-2. **Whitelist check** (argument-aware): Only allows explicitly validated command shapes (for example `df -h`, `systemctl status <unit>`, `docker ps`, local-only `curl` health checks)
+1. **Blocklist** (runs first): rejects destructive patterns (`rm`, `sudo su`, `apt`, `wget`, `reboot`, `chmod 777`)
+2. **Whitelist** (argument-aware): only allows explicitly validated command shapes (`df -h`, `systemctl status <unit>`, `docker ps`, local-only `curl`)
 
-Unknown commands are rejected by default. This is a deny-by-default posture — even if a novel attack bypasses the blocklist, it still must match a validated safe command form.
+Unknown commands are rejected by default (deny-by-default posture).
 
-### Agentic Loop Implementation
+### Cost Tracking
+
+- Append-only event log: `/var/log/sentinel/api-usage.jsonl`
+- Aggregated summary: `/var/log/sentinel/api-cost-summary.json`
+- Every Telegram reply appends: `Tokens used: in/out - USD $... / COP $...`
+- COP rate: `SENTINEL_USD_TO_COP_RATE=4000`
+- Token tracking uses `getattr()` on Gemini proto objects (fixed -- was returning 0 due to proto attribute access bug)
+
+### Agentic Loop
 
 ```python
-# Simplified flow in sentinel.py
-for _ in range(max_iterations):        # Cap at 5 to prevent infinite loops
-    response = client.messages.create(
-        model="<provider model>",
+for _ in range(max_tool_iterations):    # Capped at 4
+    response = client.generate(
+        model="gemini-2.5-flash",
         tools=TOOLS,
         messages=history,
     )
-    if response.stop_reason == "tool_use":
-        # Execute tool, feed result back, loop
-        result = execute_tool(block.name, block.input)
+    if has_tool_calls(response):
+        result = execute_tool(call.name, call.args)
         history.append(tool_result)
         continue
     else:
-        return text_response            # Final answer
+        return text_response              # Final answer
 ```
 
-The loop allows Claude to chain multiple tool calls (e.g., check system stats -> check Docker status -> format report) without human intervention, while the iteration cap prevents runaway API calls.
+### Configuration
+
+| Setting | Value |
+|---------|-------|
+| `SENTINEL_PROVIDER` | `google` |
+| `SENTINEL_MAX_TOKENS` | 768 |
+| `SENTINEL_MAX_TOOL_ITERATIONS` | 4 |
+| `SENTINEL_CONVERSATION_TTL_SECONDS` | 900 |
+| `SENTINEL_USD_TO_COP_RATE` | 4000 |
 
 ## Project Structure
 
@@ -370,94 +321,122 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 .
 ├── README.md                              # This file
 ├── CLAUDE-CODE-HANDOFF.md                 # Project state + handoff for next session
-├── openclaw/                              # OpenClaw Gateway configuration
-│   ├── config/                            # Main agent ("Claw") workspace files
-│   │   ├── SOUL.md                        # Orchestrator identity + delegation protocol
-│   │   ├── USER.md                        # Daniel's profile + preferences
-│   │   ├── AGENTS.md                      # Sub-agent registry + model routing
-│   │   ├── TOOLS.md                       # Tool policy + permissions + operating rules
-│   │   ├── HEARTBEAT.md                   # Proactive schedule + EOD/weekly logs
-│   │   ├── MEMORY.md                      # Persistent memory + daily log system
-│   │   ├── IDENTITY.md                    # Persona tone + style
-│   │   ├── BOOTSTRAP.md                   # First-run behavior (retires after setup)
-│   │   ├── BOOT.md                        # Startup health checks (runs every boot)
-│   │   ├── CRON.md                        # Cron registry (single daily AI brief job)
-│   │   ├── CHANNELS.md                    # Channel security policy + allowlists
-│   │   └── SANDBOX.md                     # Sandbox policy + agent isolation rules
-│   ├── agents/
-│   │   └── work/                          # Work agent ("Claw Work") — sandboxed
-│   │       ├── SOUL.md                    # Professional-only scope, stricter rules
-│   │       ├── TOOLS.md                   # Restricted tool policy
-│   │       ├── USER.md                    # Work-context profile only
-│   │       ├── MEMORY.md                  # Work-specific memory (isolated)
-│   │       └── HEARTBEAT.md               # Work-hours schedule (08:00-20:00)
-│   ├── workspace/                         # Runtime workspace content
-│   │   ├── personal/                      # Personal context (main agent)
-│   │   │   ├── goals.md                   # Quarterly/monthly goals + success criteria
-│   │   │   ├── routines.md                # Daily/weekly routines + reminder prefs
-│   │   │   └── projects/                  # Personal project files
-│   │   ├── business/                      # Professional context (work agent)
-│   │   │   ├── goals-okrs.md              # Business objectives + key results
-│   │   │   ├── operating-rules.md         # Work boundaries + quality standards
-│   │   │   └── projects/                  # active/ and archived/ subdirs
-│   │   ├── outputs/                       # Generated deliverables
-│   │   │   ├── summaries/                 # Daily briefs, meeting prep, knowledge capture
-│   │   │   ├── reports/                   # Weekly digests, security hygiene, stale items
-│   │   │   ├── drafts/                    # In-progress documents
-│   │   │   └── exports/                   # Finalized exports
-│   │   └── logs/                          # Operational logs
-│   │       ├── change-log.md              # Config/infrastructure change record
-│   │       ├── cron-job-results.md        # Cron execution log (append-only)
-│   │       └── ai-brief-state.json        # Stateful dedupe + slot tracking for AI brief
-│   ├── skills/
-│   │   ├── ai-daily-brief/SKILL.md        # Canonical AI brief command (scoped top5 + full modes)
-│   │   ├── ai-daily-brief-*/SKILL.md      # Compatibility alias shims for /ai_daily_brief_* commands
-│   │   ├── daily-briefing/SKILL.md        # Morning planning briefing (Gemini Flash, scheduled)
-│   │   ├── job-radar/SKILL.md             # Job Radar command router (/job_*), backend-only data path
-│   │   ├── research-assistant/SKILL.md    # Deep research (Gemini Pro, on-demand)
-│   │   └── task-tracker/SKILL.md          # Task management (Gemini Flash, triggered)
-│   ├── memory/                            # Daily + weekly log storage
-│   │   ├── weekly/                        # Weekly review summaries
-│   │   └── (YYYY-MM-DD.md files)          # Auto-generated daily logs
-│   └── openclaw-config.json               # Gateway runtime config (schema-valid for pinned OpenClaw)
-├── sentinel/                              # Sysadmin Bot (Anthropic/Gemini provider abstraction + tool use)
+├── .gitignore                             # Excludes .env, keys, caches
+│
+├── sentinel/                              # Sysadmin Bot (Gemini/Anthropic dual-provider)
 │   ├── sentinel.py                        # Agentic loop with tool chaining
-│   ├── tools.py                           # 8 tools + whitelist/blocklist security
-│   ├── config.py                          # Dataclass config with validation
 │   ├── telegram_handler.py                # Telegram interface + auth
+│   ├── config.py                          # Dataclass config with validation
+│   ├── cost_tracker.py                    # Crash-safe API cost accounting
+│   ├── tools.py                           # 9 tools + whitelist/blocklist security
 │   ├── requirements.txt                   # Python dependencies
 │   ├── sentinel.service                   # systemd unit file
 │   └── tests/
+│       ├── __init__.py
 │       ├── conftest.py                    # Shared fixtures (mocked provider clients)
 │       ├── test_tools.py                  # Whitelist, tool dispatch, Docker mocks
-│       └── test_telegram.py               # Auth, commands, message handling
+│       ├── test_telegram.py               # Auth, commands, message handling
+│       ├── test_config.py                 # Config parsing edge cases
+│       ├── test_cost_tracker.py           # Cost tracking + aggregation
+│       └── test_provider_fallback.py      # Gemini<->Anthropic fallback logic
+│
+├── openclaw/                              # OpenClaw Gateway configuration
+│   ├── openclaw-config.json               # Gateway runtime config (schema-valid)
+│   ├── jobs.json                          # Cron job registry (daily brief at 12:10 UTC)
+│   ├── docker-compose.yml                 # Docker config with resource limits
+│   ├── SOUL.md                            # Root SOUL (runtime bootstrap)
+│   ├── BOOT.md                            # Startup health checks
+│   ├── AGENTS.md                          # Root agent config
+│   ├── CHANNELS.md                        # Channel security policy
+│   ├── CRON.md                            # Cron registry
+│   ├── config/                            # Main agent workspace files (12 files)
+│   │   ├── SOUL.md                        # Orchestrator identity (~800 tokens)
+│   │   ├── USER.md                        # User profile + preferences
+│   │   ├── AGENTS.md                      # Sub-agent registry + model routing
+│   │   ├── TOOLS.md                       # Tool policy + permissions
+│   │   ├── HEARTBEAT.md                   # 90-min interval + active hours
+│   │   ├── MEMORY.md                      # Persistent memory + daily log system
+│   │   ├── IDENTITY.md                    # Persona tone + style
+│   │   ├── BOOTSTRAP.md                   # First-run behavior
+│   │   ├── BOOT.md                        # Startup health checks
+│   │   ├── CRON.md                        # Cron registry
+│   │   ├── CHANNELS.md                    # Channel security + allowlists
+│   │   └── SANDBOX.md                     # Sandbox + agent isolation rules
+│   ├── agents/
+│   │   └── work/                          # Work agent -- sandboxed
+│   │       ├── SOUL.md                    # Professional-only scope
+│   │       ├── TOOLS.md                   # Restricted tool policy
+│   │       ├── USER.md                    # Work-context profile
+│   │       ├── MEMORY.md                  # Work-specific memory (isolated)
+│   │       └── HEARTBEAT.md               # Work-hours schedule
+│   ├── skills/
+│   │   ├── ai-daily-brief/SKILL.md        # Canonical AI brief command
+│   │   ├── ai-daily-brief-top5/SKILL.md   # Top5 alias (Flash)
+│   │   ├── ai-daily-brief-morning/SKILL.md
+│   │   ├── ai-daily-brief-evening/SKILL.md
+│   │   ├── ai-daily-brief-builder/SKILL.md
+│   │   ├── ai-daily-brief-status/SKILL.md
+│   │   ├── ai-daily-brief-watchlist/SKILL.md
+│   │   ├── daily-briefing/SKILL.md        # Morning planning briefing
+│   │   ├── job-radar/SKILL.md             # Job Radar command router
+│   │   ├── research-assistant/SKILL.md    # Deep research (Pro, on-demand)
+│   │   └── task-tracker/SKILL.md          # Task management (Flash)
+│   ├── workspace/
+│   │   ├── personal/                      # Personal context (main agent)
+│   │   │   ├── goals.md
+│   │   │   ├── routines.md
+│   │   │   └── projects/
+│   │   ├── business/                      # Professional context (work agent)
+│   │   │   ├── goals-okrs.md
+│   │   │   ├── operating-rules.md
+│   │   │   └── projects/ (active/ + archived/)
+│   │   ├── outputs/
+│   │   │   ├── summaries/                 # Daily briefs, monthly archives
+│   │   │   ├── reports/
+│   │   │   ├── drafts/
+│   │   │   └── exports/
+│   │   └── logs/
+│   │       ├── change-log.md              # Config change record
+│   │       ├── cron-job-results.md        # Cron execution log
+│   │       └── ai-brief-state.json        # Stateful dedupe + slot tracking
+│   └── memory/
+│       └── weekly/                        # Weekly review summaries
+│
 ├── infrastructure/                        # Deployment & operations
-│   ├── Dockerfile                         # OpenClaw container (node:22-bookworm + pnpm build)
+│   ├── Dockerfile                         # OpenClaw container build
 │   ├── docker-compose.yml                 # Resource limits tuned for CPX22
 │   ├── env.template                       # Secret placeholders (never committed)
+│   ├── ssh-config-snippet                 # Mac SSH config with tunnel
 │   ├── deploy.sh                          # One-shot VPS deployment
 │   ├── secure.sh                          # UFW + fail2ban + SSH hardening
-│   ├── sync-sentinel-env.sh               # Syncs /root/openclaw/.env -> /etc/sentinel/sentinel.env
-│   ├── sync-openclaw-config.sh            # Renders /root/.openclaw/openclaw.json from /root/openclaw/.env
-│   ├── validate-placeholders.sh           # Validates required secrets are non-placeholder
-│   ├── backup.sh                          # Automated backup (7-day rotation, no secrets)
+│   ├── backup.sh                          # Automated backup (7-day rotation)
 │   ├── restore.sh                         # Interactive restore from backup
-│   ├── health-check.sh                    # Multi-check system health verification
-│   ├── aibrief-smoke-test.sh              # AI brief health + token + state smoke test
-│   ├── vps-rollout-aibrief.sh             # Config-only AI brief rollout/update path
-│   ├── merge-ai-brief-state.sh            # Template->runtime state merge (preserve history/routing)
-│   ├── reconcile-ai-brief-state.sh        # Auto-close stale running locks in ai-brief state
-│   ├── set-aibrief-output-channel.sh      # Configure AI brief output channel in state
-│   ├── reset-telegram-offset.sh           # Reset stale Telegram update offsets + restart gateway
-│   └── ssh-config-snippet                 # Mac SSH config with tunnel
+│   ├── health-check.sh                    # Multi-check system health
+│   ├── sync-sentinel-env.sh               # Sync .env -> /etc/sentinel/sentinel.env
+│   ├── sync-openclaw-config.sh            # Render openclaw.json from .env
+│   ├── validate-placeholders.sh           # Validate secrets are non-placeholder
+│   ├── aibrief-smoke-test.sh              # AI brief health + token smoke test
+│   ├── vps-rollout-aibrief.sh             # Config-only AI brief rollout
+│   ├── merge-ai-brief-state.sh            # Template->runtime state merge
+│   ├── reconcile-ai-brief-state.sh        # Auto-close stale running locks
+│   ├── set-aibrief-output-channel.sh      # Configure AI brief output channel
+│   ├── reset-openclaw-telegram-sessions.sh # Reset stale Telegram sessions
+│   ├── reset-telegram-offset.sh           # Reset Telegram update offsets
+│   ├── update-api-cost-rollup.sh          # Merge AI Brief + Sentinel costs
+│   └── vps-activate-channel-commands.sh   # Activate channel command routing
+│
 └── docs/
+    ├── DEPLOYMENT.md                      # Step-by-step deployment guide
+    ├── COST-MANAGEMENT.md                 # Budget tracking + optimization
+    ├── TROUBLESHOOTING.md                 # Common issues + recovery
+    ├── PHASE3-CHECKLIST.md                # Go-live verification checklist
     ├── setup/
-    │   ├── model-routing-policy.md        # Detailed model routing reference
+    │   ├── model-routing-policy.md        # Model routing reference
     │   └── performance-tuning.md          # API cost + responsiveness tuning
     ├── security/
     │   ├── access-boundaries.md           # Agent/channel access matrix
-    │   ├── openclaw-hardening.md          # Gateway security hardening practices
-    │   └── secrets-rotation.md            # Secret rotation schedule and procedure
+    │   ├── openclaw-hardening.md          # Gateway security hardening
+    │   └── secrets-rotation.md            # Secret rotation procedure
     ├── playbooks/
     │   ├── ai-daily-brief.md              # AI brief pipeline + quality gates
     │   ├── daily-planning.md              # Daily brief playbook
@@ -466,15 +445,11 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
     │   └── decision-log-template.md       # Decision record format
     ├── templates/
     │   ├── ai-daily-brief-template.md     # AI brief output format
-    │   ├── research-summary-template.md   # Research output format
     │   ├── brief-template.md              # Executive brief format
-    │   └── sop-template.md                # Standard operating procedure format
-    ├── research/
-    │   └── job-search-automation.md       # Job search capabilities + implementation plan
-    ├── DEPLOYMENT.md                      # Step-by-step deployment guide
-    ├── COST-MANAGEMENT.md                 # Budget tracking + optimization tips
-    ├── TROUBLESHOOTING.md                 # Common issues + recovery procedures
-    └── PHASE3-CHECKLIST.md                # Go-live verification checklist
+    │   ├── research-summary-template.md   # Research output format
+    │   └── sop-template.md                # Standard operating procedure
+    └── research/
+        └── job-search-automation.md       # Job search implementation plan
 ```
 
 ## Cost Projections
@@ -492,21 +467,22 @@ The loop allows Claude to chain multiple tool calls (e.g., check system stats ->
 | Interaction Type | Model | Estimated Cost |
 |-----------------|-------|----------------|
 | Simple Q&A / chat | Gemini 2.5 Flash | ~$0.0005-0.001 |
-| Heartbeat cycle | Gemini 2.5 Flash | ~$0.0003-0.0008 |
+| Heartbeat cycle (every 90 min) | Gemini 2.5 Flash | ~$0.0003-0.0008 |
 | Daily planning briefing | Gemini 2.5 Flash | ~$0.001-0.002 |
-| AI Daily Brief (morning/evening) | Gemini 2.5 Pro | ~$0.01-0.03 |
+| AI Daily Brief (cron) | Gemini 2.5 Pro | ~$0.01-0.03 |
 | Research deep dive | Gemini 2.5 Pro | ~$0.01-0.03 |
-| Code generation | Gemini 2.5 Pro | ~$0.015-0.05 |
-| Sentinel status check | Gemini 2.5 Flash | ~$0.001-0.003 |
-| Complex analysis | Opus 4.6 | $0.10-0.30 |
+| Sentinel `/status`, `/openclaw`, `/cost` | None (zero-cost) | $0.00 |
+| Sentinel "hi", "hello", "ping" | None (static) | $0.00 |
+| Sentinel agentic query | Gemini 2.5 Flash | ~$0.001-0.003 |
+| Complex analysis (manual) | Opus 4.6 | $0.10-0.30 |
 
-With ~50-100 daily interactions (mostly Flash), monthly API cost stays within the $6-15 target range.
+With ~50-100 daily interactions (mostly Flash + zero-cost commands), monthly API cost stays within the $6-15 target.
 
 ## Security Model
 
 ### Network
 - **UFW**: deny-all inbound except SSH (port 22)
-- **OpenClaw gateway**: bound to loopback — accessible only via SSH tunnel
+- **OpenClaw gateway**: bound to loopback (port 18789) -- accessible only via SSH tunnel
 - **fail2ban**: 3 failed attempts = 1 hour ban
 - **SSH**: key-only authentication, password auth disabled
 
@@ -514,33 +490,31 @@ With ~50-100 daily interactions (mostly Flash), monthly API cost stays within th
 - **Sentinel command whitelist**: deny-by-default, argument-aware allow list
 - **Sentinel blocklist**: explicit rejection of destructive patterns
 - **Sentinel runtime identity**: dedicated non-root `sentinel` user (`docker` + `adm` groups only)
-- **Docker access scope**: Sentinel tooling is container-allowlisted (`openclaw-openclaw-gateway-1`)
-- **Telegram auth**: user ID whitelist — unauthorized users get rejected immediately
-- **No secrets in git**: `.env` in `.gitignore`, backup excludes `.env`/`.pem`/`.key`
-- **Docker isolation**: OpenClaw runs as non-root user in container with resource limits
+- **Docker access scope**: Sentinel tooling is container-allowlisted
+- **Telegram auth**: user ID whitelist -- unauthorized users rejected immediately
+- **No secrets in git**: `.env` in `.gitignore`, `.env` permissions 600, backup excludes secrets
+- **Docker isolation**: OpenClaw runs as non-root user (uid=999) with resource limits
 
 ### Agent Isolation
 - **Multi-agent separation**: main and work agents have separate workspaces, memory, and tool policies
-- **Work agent sandboxing**: agent-scope sandbox prevents cross-contamination of personal/professional data
+- **Work agent sandboxing**: agent-scope sandbox prevents cross-contamination
 - **No elevated exec**: neither agent can bypass sandbox to run commands on host
-- **Channel security**: private DM plus explicitly approved interactive channel/supergroup chats, sender allowlist enforced
-- **Tool call caps**: max 10 per task (main), max 8 per task (work) — prevents runaway loops
+- **Channel security**: private DM plus explicitly approved interactive channel chats
+- **Tool call caps**: max per task limits prevent runaway loops
 
 ### Operational
-- **Automated backups**: daily at 03:00, 7-day rotation, secrets excluded from tarballs
-- **Health checks**: multi-check verification script (Docker + gateway health + fallback endpoint + security + disk/memory + backups)
-- **Deploy ownership alignment**: `/root/.openclaw` ownership is aligned to container `openclaw` UID/GID after image build
-- **Rate limiting**: Sentinel enforces per-user request windows to reduce abuse/API burn
-- **Tamper-evident audit trail**: tool execution events are hash-chained in `/var/log/sentinel/audit.log`
-- **Boot checks**: startup health verification before agent activation (BOOT.md)
+- **Automated backups**: daily at 03:00, 7-day rotation, secrets excluded
+- **Health checks**: multi-check verification script
+- **Docker weekly auto-prune**: cron job prevents cache buildup (prevents 37GB+ growth)
+- **Logrotate**: Sentinel logs rotated weekly (12 rotations for .jsonl, 4 for .log)
+- **Journald capped**: `SystemMaxUse=100M`, `SystemKeepFree=1G`, `MaxRetentionSec=2week`
 - **Automatic security updates**: unattended-upgrades enabled
-- **Change management**: no silent config mutations — explain, apply, validate, test, report
-- **Post-config checks**: security audit + health check required after sandbox or channel changes
-- **Cron discipline**: all jobs read/notify first, deep research opt-in only, results logged
+- **Boot checks**: startup health verification before agent activation
+- **Change management**: no silent config mutations -- explain, apply, validate, test, report
 
 ## Testing
 
-All tests use mocked API calls — zero API cost during development.
+All tests use mocked API calls -- zero API cost during development.
 
 ```bash
 cd sentinel
@@ -550,27 +524,20 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-Test coverage includes:
-- **Command whitelist/blocklist logic** — ensures dangerous commands are rejected
-- **Tool schema validation** — all 8 tools have required Anthropic and Gemini function declaration fields
-- **Tool execution** — mocked psutil, Docker, subprocess calls
-- **Telegram authorization** — authorized vs unauthorized user handling
-- **Command handlers** — /start, /status, /openclaw, /security, /backup
-- **Config validation** — missing tokens, provider API keys, user IDs
-- **Message handling** — free-text routing through the agentic loop
-- **Config parsing edge cases** — non-numeric/empty/multi-comment user ID parsing
+Test coverage:
+- **Command whitelist/blocklist logic** -- dangerous commands rejected
+- **Tool schema validation** -- all 9 tools have required function declaration fields
+- **Tool execution** -- mocked psutil, Docker, subprocess calls
+- **Telegram authorization** -- authorized vs unauthorized user handling
+- **Slash command handlers** -- `/start`, `/status`, `/openclaw`, `/security`, `/backup`, `/cost`
+- **Config validation** -- missing tokens, provider API keys, user IDs
+- **Config parsing edge cases** -- non-numeric/empty/multi-comment user ID parsing
+- **Cost tracking** -- append-only events, daily/weekly/monthly aggregation
+- **Provider fallback** -- Gemini-to-Anthropic fallback with conversation history clearing
 
-## Config Versioning
+## Quick Start
 
-OpenClaw instruction configs in `openclaw/config/*.md` and `openclaw/agents/work/*.md` include an inline marker:
-
-```md
-<!-- config-version: 2026.02.21-main-hardening -->
-```
-
-Use this marker when reviewing for schema drift across branches or deployments.
-
-## Quick Start (Local Development)
+### Local Development
 
 ```bash
 # 1. Clone this repo
@@ -579,61 +546,81 @@ git clone <repo-url> && cd cldw_Setup
 # 2. Validate config files
 python3 -c "import json; json.load(open('openclaw/openclaw-config.json'))"
 
-# 3. Check SOUL.md word count (must be < 500)
-wc -w openclaw/config/SOUL.md
-
-# 4. Verify all config files exist
+# 3. Verify all config files exist
 ls openclaw/config/*.md | wc -l          # Should be 12
 ls openclaw/agents/work/*.md | wc -l     # Should be 5
 
-# 5. Verify workspace content
-ls openclaw/workspace/personal/goals.md openclaw/workspace/business/goals-okrs.md
-
-# 6. Run Sentinel tests (no API key needed)
+# 4. Run Sentinel tests (no API key needed)
 cd sentinel
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 pytest tests/ -v
-
-# 7. When ready to deploy, see docs/DEPLOYMENT.md
 ```
 
-## VPS Validation (Post-Deploy)
+### VPS Validation (Post-Deploy)
 
 ```bash
+# Core services
 cd /root/openclaw
 docker compose ps
 systemctl status sentinel --no-pager
 /root/openclaw-project/infrastructure/health-check.sh
+
+# Job Radar
+cd /root/job-radar
+docker compose -f docker-compose.job-radar.yml ps
+curl -sS http://127.0.0.1:8080/health/full | python3 -m json.tool
+
+# AI brief state
+cat /root/.openclaw/workspace/logs/ai-brief-state.json | python3 -m json.tool
+
+# Cost rollup
+/root/openclaw-project/infrastructure/update-api-cost-rollup.sh
+cat /root/.openclaw/workspace/logs/api-cost-rollup.json | python3 -m json.tool
 ```
 
-Notes:
-- OpenClaw is a WebSocket gateway; root HTTP probes can be misleading on some builds.
-- Treat Docker health (`healthy`) and `health-check.sh` as the source of truth.
+### Manual Telegram Validation
 
-## Key Optimization Decisions Explained
+```
+/ai_daily_brief status          # Diagnostic check
+/ai_daily_brief top5 12h        # Quick brief
+/ai_daily_brief_top5            # Compatibility alias (must work)
+```
+
+## Key Optimization Decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| CPX22 over CPX32 | 3 vCPU / 4GB is sufficient — OpenClaw is I/O bound (API calls), not compute bound. Saves ~$5/mo. |
-| Gemini Flash as default | Most interactions are routine; Flash is lower cost and faster for baseline flows. |
-| 55-min heartbeat | Keeps recurring prompt overhead bounded with cache-friendly cadence. |
-| SOUL.md < 500 words | Sent with every request. 100 extra words x 1000 requests = 100K wasted tokens. |
-| Safeguard compaction | Prevents long conversations from inflating input token costs. Only `"default"` and `"safeguard"` are valid — `"aggressive"` is rejected by the OpenClaw schema. |
-| Loopback gateway binding | No public exposure — SSH tunnel only. Eliminates need for TLS cert management. |
+| CPX22 over CPX32 | 3 vCPU / 4GB is sufficient -- OpenClaw is I/O bound, not compute bound. Saves ~$5/mo. |
+| Gemini Flash as default | Most interactions are routine; Flash is cheaper and faster. |
+| 90-min heartbeat | Reduces recurring prompt overhead vs. shorter intervals while maintaining session awareness. |
+| SOUL.md ~800 tokens | Sent with every request. 100 extra words x 1000 requests = 100K wasted tokens. |
+| contextTokens 65,536 | Hard-caps context window. Prevents runaway input costs from accumulated sessions. |
+| contextPruning cache-ttl 30m | Evicts stale tool output after 30 minutes. Keeps context lean without losing recent work. |
+| Safeguard compaction | Bounded conversation history. Only `"default"` and `"safeguard"` are valid modes. |
+| Zero-cost slash commands | `/status`, `/openclaw`, etc. bypass LLM entirely -- direct tool execution in Python. |
+| Loopback gateway binding | No public exposure -- SSH tunnel only. No TLS cert management needed. |
 | systemd for Sentinel | Lighter than Docker for a single Python process. Auto-restart on crash. |
-| 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping a week of recovery points. |
-| Sentinel provider toggle | Default is Gemini Flash for speed/cost; Anthropic remains available as fallback/resilience path. |
-| Silent hours (23:00-07:00) | Reduces proactive API calls while preserving the 07:00 scheduled AI brief run. |
-| Multi-agent (main + work) | Separates personal/professional data, enables sandboxing, reduces context per agent. |
-| Agent-scope sandbox for work | Isolates professional data without session-scope overhead. |
-| No elevated exec | Sandboxing is meaningless if agents can bypass it via host execution. |
-| Channel allowlist + approved interactive chats only | Group chats are the highest prompt injection surface area; only explicit interactive chat IDs are allowed. |
-| 1 cron job, Gemini Pro for AI brief synthesis | Only one automated run is enabled (07:00 previous-day top stories); everything else is on-demand. |
-| Read/notify before act | Cron jobs that auto-execute risky actions compound errors at scale. |
-| Deep research opt-in only | Auto-triggered deep research is the fastest way to blow through API budget. |
-| Save reusable research to docs/ | Prevents redundant web searches for the same topic. |
-| Workspace content separation | personal/ vs business/ vs outputs/ vs logs/ prevents cross-contamination. |
+| 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping recovery points. |
+| Sentinel provider toggle | Gemini Flash default; Anthropic available as fallback for resilience. |
+| Silent hours 23:00-07:00 | Eliminates proactive API calls during sleep hours. |
+| Multi-agent main + work | Separates personal/professional data with sandboxing. Reduces context per agent. |
+| 1 cron job only | Only the daily brief is automated. Everything else is on-demand to control spend. |
+| Sub-agents on Flash | Prevents accidental Pro escalation from sub-agent spawns. |
+| imageModel Flash | Image generation uses Flash, not Pro -- significant cost reduction. |
+| Docker weekly auto-prune | Prevents multi-GB build cache accumulation on the 80GB disk. |
+| Health check TTL 3h | Job Radar external checks cached for 3 hours -- prevents dashboard-driven API spend. |
+| Content-based digest dedup | Prevents duplicate Job Radar digests when the same jobs appear across runs. |
+
+## Config Versioning
+
+OpenClaw instruction configs in `openclaw/config/*.md` and `openclaw/agents/work/*.md` include an inline marker:
+
+```md
+<!-- config-version: YYYY.MM.DD-scope-description -->
+```
+
+Use this marker when reviewing for schema drift across deployments.
 
 ## License
 

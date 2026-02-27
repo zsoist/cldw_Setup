@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-> Last updated: 2026-02-26. For the current system state, see `CLAUDE-CODE-HANDOFF.md`.
+> Last updated: 2026-02-27. For the current system state, see `CLAUDE-CODE-HANDOFF.md`. For codebase navigation, see `ARCHITECTURE.md`.
 
 ---
 
@@ -776,7 +776,28 @@ docker compose up -d --force-recreate
 2. Verify AGENTS.md has Gemini Flash as default (not Gemini Pro/Sonnet)
 3. Check if heartbeat is running during silent hours (it shouldn't)
 4. Review conversation logs for unnecessary Gemini Pro/Sonnet/Opus escalations
-5. Ensure compaction mode is "safeguard" in openclaw-config.json
+5. Ensure compaction mode is "safeguard" in openclaw.json
+6. Verify contextTokens is 65536 (not 131K or 1M) — check both gateway defaults AND per-session overrides:
+```bash
+python3 -c "
+import json
+with open('/root/.openclaw/agents/main/sessions/sessions.json') as f:
+    d = json.load(f)
+for sid, sess in d.items():
+    ct = (sess.get('config') or {}).get('contextTokens', 'default')
+    print(f'{sid}: contextTokens={ct}')
+"
+```
+7. Verify contextPruning is enabled:
+```bash
+python3 -c "
+import json
+with open('/root/.openclaw/openclaw.json') as f: d = json.load(f)
+print(d['agents']['defaults'].get('contextPruning', 'NOT SET'))
+"
+# Expected: {'mode': 'cache-ttl', 'ttl': '30m', 'keepLastAssistants': 3, 'minPrunableToolChars': 50000}
+```
+8. Check for duplicate workspace files (e.g., AGENTS.md in both root and workspace) — each duplicate adds ~3,700 tokens per call
 
 ### API cost tracking file missing or stale
 Sentinel now writes API usage/cost events continuously and the rollout script builds a unified rollup.
@@ -814,7 +835,7 @@ Enforce the production tuning profile:
 ```bash
 cd /root/job-radar
 set_kv(){ key="$1"; val="$2"; if grep -q "^${key}=" .env; then sed -i "s|^${key}=.*|${key}=${val}|" .env; else printf "%s=%s\n" "$key" "$val" >> .env; fi; }
-set_kv JOB_SEARCH_BRAVE_ONLY true
+set_kv JOB_SEARCH_BRAVE_ONLY false
 set_kv BRAVE_RESULTS_PER_QUERY 8
 set_kv BRAVE_CONTEXT_MAX_TOKENS 3072
 set_kv BRAVE_CONTEXT_MAX_SNIPPETS 20
@@ -822,7 +843,7 @@ set_kv BRAVE_CONTEXT_THRESHOLD_MODE strict
 set_kv BRAVE_DISCOVERY_TARGET_JOBS 24
 set_kv JOB_MAX_AGE_DAYS 45
 set_kv HEALTH_LOG_INTERVAL_MINUTES 180
-set_kv HEALTH_EXTERNAL_CHECK_TTL_SECONDS 120
+set_kv HEALTH_EXTERNAL_CHECK_TTL_SECONDS 10800
 docker compose -f docker-compose.job-radar.yml up -d --build job-radar-api
 ```
 
@@ -870,11 +891,46 @@ curl -sS "http://127.0.0.1:8080/api/v1/jobs?limit=5" | python3 -m json.tool
 ```
 
 ### `/job_health` is repeatedly calling external APIs
-`/health/full` now caches external checks for `HEALTH_EXTERNAL_CHECK_TTL_SECONDS` (default 120s).  
+`/health/full` now caches external checks for `HEALTH_EXTERNAL_CHECK_TTL_SECONDS` (default 10800s = 3 hours).
 If you still see high call volume:
-1. verify `HEALTH_EXTERNAL_CHECK_TTL_SECONDS=120` is set in `/root/job-radar/.env`
+1. verify `HEALTH_EXTERNAL_CHECK_TTL_SECONDS=10800` is set in `/root/job-radar/.env`
 2. restart API container
 3. call `/health/full` twice quickly; second response should include `"cached": true` on external checks.
+
+### Health checks burning API credits
+**Symptom:** Brave or Anthropic usage appears in logs/dashboards from health checks.
+
+**Cause (fixed 2026-02-27):** Health checks previously used real LLM endpoints:
+- Brave: sent LLM Context query (`/res/v1/llm/context`) every 3h
+- Anthropic: sent a real Haiku completion every 3h
+
+**Current behavior (zero-cost):**
+- Brave: uses cheap web search endpoint (`/res/v1/web/search` with count=1) — no LLM cost
+- Anthropic: uses empty-messages validation (sends empty messages array → 400 = key valid, 401 = key invalid) — zero tokens
+
+If you see the old behavior, rebuild the API container:
+```bash
+cd /root/job-radar && docker compose -f docker-compose.job-radar.yml build job-radar-api
+docker compose -f /root/openclaw/docker-compose.yml -f /root/job-radar/docker-compose.job-radar.yml --project-directory /root/job-radar up -d job-radar-api
+```
+
+### Job Radar using expensive Pro model
+**Symptom:** LLM calls from Job Radar use `google/gemini-2.5-pro` instead of Flash.
+
+**Cause:** `llm_standard_model` in `config.py` defaulted to Pro.
+
+**Fix (applied 2026-02-27):** Default changed to `google/gemini-2.5-flash`. Verify:
+```bash
+docker exec job-radar-api python3 -c "from app.config import settings; print(settings.llm_standard_model)"
+# Expected: google/gemini-2.5-flash
+```
+
+### Digest sends same jobs repeatedly (dedup broken)
+**Symptom:** Same 5 jobs appear in every digest, even though dedup should prevent re-sending.
+
+**Cause:** Digest hash included timestamp in the formatted message, producing a different hash each run.
+
+**Fix (applied 2026-02-27):** Hash is now content-based: `f"{digest_type}:" + ",".join(j["id"] for j in jobs)`. Rebuild API container if still seeing old behavior.
 
 ## Sentinel Issues
 
@@ -960,6 +1016,34 @@ Expected behavior:
 - Sentinel should remain on Gemini primary by default.
 - If Gemini returns no usable text, Sentinel retries once and responds with a concise retry hint instead of silent failure.
 
+### Sentinel token tracking shows 0 for all Gemini calls
+
+**Symptom:** `/cost` or api-usage.jsonl shows `input_tokens=0, output_tokens=0` for every Gemini call, while Anthropic calls track correctly.
+
+**Cause (fixed 2026-02-27):** `_extract_google_usage()` called `_coerce_mapping()` on Gemini proto objects, which fell through to the except clause returning a dict wrapper. Proto objects expose fields as attributes, NOT dict keys.
+
+**Fix:** Uses direct `getattr()` on proto object attributes:
+```python
+input_tokens = int(getattr(usage_obj, "prompt_token_count", 0) or 0)
+output_tokens = int(getattr(usage_obj, "candidates_token_count", 0) or 0)
+```
+
+If you see 0-token tracking, ensure `/opt/sentinel/sentinel.py` has the updated `_extract_google_usage` method, then restart:
+```bash
+cp /root/openclaw-project/sentinel/sentinel.py /opt/sentinel/sentinel.py
+chown sentinel:sentinel /opt/sentinel/sentinel.py
+systemctl restart sentinel
+```
+
+### Sentinel slash commands consuming tokens unnecessarily
+
+**Symptom:** `/status`, `/openclaw`, `/security`, `/backup` each use ~1,940 tokens because they route through the LLM.
+
+**Fix (applied 2026-02-27):** All slash commands now bypass the LLM entirely — they execute tools directly in Python and format results without any API call. The `/cost` command was also added (zero-cost).
+
+Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost`
+Static responses (no LLM): "hi", "hello", "thanks", "ok", "help", "ping"
+
 ### Sentinel footer (tokens/cost) missing in Telegram replies
 Sentinel now appends a usage footer to every LLM-generated reply.
 
@@ -997,7 +1081,13 @@ autossh -M 0 -N openclaw
 # Check disk usage
 df -h /
 
-# Clean Docker resources
+# Check Docker build cache (can grow to 37GB+)
+docker system df
+
+# Clean Docker build cache (biggest space saver)
+docker builder prune --all --force
+
+# Clean other Docker resources
 docker system prune -f
 
 # Check backup size
@@ -1005,7 +1095,21 @@ du -sh /root/backups/
 
 # Remove old backups manually if needed
 ls -lth /root/backups/
+
+# Check journald size
+journalctl --disk-usage
 ```
+
+**Prevention:** A weekly Docker prune cron job runs automatically (added 2026-02-27):
+```bash
+# Verify cron is set up
+crontab -l | grep docker
+# Expected: 0 4 * * 0 docker builder prune --all --force > /dev/null 2>&1
+```
+
+**Journald is capped** at 100MB (`SystemMaxUse=100M` in `/etc/systemd/journald.conf`).
+
+**Sentinel logs** are rotated weekly via `/etc/logrotate.d/sentinel` (12 rotations for .jsonl, 4 for .log).
 
 ### UFW blocking legitimate traffic
 ```bash

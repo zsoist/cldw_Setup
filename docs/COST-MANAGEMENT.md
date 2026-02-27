@@ -1,5 +1,7 @@
 # Cost Management Guide
 
+> Last updated: 2026-02-27
+
 ## Monthly budget breakdown
 
 | Component | Cost |
@@ -20,40 +22,91 @@
 ## Token optimization strategies
 
 ### 1. Model tiering (biggest impact)
-- **Gemini 2.5 Flash** (default): chat, Q&A, reminders, heartbeat, task tracking
-- **Gemini 2.5 Pro** (standard): research synthesis, AI brief, code generation, multi-step tools
-- **Claude Sonnet 4.6** (premium): "think harder" production-grade analysis
+- **Gemini 2.5 Flash** (default): chat, Q&A, reminders, heartbeat, task tracking, sub-agents, image generation
+- **Gemini 2.5 Pro** (standard): AI Daily Brief cron synthesis, research
+- **Claude Sonnet 4.6** (premium): "think harder" production-grade analysis (manual only)
 - **Claude Opus 4.6** (manual only): architecture decisions and highest-complexity tasks
 
 ### 2. Escalation discipline
 - Start on Flash, escalate only when quality requires it
 - Downgrade immediately after complex steps complete
 - Never auto-escalate to Opus
+- Anthropic models are manual-only (auth not auto-configured in gateway)
 
-### 3. Compaction mode
-- Keep compaction on `safeguard` to compress long chat history
+### 3. Compaction + context pruning
+- Compaction: `safeguard` mode compresses long chat history
+- Context pruning: `cache-ttl` mode evicts stale tool results after 30m
+- contextTokens: 65,536 per session (reduced from 131K default and 1M overrides)
 - Avoid carrying oversized context across model escalations
 
 ### 4. Response limits
-- Default max tokens per response: 2048 (OpenClaw), 1024 (Sentinel)
+- Default max tokens per response: 2048 (OpenClaw), 768 (Sentinel)
 - Keep routine responses concise; avoid long free-form outputs when structured bullets work
 
-### 5. Operational budgets
+### 5. System prompt efficiency
+- SOUL.md: ~800 tokens / ~3.2KB (trimmed 63% from 8.8KB)
+- Every word in SOUL.md is sent with every API request — compound cost
+- No duplicate workspace files (AGENTS.md was duplicated — fixed)
+
+### 6. Zero-cost operations
+| Operation | Mechanism |
+|-----------|-----------|
+| Sentinel /status, /openclaw, /security, /backup | Direct tool execution, no LLM |
+| Sentinel /cost | Direct file read, no LLM |
+| Sentinel "hi", "thanks", "ok", "help", "ping" | Static responses, no LLM |
+| Job Radar health checks (Brave) | Web search endpoint (not LLM Context) |
+| Job Radar health checks (Anthropic) | Empty-messages validation (zero tokens) |
+| Sentinel idle polling | HTTP long-poll to Telegram (no API cost) |
+
+### 7. Heartbeat alignment
+- Interval: 90 minutes (cache-friendly, reduced from 55m)
+- Active hours: 07:00-23:00 COT only
+- ~11 checks/day instead of ~17
+
+### 8. Operational budgets
 - Soft cap per task: $0.25
 - Hard cap per task: $0.75
 - Daily target: <$5.00
 
 ## Token optimization checklist
 
-- [ ] Default model is Gemini Flash
-- [ ] Research/brief/code tasks use Gemini Pro
-- [ ] Sonnet is used only for quality-critical "think harder" tasks
-- [ ] Opus remains manual-only
-- [ ] Compaction mode is `safeguard`
+- [ ] Default model is Gemini Flash (agents.defaults.model.primary)
+- [ ] imageModel is Gemini Flash (not Pro)
+- [ ] contextTokens is 65536 (check gateway + per-session overrides)
+- [ ] contextPruning is cache-ttl with 30m TTL
+- [ ] Compaction mode is safeguard
+- [ ] Heartbeat interval is 90m
+- [ ] thinkingDefault is off
+- [ ] verboseDefault is off
+- [ ] No duplicate workspace files (AGENTS.md, SOUL.md)
+- [ ] Sentinel slash commands bypass LLM
+- [ ] Job Radar health checks are zero-cost
 - [ ] Max concurrent tasks capped at 4
+- [ ] Sub-agents use Flash model
+- [ ] Alias skills (morning/evening/builder) use Flash
+- [ ] Cron job uses Pro (gateway-enforced in payload)
 
 ## Monitoring
 
+### Sentinel cost tracking
+```bash
+# View recent API calls
+tail -20 /var/log/sentinel/api-usage.jsonl | python3 -m json.tool
+
+# View cost summary
+cat /var/log/sentinel/api-cost-summary.json | python3 -m json.tool
+
+# View unified rollup (Sentinel + AI Brief)
+cat /root/.openclaw/workspace/logs/api-cost-rollup.json | python3 -m json.tool
+
+# Regenerate rollup
+/root/openclaw-project/infrastructure/update-api-cost-rollup.sh
+```
+
+### Telegram /cost command
+Send `/cost` to the Sentinel bot for zero-cost API usage summary. Accepts: `/cost today`, `/cost week`, `/cost month`, `/cost all`.
+
+### Provider dashboards
 - Check daily provider dashboards for usage/cost trend
 - If >$1/day consistently: inspect which tasks escalated to Pro/Sonnet and whether they needed escalation
 
@@ -64,7 +117,10 @@
 | Simple Q&A | Gemini Flash | ~$0.0005-0.001 |
 | Heartbeat check | Gemini Flash | ~$0.0003-0.0008 |
 | Daily briefing | Gemini Flash | ~$0.001-0.002 |
+| AI Daily Brief (cron) | Gemini Pro | ~$0.01-0.03 |
 | Research deep dive | Gemini Pro | ~$0.01-0.03 |
 | Code generation | Gemini Pro | ~$0.015-0.05 |
-| Sentinel status check | Gemini Flash | ~$0.001-0.003 |
+| Sentinel /status, /openclaw, etc. | None (zero-cost) | $0.00 |
+| Sentinel free-text query | Gemini Flash | ~$0.001-0.003 |
+| Job Radar health check | None (zero-cost) | $0.00 |
 | Complex analysis | Sonnet/Opus | ~$0.05-0.30 |

@@ -2,17 +2,88 @@
 
 > For the next LLM session.
 >
-> Last updated: 2026-02-26
+> Last updated: 2026-02-27
 > Branch: `main`
 > Current commit: run `git rev-parse --short HEAD` on your checkout
+> **Start here:** Read `ARCHITECTURE.md` first for codebase navigation.
 
 ---
 
 ## Current State
 
-`main` is current through **2026-02-26 (Job Radar + AI Daily Brief audit)**. All services healthy on VPS.
+`main` is current through **2026-02-27 (Full cost optimization audit + documentation overhaul)**. All services healthy on VPS.
 
-Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-26, Job Radar + AI Daily Brief audit)** as authoritative.
+Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-27)** as authoritative.
+
+### Latest pass (2026-02-27, Full cost optimization audit + documentation overhaul)
+
+Comprehensive cost optimization audit across ALL code (Sentinel, OpenClaw, Job Radar, infrastructure) + full documentation rewrite.
+
+**Sentinel — CRITICAL FIXES:**
+1. **Token tracking fixed** — `_extract_google_usage()` was returning 0 for ALL Gemini calls. Proto objects use attributes, not dict keys. Fixed with direct `getattr()`.
+2. **Zero-cost slash commands** — `/status`, `/openclaw`, `/security`, `/backup` now bypass LLM entirely (were costing ~1,940 tokens each). Added `/cost` command.
+3. **Static responses expanded** — "thanks", "ok", "help", "ping" handled without LLM call.
+4. **Tool descriptions trimmed** — ~50 tokens saved per API call.
+5. **Tool result cap reduced** — 4000 → 2000 chars.
+
+**OpenClaw — CRITICAL FIXES:**
+1. **contextTokens reduced** — All sessions reset from 262K-1M to 65,536. Gateway default also reduced to 65,536.
+2. **contextPruning enabled** — `cache-ttl` mode, 30m TTL, keepLastAssistants: 3, minPrunableToolChars: 50,000.
+3. **Heartbeat interval increased** — 55m → 90m (fewer proactive checks).
+4. **imageModel downgraded** — Pro → Flash.
+5. **SOUL.md trimmed 63%** — 8,839 → 3,239 bytes (~800 tokens).
+6. **Alias skills downgraded** — morning/evening/builder changed from Pro to Flash.
+7. **Duplicate AGENTS.md deleted** — Was in both root and workspace (~3,700 extra tokens per call).
+8. **Stale openclaw-config.json deleted** — Had Anthropic fallbacks that were auth-unconfigured.
+9. **ai-brief-state.json pruned** — Removed stale failures and old stories.
+
+**Job Radar — CRITICAL FIXES:**
+1. **Health checks zero-cost** — Brave uses web search (not LLM Context), Anthropic uses empty-messages (zero tokens).
+2. **llm_standard_model → Flash** — Default was Pro.
+3. **Free connectors enabled** — `JOB_SEARCH_BRAVE_ONLY=false` (HN/RemoteOK now active).
+4. **Health cache TTL 3h** — Was 120s, now 10,800s.
+5. **Digest dedup fixed** — Content-based hash (was timestamp-based, so every run was unique).
+
+**Infrastructure:**
+1. **Docker cache pruned** — 37GB reclaimed. Weekly auto-prune cron added.
+2. **Logrotate added** — Sentinel logs at `/etc/logrotate.d/sentinel`.
+3. **Journald capped** — 100MB max, 2-week retention.
+4. **.env permissions fixed** — 644 → 600.
+5. **Backup cron verified** — Working.
+
+**Documentation overhaul:**
+1. **README.md** — Full rewrite reflecting current state (627 lines).
+2. **ARCHITECTURE.md** — NEW: LLM-optimized codebase index for any agent.
+3. **TROUBLESHOOTING.md** — Added: token tracking fix, zero-cost commands, health check fixes, disk space, contextPruning checks.
+
+**Files changed (repo):**
+- `sentinel/sentinel.py` — token tracking, static responses, tool result cap
+- `sentinel/telegram_handler.py` — zero-cost slash commands, /cost handler
+- `sentinel/tools.py` — trimmed tool descriptions, added cost_summary tool
+- `openclaw/openclaw-config.json` — contextPruning, heartbeat 90m, imageModel Flash, contextTokens 65536
+- `openclaw/skills/ai-daily-brief-morning/SKILL.md` — model Flash
+- `openclaw/skills/ai-daily-brief-evening/SKILL.md` — model Flash
+- `openclaw/skills/ai-daily-brief-builder/SKILL.md` — model Flash
+- `README.md` — full rewrite
+- `ARCHITECTURE.md` — new file
+- `docs/TROUBLESHOOTING.md` — updated
+- `docs/COST-MANAGEMENT.md` — updated
+
+**Files changed on VPS (not in git):**
+- `/root/.openclaw/openclaw.json` — contextPruning, heartbeat 90m, imageModel Flash, contextTokens 65536
+- `/root/.openclaw/agents/main/sessions/sessions.json` — all sessions reset to contextTokens 65536
+- `/root/.openclaw/workspace/SOUL.md` — trimmed 63%
+- `/root/.openclaw/workspace/AGENTS.md` — deleted duplicate
+- `/root/.openclaw/workspace/logs/ai-brief-state.json` — pruned stale data
+- `/opt/sentinel/*.py` — all updated, chown sentinel:sentinel
+- `/root/job-radar/.env` — BRAVE_ONLY=false, HEALTH_TTL=10800
+- `/root/job-radar/backend/app/domain/health/checker.py` — zero-cost checks
+- `/root/job-radar/backend/app/config.py` — llm_standard_model=Flash
+- `/root/job-radar/backend/app/api/v1/digest.py` — content-based dedup
+- `/etc/systemd/journald.conf` — capped 100M
+- `/etc/logrotate.d/sentinel` — new
+
+---
 
 ### Latest pass (2026-02-26, Job Radar + AI Daily Brief audit)
 
