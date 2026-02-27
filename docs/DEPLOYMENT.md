@@ -154,18 +154,23 @@ The bundled health check validates Docker health status for the gateway containe
 
 ## Step 7: Verify via SSH tunnel
 
-On your Mac, keep a tunnel open:
+**Quick way** — use the `ocdash` script (handles tunnel + URL + browser):
 
 ```bash
-ssh -N -L 28789:127.0.0.1:18789 root@YOUR_VPS_IP
+# One-liner: opens SSH tunnel, fetches tokenized URL, opens browser
+bash infrastructure/ocdash.sh
 ```
 
-In another terminal, open a tokenized dashboard URL (required by Control UI auth):
+**Manual way** — if you prefer separate steps:
 
 ```bash
-RAW_URL="$(ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs dashboard --no-open | sed -n "s/^Dashboard URL: //p" | head -n1')"
+# Terminal 1: keep tunnel open
+ssh -N -L 28789:127.0.0.1:18789 root@46.225.170.60
+
+# Terminal 2: get tokenized URL and open browser
+RAW_URL="$(ssh openclaw 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs dashboard --no-open 2>/dev/null | sed -n "s/^Dashboard URL: //p" | head -n1')"
 URL="${RAW_URL/127.0.0.1:18789/127.0.0.1:28789}"
-open -a "Safari" "$URL"
+open "$URL"
 ```
 
 If browser shows `pairing required`, approve latest pending device request and refresh:

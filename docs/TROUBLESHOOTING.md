@@ -296,15 +296,16 @@ Symptoms in browser:
 
 This is a Control UI auth flow issue (not Telegram ingest).
 
-Use a tokenized dashboard URL:
+Use the `ocdash` script (or the manual steps below):
 ```bash
-# keep tunnel open in one terminal
-ssh -N -L 28789:127.0.0.1:18789 root@YOUR_VPS_IP
+# Automatic: handles tunnel + URL + browser
+bash infrastructure/ocdash.sh
 
-# in another terminal, generate and open tokenized URL
-RAW_URL="$(ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs dashboard --no-open | sed -n "s/^Dashboard URL: //p" | head -n1')"
+# Or manually:
+ssh -N -L 28789:127.0.0.1:18789 root@46.225.170.60   # terminal 1
+RAW_URL="$(ssh openclaw 'docker exec openclaw-openclaw-gateway-1 node /home/node/openclaw/openclaw.mjs dashboard --no-open 2>/dev/null | sed -n "s/^Dashboard URL: //p" | head -n1')"
 URL="${RAW_URL/127.0.0.1:18789/127.0.0.1:28789}"
-open -a "Safari" "$URL"
+open "$URL"                                             # terminal 2
 ```
 
 If still blocked by `pairing required`, approve latest device request and refresh:

@@ -73,6 +73,8 @@ All services healthy. Branch: `main`. Recent work:
 | File | Purpose |
 |------|---------|
 | `infrastructure/docker-compose.yml` | Resource limits, env defaults |
+| `infrastructure/ocdash.sh` | Mac convenience script: SSH tunnel + dashboard URL + browser |
+| `infrastructure/ssh-config-snippet` | SSH config for Mac (`Host openclaw` → VPS) |
 | `infrastructure/aibrief-smoke-test.sh` | AI brief health + token smoke test |
 | `/etc/sentinel/sentinel.env` | Sentinel runtime env vars |
 | `/root/openclaw/docker-compose.yml` | Live Docker compose (AIDB_BRAVE_* vars) |

@@ -1,8 +1,8 @@
 # Add this to ~/.ssh/config on your Mac
-# Replace REPLACE_WITH_VPS_IP before using this profile.
+# This enables: ssh openclaw (direct shell) and the ocdash script below.
 
 Host openclaw
-    HostName REPLACE_WITH_VPS_IP
+    HostName 46.225.170.60
     User root
     IdentityFile ~/.ssh/id_ed25519
     LocalForward 28789 127.0.0.1:18789
