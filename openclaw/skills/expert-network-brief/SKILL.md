@@ -1,6 +1,6 @@
 ---
 name: expert-network-brief
-description: Competitive intelligence brief on expert network industry for Dialectica
+description: Competitive intelligence brief on expert network industry
 triggers:
   - "expert network brief"
   - "expert network intelligence"
@@ -13,31 +13,19 @@ cost_tier: cheap
 
 # Expert Network Intelligence Brief
 
-## STOP — Exec Prohibition
-This is a **prompt-based** skill. There are NO shell scripts, NO Python scripts.
-- **NEVER** use `exec` with any file from this skill directory.
-- **NEVER** run `/expert_network_brief` as a shell command — it is a gateway slash command.
-- `exec` is ONLY for `curl` to external APIs.
+## Tool restrictions
+Prompt-based skill. Tools: `read`, `message`, `exec curl` (Brave API only). Never use `web_search` — always use `exec curl` for Brave LLM Context API. Never exec scripts.
 
-### Correct tool usage:
-1. `read` → load state file (`/home/node/.openclaw/workspace/logs/enb-state.json`)
-2. `web_search` → query Brave API for competitor intelligence
-3. `message` → send the final brief to Telegram
-4. `exec curl ...` → ONLY for Brave LLM Context API POST requests if web_search unavailable
-
-## Command Contract
-Command: `/expert_network_brief`
-Modes: `morning` (full scan, default for cron), `evening` (delta since morning), `status`, `help`
-Aliases: `/expert_network_brief_status`, `/enb`
-Channel context: Strip `@BotName` suffix before routing.
+## Modes
+`morning` (full scan), `evening` (delta), `status`, `help`. Aliases: `/enb`, `_status`.
 
 ## Role
-Produce enterprise-grade competitive intelligence on the expert network industry for Daniel at Dialectica. Primary focus: AI capabilities, products, and features launched by competitors. Secondary: strategic and market moves.
+Produce enterprise-grade competitive intelligence on the expert network industry. Primary focus: AI capabilities, products, and features launched by competitors. Secondary: strategic and market moves.
 
 ## Response Discipline
 - Output ONLY the final brief. No process narration ("I will now...", "checking state...").
 - One final message per invocation.
-- End with: `Tokens used: <input>/<output> - USD $<usd> / COP $<cop> - Brave api: <n>`
+- Do NOT include a manual token/cost footer — the gateway appends accurate usage data automatically. Only append `Brave api: <n>` (count of Brave calls) at the end.
 - Plain `/expert_network_brief` with no mode → execute `morning` mode by default.
 
 ## Competitors (Monitor List)
@@ -53,7 +41,7 @@ Produce enterprise-grade competitive intelligence on the expert network industry
 | 7 | Coleman Research | Mid-market player |
 | 8 | Atheneum Partners | European focus, knowledge-on-demand |
 
-Also track: **Dialectica** (own company — for market positioning context and press mentions).
+Also track: own company — for market positioning context and press mentions.
 
 ## Intelligence Priorities (ranked)
 
@@ -78,12 +66,12 @@ Auth: `X-Subscription-Token: ${BRAVE_API_KEY}`
 
 **Query 1 — AI/Product focus (ALWAYS run):**
 ```
-"expert network" (GLG OR AlphaSights OR Guidepoint OR "Third Bridge" OR Capvision OR "Coleman Research" OR Atheneum OR Dialectica) AI product platform technology feature launch 2026
+"expert network" (GLG OR AlphaSights OR Guidepoint OR "Third Bridge" OR Capvision OR "Coleman Research" OR Atheneum) AI product platform technology feature launch 2026
 ```
 
 **Query 2 — Strategy/Market focus (ALWAYS run):**
 ```
-(GLG OR "Gerson Lehrman" OR AlphaSights OR Guidepoint OR "Third Bridge" OR Capvision OR "Coleman Research" OR Atheneum OR Dialectica) acquisition funding partnership strategy market expansion expert network 2026
+(GLG OR "Gerson Lehrman" OR AlphaSights OR Guidepoint OR "Third Bridge" OR Capvision OR "Coleman Research" OR Atheneum) acquisition funding partnership strategy market expansion expert network 2026
 ```
 
 **Query 3 — Industry context (ONLY if queries 1-2 yield <4 findings):**
@@ -115,7 +103,7 @@ Auth: `X-Subscription-Token: ${BRAVE_API_KEY}`
 5. **Rank**: AI/product findings FIRST (highest priority), then strategic, then market signals.
 6. **Draft**: Format per Output Format below. Keep concise — Telegram-optimized.
 7. **Validate**: Every finding needs source URL. No speculation without attribution.
-8. **Deliver**: Send to `config.output_channel`. On failure, fall back to originating chat.
+8. **Deliver**: DM-triggered runs → deliver in originating chat (message tool is DM-constrained, cannot send to channels). Cron runs → send to `config.output_channel`. On failure, fall back to originating chat.
 9. **Persist state**: Update `last_run` (status, finished_at, findings_count, fingerprints), append to `history[]` (last 20), update `recent_story_fingerprints`.
 
 ## Output Format
@@ -142,12 +130,12 @@ Auth: `X-Subscription-Token: ${BRAVE_API_KEY}`
 🌐 MARKET & INDUSTRY SIGNALS
 {Brief industry-level observations with sources, if any}
 
-⚡ DIALECTICA IMPLICATIONS
-• {Actionable insight 1 — what Dialectica should watch/do}
+⚡ STRATEGIC IMPLICATIONS
+• {Actionable insight 1}
 • {Actionable insight 2}
 
 Coverage: {N} findings | {competitors with updates}/{8} tracked
-Tokens used: {in}/{out} - USD ${usd} / COP ${cop} - Brave api: {n}
+Brave api: {n}
 ```
 
 ### Evening (delta)
@@ -160,7 +148,7 @@ Tokens used: {in}/{out} - USD ${usd} / COP ${cop} - Brave api: {n}
 {If no new findings:}
 No new expert network updates since morning scan.
 
-Tokens used: {in}/{out} - USD ${usd} / COP ${cop} - Brave api: {n}
+Brave api: {n}
 ```
 
 ### Status
