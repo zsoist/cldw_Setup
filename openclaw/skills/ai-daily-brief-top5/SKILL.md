@@ -1,139 +1,62 @@
 ---
 name: ai-daily-brief-top5
-description: Compatibility alias for AI Daily Brief top5 mode
+description: AI Daily Brief top5 mode alias
 triggers:
   - "/ai_daily_brief_top5"
 model: google/gemini-2.5-pro
 cost_tier: standard
 ---
 
-# AI Daily Brief Top5 Alias
+# AI Daily Brief — Top5 Alias
 
-## STOP — No Shell Scripts Exist
-- **NEVER** use `exec` to run `.sh`, `.py`, or any binary. None exist in this skill directory.
-- **NEVER** run `/ai_daily_brief` as a shell command. It is a gateway slash command, not an executable.
-- To perform this skill: use `read` (state file), `web_search` (Brave API), `message` (Telegram delivery).
-
-## Role
-Compatibility command shim for users invoking `/ai_daily_brief_top5`.
+Prompt-based skill. Tools: `read`, `message`, `exec curl` (Brave LLM Context API only). Never use `web_search` — always use `exec curl` for Brave LLM Context API. Never exec scripts.
 
 ## Behavior
-- Force mode `top5` and follow the `ai-daily-brief` pipeline immediately.
-- Return only the final top5 output (no internal process narration).
-- Do not ask clarifying questions for mode/slot selection.
-- Accept explicit scope suffixes (`12h`, `week`, `month`, `month YYYY-MM`) and pass through unchanged.
-- Default time scope is current COT week (Monday-Sunday) unless user explicitly requests month scope.
-- If user asks "top stories of the month" (or similar), force monthly scope.
-- Persist state for this invocation:
-  - before writing new run state, recover stale prior locks:
-    - if previous `last_run.status=running` and (`started_at` missing/invalid OR age >= 900s), set previous run to `failed` with `finished_at` and explicit interruption error.
-    - if previous `last_run.status=running` and age < 900s, do not overwrite; return concise "already running" notice.
-  - set `last_run.started_at` + `status=running` at start
-  - set `last_run.finished_at` + final `status` (`success|partial|failed`) at end
-  - set `last_run.error` on failures (never leave null if failed)
-- Preserve ranking, validation, and delivery routing behavior from canonical skill.
-- If provider retrieval degrades, deliver partial brief instead of aborting silently.
-- **CRITICAL: Apply all date-scope gates from canonical ai-daily-brief SKILL.md:**
-  - Use date-scoped Brave queries (see "Brave Query Construction" below).
-  - Run date-scope hard gate before drafting.
-  - REJECT any story whose event date is outside the scope bounds.
-  - Do NOT backfill with older stories to reach 5 — fewer is correct.
-- Latency policy for this alias:
-  - Perform retrieval + drafting directly; do not narrate internal pipeline steps.
-  - Never claim "python tools unavailable" or "manual processing mode".
-  - Keep top5 runs under the canonical top5 budget caps.
-  - Use Brave POST requests by default (JSON body), unless transport constraints require GET.
+- Force mode `top5`. Accept scope suffix: `12h|week|month|YYYY-MM`. Default: current COT week (Mon-Sun).
+- Natural language mapping: "of the month" → month, "last 12h" → 12h.
+- Return only final top5 output. No process narration.
 
-## Brave Query Construction (mandatory — date-scoped queries)
+## State management
+- State file: `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
+- Before writing new run: if prior `last_run.status=running` and age >= 900s → set to `failed`. If age < 900s → return "already running".
+- Write `last_run` with run_id, started_at, status=running at start. Write finished_at + final status at end.
 
-The Brave LLM Context API has NO native date filter. You MUST embed date bounds
-directly in the query string `q`. Use these templates:
+## Brave query (date-scoped, mandatory)
+`POST https://api.search.brave.com/res/v1/llm/context` — Auth: `X-Subscription-Token: ${BRAVE_API_KEY}`
+Budget: count=5, max_tokens=1024, max_urls=6, per_url_tokens=512, snippets=12, per_url_snippets=6. Threshold: strict.
+Embed date bounds in `q` (Brave has no date filter):
+- `12h`: `"AI news developments {YYYY-MM-DD}" site:reuters.com OR site:techcrunch.com`
+- `week`: `"AI top stories week of {MON} to {SUN} {YYYY} launches releases"`
+- `month`: `"AI major developments {MONTH} {YYYY} launches breakthroughs"`
+Max 2 queries. Min 1s between. Query #2 only if <8 candidates or <4 T1/T2 sources.
 
-| Scope | Query template |
-|-------|---------------|
-| `12h` | `"AI artificial intelligence news developments {YYYY-MM-DD}"` — run one query first; optional day-before overlap query if coverage is weak. |
-| `week` | `"AI artificial intelligence top stories week of {MON_DATE} to {SUN_DATE} {YYYY} latest developments launches releases"` — run one broad query first; optional watchlist query if needed. |
-| `month` | `"AI artificial intelligence major developments {MONTH_NAME} {YYYY} launches releases breakthroughs"` — run one broad query first; optional watchlist query if needed. |
+## Date-scope hard gate (NON-NEGOTIABLE)
+Compute COT bounds → hard reject stories outside scope or with no date. <5 remaining is correct — never backfill. Add: `Coverage limited by requested time scope.`
 
-**Rules:**
-- Always include explicit calendar dates (YYYY-MM-DD) in every query.
-- Never use a bare query like `"AI news"` without date bounds.
-- Adaptive fan-out:
-  - Run query #1 (broad scope) first.
-  - Run query #2 (watchlist-focused) only if coverage is weak after normalization:
-    - fewer than 8 credible candidates, or
-    - fewer than 4 unique Tier-1/2 sources.
-  - Hard cap: 2 Brave queries.
-- Respect Brave rate-limit guidance: keep at least 1 second between Brave requests.
+## Output format (mandatory)
+Title: `AI Daily Brief — Top 5 | Week of YYYY-MM-DD to YYYY-MM-DD (COT)`
 
-## Date-Scope Hard Gate (mandatory checkpoint before drafting)
-
-- Compute scope bounds:
-  - `12h`: `scope_start = now - 12h`, `scope_end = now` (COT)
-  - `week`: `scope_start = Monday 00:00 COT`, `scope_end = Sunday 23:59 COT`
-  - `month`: `scope_start = 1st 00:00 COT`, `scope_end = last day 23:59 COT`
-- For EVERY candidate story, extract the event date from source text.
-- **Hard reject** any story whose event date is outside bounds.
-- If a story has no determinable date, reject it.
-- If fewer than 5 stories remain, that is correct. Add: `Coverage limited by requested time scope.`
-- This gate is NON-NEGOTIABLE.
-
-## Output Format (MANDATORY — every story must follow this exact structure)
-
-### Title format:
+Per story:
 ```
-AI Daily Brief — Top 5 | Week of 2026-02-16 to 2026-02-22 (COT)
-```
-Always include scope bounds and `(COT)` timezone label.
-
-### Per-story format (do not omit any field):
-```
-### {rank}) {Headline with model/product name} (score: {0.00-1.00}) — {YYYY-MM-DD}
+### {rank}) {Headline with model/product} (score: {0.00-1.00}) — {YYYY-MM-DD}
 - What happened:
-  - {fact bullet 1 from sources}
-  - {fact bullet 2 from sources}
-- Technical Details: {architecture} | {context window} | {key benchmark or "not disclosed"}
-- Why it matters: {1-2 sentence strategic significance}
-- Sources: [{Outlet1}](https://url1), [{Outlet2}](https://url2)
+  - {fact bullet from sources}
+- Technical Details: {architecture | benchmarks | "not disclosed"}
+- Why it matters: {1-2 sentences}
+- Sources: [{Outlet}](url)
 ```
 
-### CORRECT example:
-```
-### 1) OpenAI CEO Sam Altman Warns Against "AI Washing" (score: 0.72) — 2026-02-22
-- What happened:
-  - Sam Altman keynote at India AI Impact Summit criticized companies blaming AI for operational failures
-  - Called for accountability standards separating genuine AI integration from marketing claims
-- Technical Details: not applicable (policy/industry statement, no model release)
-- Why it matters: Signals industry maturity pivot — largest lab CEO publicly distancing from hype cycle
-- Sources: [OpenTools](https://opentools.ai/news/...), [Reuters](https://reuters.com/technology/...)
-```
+## Pre-send checks
+1. Every headline ends `— YYYY-MM-DD` (not "Feb 22, 2026")
+2. Every date within scope bounds
+3. Every headline has `(score: X.XX)`
+4. Every story has: What happened + Technical Details + Why it matters + Sources `[Name](url)`
+5. Title includes scope bounds + (COT)
+6. Brave api count as last line (gateway adds usage footer automatically)
+Fix ANY failure before sending.
 
-### INCORRECT — DO NOT produce output like this:
-```
-1. Sam Altman Calls Out "AI Washing" | Feb 22, 2026
+## Delivery
+DM-triggered runs → deliver in originating chat (message tool is DM-constrained, cannot send to channels). Cron runs → send to `config.output_channel` + ACK in originating chat. On failure: fall back to originating chat.
 
-• OpenAI CEO warns against blame-shifting
-• Sources: OpenTools, OpenAI official
-```
-This fails because: wrong date format (not ISO 8601), no score, no structure, no Technical Details, bare source names.
-
-## Pre-Send Validation Checklist (execute ALL checks before sending)
-
-```
-CHECK 1 — DATE FORMAT: Every headline ends with " — YYYY-MM-DD"?
-  ✓ "— 2026-02-22"    ✗ "| Feb 22, 2026"    ✗ "| Feb 2026"
-CHECK 2 — DATE IN SCOPE: Every event date within scope_start..scope_end?
-CHECK 3 — SCORE: Every headline has "(score: X.XX)"?
-CHECK 4 — STRUCTURE: Every story has What happened + Technical Details + Why it matters + Sources?
-CHECK 5 — SOURCES: Every source is [Name](https://url)? No bare outlet names?
-CHECK 6 — TITLE: Includes scope bounds + (COT)?
-CHECK 7 — TECHNICAL DETAILS: Every story has a Technical Details line?
-```
-If ANY check fails → fix before sending. Do NOT send failing output.
-
-## Quality Gates
-- Vague dates like "Feb 2026" are NOT valid — find the specific day or use `~YYYY-MM-DD (estimated)`.
-- A story from Feb 6 MUST NOT appear in a "Week of Feb 16-22" brief. Importance does not override scope.
-- Sources must be clickable markdown links `[Name](url)`. Never bare outlet names.
-- Each story must include Technical Details (even if "not applicable" or "not disclosed").
-- If no credible stories in scope: `No high-confidence AI updates in this window.`
+## Ranking
+Impact=0.28, credibility=0.22, novelty=0.18, relevance=0.14, freshness=0.10, confidence=0.08. Anti-hype: penalize single-source, uncontextualized benchmarks, viral claims.
