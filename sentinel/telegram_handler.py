@@ -1,8 +1,11 @@
 """Telegram bot interface for Sentinel."""
-import json
+
+from __future__ import annotations
+
 import logging
+import re
 from telegram import Update
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -24,6 +27,25 @@ from tools import (
 
 logger = logging.getLogger("sentinel.telegram")
 
+# Telegram hard limit is 4096 chars. We reserve space for footer + overhead.
+_MAX_CHUNK = 3800
+# Characters that break Telegram Markdown v1 inside user-generated content.
+_MD_ESCAPE_RE = re.compile(r"([_*\[\]`])")
+
+# Allowed period arguments for /cost command.
+_COST_PERIODS = frozenset({"today", "week", "month", "all"})
+
+
+def _escape_md(text: str) -> str:
+    """Escape Markdown v1 special characters in dynamic content."""
+    return _MD_ESCAPE_RE.sub(r"\\\1", text)
+
+
+def _safe_str(value: object, max_len: int = 200) -> str:
+    """Convert a value to an escaped, truncated string safe for Markdown."""
+    raw = str(value)[:max_len]
+    return _escape_md(raw)
+
 
 class SentinelTelegramBot:
     """Telegram interface for the Sentinel sysadmin bot."""
@@ -36,9 +58,16 @@ class SentinelTelegramBot:
         """Check if user is in the allowed list."""
         return user_id in self.config.allowed_user_ids
 
+    # ------------------------------------------------------------------
+    # Usage footer
+    # ------------------------------------------------------------------
+
     def _build_usage_footer(self, user_id: int) -> str:
-        """Build per-request usage summary for Telegram responses."""
-        stats = {}
+        """Build per-request usage summary for Telegram responses.
+
+        Footer is always sent as plain text (no Markdown) so $ and , are safe.
+        """
+        stats: dict = {}
         if hasattr(self.agent, "get_last_request_stats"):
             try:
                 stats = self.agent.get_last_request_stats(user_id) or {}
@@ -66,23 +95,101 @@ class SentinelTelegramBot:
             return footer
         return f"{base}\n\n{footer}"
 
+    # ------------------------------------------------------------------
+    # Safe message sending
+    # ------------------------------------------------------------------
+
     async def _reply_text_safe(self, message, text: str) -> None:
-        """Send markdown when possible, fallback to plain text on parse errors."""
+        """Send text with Markdown, falling back to plain text on any parse error."""
+        if not text:
+            text = "(empty response)"
         try:
             await message.reply_text(text, parse_mode="Markdown")
         except BadRequest as exc:
-            if "can't parse entities" in str(exc).lower():
-                await message.reply_text(text)
+            if "parse" in str(exc).lower() or "entity" in str(exc).lower():
+                # Markdown parsing failed — retry as plain text
+                try:
+                    await message.reply_text(text)
+                except TelegramError as inner_exc:
+                    logger.error("Plain-text fallback also failed: %s", inner_exc)
                 return
             raise
+        except TelegramError as exc:
+            # Network errors, chat not found, etc. — log and re-raise
+            logger.error("Telegram send failed: %s", exc)
+            raise
 
-    async def _reply_text_safe_chunked(self, message, text: str, chunk_size: int = 4000) -> None:
-        """Send long text in Telegram-safe chunks with markdown fallback."""
-        if len(text) <= chunk_size:
+    async def _reply_text_safe_chunked(self, message, text: str) -> None:
+        """Send long text in Telegram-safe chunks.
+
+        Splits on newline boundaries to avoid breaking Markdown formatting.
+        Chunk size accounts for Telegram's 4096 char limit with safety margin.
+        """
+        if not text:
+            await self._reply_text_safe(message, "(empty response)")
+            return
+
+        if len(text) <= _MAX_CHUNK:
             await self._reply_text_safe(message, text)
             return
-        for i in range(0, len(text), chunk_size):
-            await self._reply_text_safe(message, text[i : i + chunk_size])
+
+        # Split at newline boundaries to preserve Markdown structure.
+        lines = text.split("\n")
+        chunks: list[str] = []
+        current_chunk: list[str] = []
+        current_len = 0
+
+        for line in lines:
+            line_len = len(line) + 1  # +1 for newline
+            if current_len + line_len > _MAX_CHUNK and current_chunk:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = []
+                current_len = 0
+            # If a single line exceeds chunk size, force-split it.
+            if line_len > _MAX_CHUNK:
+                if current_chunk:
+                    chunks.append("\n".join(current_chunk))
+                    current_chunk = []
+                    current_len = 0
+                for i in range(0, len(line), _MAX_CHUNK):
+                    chunks.append(line[i : i + _MAX_CHUNK])
+            else:
+                current_chunk.append(line)
+                current_len += line_len
+
+        if current_chunk:
+            chunks.append("\n".join(current_chunk))
+
+        for idx, chunk in enumerate(chunks):
+            if len(chunks) > 1:
+                header = f"[{idx + 1}/{len(chunks)}]\n"
+                chunk = header + chunk
+            await self._reply_text_safe(message, chunk)
+
+    # ------------------------------------------------------------------
+    # Typing indicator (crash-safe)
+    # ------------------------------------------------------------------
+
+    async def _send_typing(self, context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+        """Send typing indicator. Swallows errors to avoid crashing the handler."""
+        try:
+            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        except TelegramError as exc:
+            logger.debug("Typing indicator failed (non-fatal): %s", exc)
+
+    # ------------------------------------------------------------------
+    # Zero-cost stats helper
+    # ------------------------------------------------------------------
+
+    def _set_zero_cost_stats(self, user_id: int) -> None:
+        """Set zero-cost request stats for direct tool commands."""
+        zero_stats = self.agent._new_request_stats()
+        zero_stats["status"] = "cached"
+        self.agent._store_last_request_stats(user_id, zero_stats)
+
+    # ------------------------------------------------------------------
+    # Command handlers
+    # ------------------------------------------------------------------
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command."""
@@ -97,34 +204,11 @@ class SentinelTelegramBot:
             "- `/openclaw` — OpenClaw health\n"
             "- `/security` — Security audit\n"
             "- `/backup` — Backup OpenClaw\n"
+            "- `/cost` — API cost summary\n"
             "- Or just describe what you need in plain text.\n\n"
             "All requests go through the configured LLM provider with tool verification.",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
         )
-
-    def _format_static_stats(self, user_id: int) -> str:
-        """Format system status directly from tools — zero LLM cost."""
-        stats = execute_system_stats()
-        docker = execute_docker_status()
-        lines = [
-            f"*System Status*",
-            f"CPU: {stats.get('cpu_percent', '?')}% | "
-            f"RAM: {stats.get('memory_used_gb', '?')}/{stats.get('memory_total_gb', '?')}GB "
-            f"({stats.get('memory_percent', '?')}%)",
-            f"Disk: {stats.get('disk_used_gb', '?')}/{stats.get('disk_total_gb', '?')}GB "
-            f"({stats.get('disk_percent', '?')}%)",
-            f"Swap: {stats.get('swap_used_gb', '?')}/{stats.get('swap_total_gb', '?')}GB",
-            f"Uptime: {stats.get('uptime', '?')}",
-            "",
-            "*Containers:*",
-        ]
-        for c in docker.get("containers", []):
-            lines.append(f"• {c.get('name', '?')}: {c.get('status', '?')}")
-        # Set zero-cost stats so footer shows 0 tokens
-        zero_stats = self.agent._new_request_stats()
-        zero_stats["status"] = "cached"
-        self.agent._store_last_request_stats(user_id, zero_stats)
-        return "\n".join(lines)
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Quick system status — direct tool execution, zero LLM cost."""
@@ -133,10 +217,35 @@ class SentinelTelegramBot:
         try:
             response = self._format_static_stats(update.effective_user.id)
         except Exception as e:
-            logger.error(f"Status command failed: {e}", exc_info=True)
-            response = f"Error getting status: {str(e)[:200]}"
+            logger.error("Status command failed: %s", e, exc_info=True)
+            response = f"Error getting status: {_safe_str(e)}"
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
+
+    def _format_static_stats(self, user_id: int) -> str:
+        """Format system status directly from tools — zero LLM cost."""
+        stats = execute_system_stats()
+        docker = execute_docker_status()
+        lines = [
+            "*System Status*",
+            (
+                f"CPU: {stats.get('cpu_percent', '?')}% | "
+                f"RAM: {stats.get('memory_used_gb', '?')}/{stats.get('memory_total_gb', '?')}GB "
+                f"({stats.get('memory_percent', '?')}%)"
+            ),
+            (
+                f"Disk: {stats.get('disk_used_gb', '?')}/{stats.get('disk_total_gb', '?')}GB "
+                f"({stats.get('disk_percent', '?')}%)"
+            ),
+            f"Swap: {stats.get('swap_used_gb', '?')}/{stats.get('swap_total_gb', '?')}GB",
+            f"Uptime: {stats.get('uptime', '?')}",
+            "",
+            "*Containers:*",
+        ]
+        for c in docker.get("containers", []):
+            lines.append(f"• {_escape_md(str(c.get('name', '?')))}: {_escape_md(str(c.get('status', '?')))}")
+        self._set_zero_cost_stats(user_id)
+        return "\n".join(lines)
 
     async def openclaw_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Check OpenClaw health — direct tool execution, zero LLM cost."""
@@ -144,24 +253,22 @@ class SentinelTelegramBot:
             return
         try:
             result = execute_check_openclaw_health()
-            lines = [f"*OpenClaw Health*"]
-            lines.append(f"Container: {result.get('container_status', '?')}")
-            lines.append(f"Uptime: {result.get('uptime', '?')}")
-            lines.append(f"HTTP: {result.get('http_status', '?')}")
+            lines = ["*OpenClaw Health*"]
+            lines.append(f"Container: {_escape_md(str(result.get('container_status', '?')))}")
+            lines.append(f"Uptime: {_escape_md(str(result.get('uptime', '?')))}")
+            lines.append(f"HTTP: {_escape_md(str(result.get('http_status', '?')))}")
             errors = result.get("recent_errors", [])
             if errors:
                 lines.append(f"\n*Recent Errors ({len(errors)}):*")
                 for e in errors[:5]:
-                    lines.append(f"• {str(e)[:120]}")
+                    lines.append(f"• {_safe_str(e, 120)}")
             else:
                 lines.append("No recent errors.")
             response = "\n".join(lines)
         except Exception as e:
-            logger.error(f"OpenClaw command failed: {e}", exc_info=True)
-            response = f"Error checking OpenClaw: {str(e)[:200]}"
-        zero_stats = self.agent._new_request_stats()
-        zero_stats["status"] = "cached"
-        self.agent._store_last_request_stats(update.effective_user.id, zero_stats)
+            logger.error("OpenClaw command failed: %s", e, exc_info=True)
+            response = f"Error checking OpenClaw: {_safe_str(e)}"
+        self._set_zero_cost_stats(update.effective_user.id)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
@@ -171,23 +278,21 @@ class SentinelTelegramBot:
             return
         try:
             result = execute_check_security()
-            lines = [f"*Security Audit*"]
+            lines = ["*Security Audit*"]
             for section in ["ufw_status", "open_ports", "failed_ssh_attempts", "running_services"]:
                 val = result.get(section, "N/A")
                 label = section.replace("_", " ").title()
                 if isinstance(val, list):
                     lines.append(f"\n*{label}:*")
                     for item in val[:10]:
-                        lines.append(f"• {str(item)[:120]}")
+                        lines.append(f"• {_safe_str(item, 120)}")
                 else:
-                    lines.append(f"{label}: {str(val)[:200]}")
+                    lines.append(f"{label}: {_safe_str(val)}")
             response = "\n".join(lines)
         except Exception as e:
-            logger.error(f"Security command failed: {e}", exc_info=True)
-            response = f"Error running security audit: {str(e)[:200]}"
-        zero_stats = self.agent._new_request_stats()
-        zero_stats["status"] = "cached"
-        self.agent._store_last_request_stats(update.effective_user.id, zero_stats)
+            logger.error("Security command failed: %s", e, exc_info=True)
+            response = f"Error running security audit: {_safe_str(e)}"
+        self._set_zero_cost_stats(update.effective_user.id)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
@@ -200,17 +305,15 @@ class SentinelTelegramBot:
             if result.get("status") == "success":
                 response = (
                     f"*Backup Complete*\n"
-                    f"File: `{result.get('backup_file', '?')}`\n"
+                    f"File: `{_escape_md(str(result.get('backup_file', '?')))}`\n"
                     f"Size: {result.get('size_bytes', 0) / 1024 / 1024:.1f} MB"
                 )
             else:
-                response = f"Backup failed: {result.get('error', 'unknown')}"
+                response = f"Backup failed: {_safe_str(result.get('error', 'unknown'))}"
         except Exception as e:
-            logger.error(f"Backup command failed: {e}", exc_info=True)
-            response = f"Error creating backup: {str(e)[:200]}"
-        zero_stats = self.agent._new_request_stats()
-        zero_stats["status"] = "cached"
-        self.agent._store_last_request_stats(update.effective_user.id, zero_stats)
+            logger.error("Backup command failed: %s", e, exc_info=True)
+            response = f"Error creating backup: {_safe_str(e)}"
+        self._set_zero_cost_stats(update.effective_user.id)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
@@ -219,9 +322,10 @@ class SentinelTelegramBot:
         if not self._is_authorized(update.effective_user.id):
             return
         try:
-            args = (context.args[0] if context.args else "today")
-            result = execute_cost_summary(args)
-            lines = [f"*API Cost Summary ({args})*"]
+            raw_arg = context.args[0] if context.args else "today"
+            period = raw_arg.lower().strip() if raw_arg.lower().strip() in _COST_PERIODS else "today"
+            result = execute_cost_summary(period)
+            lines = [f"*API Cost Summary ({_escape_md(period)})*"]
             for svc_name, svc_data in result.items():
                 if svc_name in ("grand_total", "daily_budget_remaining"):
                     continue
@@ -230,7 +334,7 @@ class SentinelTelegramBot:
                 in_t = svc_data.get("input_tokens", 0)
                 out_t = svc_data.get("output_tokens", 0)
                 usd = svc_data.get("estimated_usd", 0)
-                lines.append(f"\n*{svc_name}:* {in_t}/{out_t} tokens — ${usd:.6f}")
+                lines.append(f"\n*{_escape_md(str(svc_name))}:* {in_t}/{out_t} tokens — ${usd:.6f}")
             total = result.get("grand_total", {})
             if total:
                 cop = total.get("estimated_cop", 0)
@@ -240,13 +344,15 @@ class SentinelTelegramBot:
                 lines.append(f"Daily budget remaining: ${remaining:.4f}")
             response = "\n".join(lines)
         except Exception as e:
-            logger.error(f"Cost command failed: {e}", exc_info=True)
-            response = f"Error getting cost summary: {str(e)[:200]}"
-        zero_stats = self.agent._new_request_stats()
-        zero_stats["status"] = "cached"
-        self.agent._store_last_request_stats(update.effective_user.id, zero_stats)
+            logger.error("Cost command failed: %s", e, exc_info=True)
+            response = f"Error getting cost summary: {_safe_str(e)}"
+        self._set_zero_cost_stats(update.effective_user.id)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
+
+    # ------------------------------------------------------------------
+    # Free-text message handler
+    # ------------------------------------------------------------------
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle free-text messages."""
@@ -255,19 +361,36 @@ class SentinelTelegramBot:
             return
 
         user_message = update.message.text
-        logger.info(f"Message from {update.effective_user.id}: {user_message[:100]}")
+        if not user_message:
+            # Non-text messages (photos, stickers, etc.) slip through despite
+            # the TEXT filter in edge cases. Guard against None.
+            await update.message.reply_text("I can only process text messages.")
+            return
 
-        # Show typing indicator
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        logger.info("Message from %d: %s", update.effective_user.id, user_message[:100])
+
+        # Show typing indicator (crash-safe)
+        await self._send_typing(context, update.effective_chat.id)
 
         try:
             response = self.agent.process_message(update.effective_user.id, user_message)
             response = self._append_usage_footer(update.effective_user.id, response)
             await self._reply_text_safe_chunked(update.message, response)
+        except TelegramError as e:
+            # Telegram delivery failure (network, chat deleted, etc.)
+            logger.error("Telegram delivery error: %s", e, exc_info=True)
         except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
-            err = self._append_usage_footer(update.effective_user.id, f"Error: {str(e)[:200]}")
-            await update.message.reply_text(err)
+            logger.error("Error processing message: %s", e, exc_info=True)
+            try:
+                err_text = f"Error: {_safe_str(e)}"
+                err = self._append_usage_footer(update.effective_user.id, err_text)
+                await update.message.reply_text(err)
+            except TelegramError as send_exc:
+                logger.error("Failed to send error message: %s", send_exc)
+
+    # ------------------------------------------------------------------
+    # Bot runner
+    # ------------------------------------------------------------------
 
     def run(self) -> None:
         """Start the Telegram bot."""
@@ -291,7 +414,7 @@ def main():
     errors = config.validate()
     if errors:
         for e in errors:
-            logger.error(f"Config error: {e}")
+            logger.error("Config error: %s", e)
         raise SystemExit(1)
 
     agent = SentinelAgent(config)

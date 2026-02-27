@@ -454,6 +454,11 @@ class SentinelAgent:
             return history
         return history[-20:]
 
+    def _persist_history(self, user_id: int, history: list[dict[str, Any]]) -> None:
+        """Thread-safe persistence of truncated conversation history."""
+        with self._state_lock:
+            self.conversations[user_id] = self._truncate_history(history)
+
     def _record_api_usage(
         self,
         *,
@@ -706,7 +711,7 @@ class SentinelAgent:
 
             history.append({"role": "assistant", "content": response.content})
             if persist_history:
-                self.conversations[user_id] = self._truncate_history(history)
+                self._persist_history(user_id, history)
             self._append_audit_event(
                 user_id,
                 "assistant_response",
@@ -794,7 +799,7 @@ class SentinelAgent:
                 history.append({"role": "user", "parts": function_responses})
                 history = self._truncate_history(history)
                 if persist_history:
-                    self.conversations[user_id] = history
+                    self._persist_history(user_id, history)
                 continue
 
             if text_response:
@@ -822,12 +827,12 @@ class SentinelAgent:
                     )
                     history = self._truncate_history(history)
                     if persist_history:
-                        self.conversations[user_id] = history
+                        self._persist_history(user_id, history)
                     continue
                 final_text = "Gemini returned an empty response. Please retry your request."
             history = self._truncate_history(history)
             if persist_history:
-                self.conversations[user_id] = history
+                self._persist_history(user_id, history)
             self._append_audit_event(
                 user_id,
                 "assistant_response",
