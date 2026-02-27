@@ -84,7 +84,9 @@
 - [ ] Max concurrent tasks capped at 4
 - [ ] Sub-agents use Flash model
 - [ ] Alias skills (morning/evening/builder) use Flash
-- [ ] Cron job uses Pro (gateway-enforced in payload)
+- [ ] AI Brief cron uses Pro (gateway-enforced in payload)
+- [ ] ENB cron uses Flash (both AM and PM jobs)
+- [ ] ENB Brave queries batched (2-3 calls, not 8 per-competitor)
 
 ## Monitoring
 
@@ -118,6 +120,8 @@ Send `/cost` to the Sentinel bot for zero-cost API usage summary. Accepts: `/cos
 | Heartbeat check | Gemini Flash | ~$0.0003-0.0008 |
 | Daily briefing | Gemini Flash | ~$0.001-0.002 |
 | AI Daily Brief (cron) | Gemini Pro | ~$0.01-0.03 |
+| Expert Network Brief (morning) | Gemini Flash | ~$0.005 |
+| Expert Network Brief (evening delta) | Gemini Flash | ~$0.003 |
 | Research deep dive | Gemini Pro | ~$0.01-0.03 |
 | Code generation | Gemini Pro | ~$0.015-0.05 |
 | Sentinel /status, /openclaw, etc. | None (zero-cost) | $0.00 |

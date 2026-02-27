@@ -818,6 +818,70 @@ Expected files:
 - `/var/log/sentinel/api-cost-summary.json` (Sentinel daily/weekly/monthly aggregates)
 - `/root/.openclaw/workspace/logs/api-cost-rollup.json` (combined AI Brief + Sentinel totals)
 
+## Expert Network Brief Issues
+
+### `/expert_network_brief` not responding or routing wrong
+```bash
+# Verify skill files exist on runtime
+ls -la /root/.openclaw/skills/expert-network-brief/SKILL.md
+ls -la /root/.openclaw/skills/expert-network-brief-status/SKILL.md
+
+# Verify state file
+python3 -m json.tool /root/.openclaw/workspace/logs/enb-state.json
+
+# Check ownership
+ls -la /root/.openclaw/skills/expert-network-brief*/SKILL.md
+# Expected: sentinel:systemd-journal
+
+# Re-sync from repo if needed
+rsync -av /root/openclaw-project/openclaw/skills/ /root/.openclaw/skills/
+chown -R sentinel:systemd-journal /root/.openclaw/skills/
+docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
+```
+
+### ENB cron not running
+```bash
+# Check cron jobs
+python3 -c "
+import json
+with open('/root/.openclaw/cron/jobs.json') as f: d = json.load(f)
+for j in d['jobs']:
+    print(f\"{j['name']}: enabled={j['enabled']}, schedule={j['schedule']['expr']}, model={j['payload']['model']}\")
+"
+# Expected: 3 jobs (AI Brief + ENB Morning + ENB Evening)
+
+# Check for recent ENB runs
+python3 -c "
+import json
+with open('/root/.openclaw/workspace/logs/enb-state.json') as f: d = json.load(f)
+print('last_run:', d.get('last_run'))
+print('history count:', len(d.get('history', [])))
+"
+```
+
+### ENB state file missing or corrupted
+```bash
+# Re-create initial state
+python3 -c "
+import json
+state = {
+    'schema_version': '2026-02-27-v1',
+    'config': {
+        'competitors': ['GLG', 'AlphaSights', 'Guidepoint', 'Third Bridge', 'Capvision', 'Coleman Research', 'Atheneum Partners', 'Prospex'],
+        'output_channel': '-1003826801947',
+        'focus_areas': ['AI capabilities', 'product launches', 'strategic moves', 'market expansion']
+    },
+    'last_run': None,
+    'history': [],
+    'recent_story_fingerprints': []
+}
+with open('/root/.openclaw/workspace/logs/enb-state.json', 'w') as f:
+    json.dump(state, f, indent=2)
+print('Created OK')
+"
+chown sentinel:systemd-journal /root/.openclaw/workspace/logs/enb-state.json
+```
+
 ### OpenClaw out of memory (OOM killed)
 ```bash
 # Check if container was OOM killed

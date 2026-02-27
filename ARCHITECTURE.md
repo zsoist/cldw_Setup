@@ -86,6 +86,8 @@
 | ai-daily-brief-builder/ | /ai_daily_brief_builder | Flash |
 | ai-daily-brief-status/ | /ai_daily_brief_status | Flash |
 | ai-daily-brief-watchlist/ | /ai_daily_brief_watchlist | Flash |
+| expert-network-brief/ | /expert_network_brief | Flash (2x daily cron) |
+| expert-network-brief-status/ | /expert_network_brief_status | Flash |
 | daily-briefing/ | /daily_briefing | Flash |
 | job-radar/ | /job_* | Flash |
 | research-assistant/ | /research | Pro (on-demand) |
@@ -168,7 +170,7 @@
 | Path | Purpose | Owner | Critical Notes |
 |------|---------|-------|----------------|
 | /root/.openclaw/openclaw.json | Live gateway config | sentinel:systemd-journal (640) | Edit tool resets to root:root -- always chown after |
-| /root/.openclaw/cron/jobs.json | Live cron jobs | sentinel:systemd-journal | timeoutSeconds=180, model=Pro |
+| /root/.openclaw/cron/jobs.json | Live cron jobs (3 jobs) | sentinel:systemd-journal | AI Brief: Pro/180s, ENB AM: Flash/120s, ENB PM: Flash/90s |
 | /root/.openclaw/workspace/ | Live workspace (SOUL.md, AGENTS.md, etc.) | sentinel:systemd-journal | Bind-mounted into container |
 | /root/.openclaw/skills/ | Live skills | sentinel:systemd-journal | Synced from repo openclaw/skills/ |
 | /root/.openclaw/secrets/ | Token files | sentinel:systemd-journal | telegram-default.token |
@@ -197,9 +199,13 @@
 | Active hours | 07:00-23:00 COT | openclaw.json agents.defaults.heartbeat.activeHours |
 | Session timeout | 300s | openclaw.json agents.defaults.timeoutSeconds |
 | Sub-agent model | Flash | openclaw.json agents.defaults.subagents.model |
-| Cron model | Gemini 2.5 Pro | jobs.json payload.model |
-| Cron timeout | 180s | jobs.json payload.timeoutSeconds |
-| Cron schedule | 10 12 * * * UTC (07:10 COT) | jobs.json schedule.expr |
+| AI Brief cron model | Gemini 2.5 Pro | jobs.json [0].payload.model |
+| AI Brief cron timeout | 180s | jobs.json [0].payload.timeoutSeconds |
+| AI Brief cron schedule | 10 12 * * * UTC (07:10 COT) | jobs.json [0].schedule.expr |
+| ENB morning cron model | Gemini 2.5 Flash | jobs.json [1].payload.model |
+| ENB morning cron schedule | 0 12 * * * UTC (07:00 COT) | jobs.json [1].schedule.expr |
+| ENB evening cron schedule | 0 23 * * * UTC (18:00 COT) | jobs.json [2].schedule.expr |
+| ENB state file | enb-state.json | workspace/logs/enb-state.json |
 | Sentinel provider | google | sentinel.env SENTINEL_PROVIDER |
 | Sentinel max_tokens | 768 | sentinel.env SENTINEL_MAX_TOKENS |
 | Sentinel max_tool_iterations | 4 | sentinel.env SENTINEL_MAX_TOOL_ITERATIONS |

@@ -11,9 +11,46 @@
 
 ## Current State
 
-`main` is current through **2026-02-27 (Full cost optimization audit + documentation overhaul)**. All services healthy on VPS.
+`main` is current through **2026-02-27 (Expert Network Brief + cost optimization audit + docs overhaul)**. All services healthy on VPS.
 
-Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-27)** as authoritative.
+Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-27, Expert Network Brief)** as authoritative.
+
+### Latest pass (2026-02-27, Expert Network Intelligence Brief)
+
+New feature: competitive intelligence brief monitoring 8 expert network competitors for Dialectica.
+
+**New files (repo):**
+- `openclaw/skills/expert-network-brief/SKILL.md` — Main skill (Flash, ~8.5KB prompt)
+- `openclaw/skills/expert-network-brief-status/SKILL.md` — Status alias
+
+**Modified files (repo):**
+- `openclaw/jobs.json` — Added 2 ENB cron jobs (AM=12:00 UTC, PM=23:00 UTC)
+- `openclaw/config/SOUL.md` — Added ENB routing, alias normalization
+- `openclaw/config/AGENTS.md` — Added Expert Network Intelligence Analyst agent, fixed heartbeat to 90m
+- `README.md` — Added ENB section, updated cron table (3 jobs), updated project tree
+- `ARCHITECTURE.md` — Added ENB skills, cron entries, state file to index
+- `docs/TROUBLESHOOTING.md` — Added ENB troubleshooting section
+
+**Deployed on VPS:**
+- Skills synced to `/root/.openclaw/skills/expert-network-brief*/`
+- State file created at `/root/.openclaw/workspace/logs/enb-state.json`
+- Cron jobs in `/root/.openclaw/cron/jobs.json` (3 jobs total)
+- SOUL.md and AGENTS.md updated in workspace
+- Gateway reloaded via SIGUSR1 — no errors
+
+**Cron schedule (all 3 jobs):**
+
+| Job | UTC | COT | Model | Timeout |
+|-----|-----|-----|-------|---------|
+| AI Daily Brief Top5 | 10 12 * * * | 07:10 | Pro | 180s |
+| ENB Morning (full scan) | 0 12 * * * | 07:00 | Flash | 120s |
+| ENB Evening (delta) | 0 23 * * * | 18:00 | Flash | 90s |
+
+**ENB cost profile:** ~$0.005/run × 2 runs/day = ~$0.30/month (Flash + 2-3 Brave calls).
+
+**Competitors monitored:** GLG, AlphaSights, Guidepoint, Third Bridge, Capvision, Prospex, Coleman Research, Atheneum Partners + Dialectica (self).
+
+---
 
 ### Latest pass (2026-02-27, Full cost optimization audit + documentation overhaul)
 

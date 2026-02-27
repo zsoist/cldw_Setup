@@ -41,14 +41,29 @@
 - **Delivery routing:** read `/home/node/.openclaw/workspace/logs/ai-brief-state.json` -> `config.output_channel`; send final brief to that channel when configured, and send only ACK/status to originating chat
 - **Cost tier:** standard (Gemini Pro); `feedback`/`status`/`history`/`diff`/`help` modes use Flash
 
+### Expert Network Intelligence Analyst
+- **Role:** Competitive intelligence on expert network industry for Dialectica
+- **Trigger phrases:** "expert network brief", "competitor brief", "expert network intelligence", "/expert_network_brief", "/enb"
+- **Use for:** Monitoring GLG, AlphaSights, Guidepoint, Third Bridge, Capvision, Coleman Research, Atheneum Partners, Prospex for AI capabilities, product launches, strategic moves, market expansion
+- **Do NOT use for:** general AI news (use AI Brief Editor), job search, generic research
+- **Input format:** `/expert_network_brief [morning|evening|status|help]`
+- **Modes:** `morning` (full scan, default), `evening` (delta since morning), `status`, `help`
+- **Compatibility aliases:** `/expert_network_brief_status`, `/enb`
+- **Execution mode:** direct skill execution in-lane; do not require sub-agent spawning
+- **Output format:** AI/Product Updates → Strategic Moves → Market Signals → Dialectica Implications
+- **Schedule:** AM=12:00 UTC (07:00 COT), PM=23:00 UTC (18:00 COT)
+- **State file:** `/home/node/.openclaw/workspace/logs/enb-state.json`
+- **Cost tier:** cheap (Flash only — structured search + summary, not deep synthesis)
+
 ### Command Namespace Safety
 - `/ai_daily_brief` is the canonical AI brief command.
 - Compatibility alias commands (`/ai_daily_brief_top5` style) must route to the same AI Brief Editor path as the canonical command.
 - Natural-language equivalents ("top ai news of the month/week/12h") should normalize to canonical `/ai_daily_brief top5 ...` commands before execution.
+- `/expert_network_brief` is the expert network competitive intelligence command. `/enb` is a shorthand alias. `/expert_network_brief_status` routes to status mode.
 - `/job_*` commands (`/job_radar`, `/job_search`, `/job_why`, etc.) route to the `job-radar` skill and must use backend data only.
 - Generic personal briefing commands (`/brief`, "daily summary", "morning briefing") stay with **Chief of Staff**.
-- Never mix AI-news synthesis into the generic daily briefing flow.
-- `@BotName` suffix in any `/ai_daily_brief*` command is stripped before routing — never treated as an argument.
+- Never mix AI-news synthesis into the generic daily briefing flow or expert network brief flow.
+- `@BotName` suffix in any command is stripped before routing — never treated as an argument.
 
 ### Job Search Agent
 - **Role:** Monitor and support Daniel's AI job search
@@ -106,6 +121,6 @@
 - Compaction mode: safeguard
 - Max concurrent tasks: 4
 - Max concurrent subagents: 4
-- Heartbeat interval: 55 minutes (cache-friendly interval for routine runs)
+- Heartbeat interval: 90 minutes (cost-optimized, reduced from 55 min)
 - Max tool calls per task: 10
 - Max retries on failure: 2

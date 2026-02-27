@@ -25,16 +25,58 @@
         "mode": "announce",
         "channel": "telegram",
         "to": "-1003826801947"
+      }
+    },
+    {
+      "id": "a3f8b2c1-7d4e-4a9f-b6c3-2e1f0d9a8b7c",
+      "agentId": "main",
+      "name": "Expert Network Brief (Morning)",
+      "enabled": true,
+      "createdAtMs": 1772150400000,
+      "updatedAtMs": 1772150400000,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 12 * * *",
+        "tz": "UTC"
       },
-      "state": {
-        "nextRunAtMs": 1772194200000,
-        "lastRunAtMs": 1772107800008,
-        "lastRunStatus": "error",
-        "lastStatus": "error",
-        "lastDurationMs": 60085,
-        "lastDeliveryStatus": "unknown",
-        "consecutiveErrors": 2,
-        "lastError": "cron: job execution timed out"
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "/expert_network_brief morning",
+        "model": "google/gemini-2.5-flash",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003826801947"
+      }
+    },
+    {
+      "id": "b4e9c3d2-8e5f-4b0a-c7d4-3f2a1e0b9c8d",
+      "agentId": "main",
+      "name": "Expert Network Brief (Evening)",
+      "enabled": true,
+      "createdAtMs": 1772150400000,
+      "updatedAtMs": 1772150400000,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 23 * * *",
+        "tz": "UTC"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "/expert_network_brief evening",
+        "model": "google/gemini-2.5-flash",
+        "timeoutSeconds": 90
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003826801947"
       }
     }
   ]

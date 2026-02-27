@@ -145,13 +145,15 @@ Several interaction paths bypass the LLM entirely:
 
 ### 12. Cron Architecture
 
-1 scheduled job. Everything else runs on-demand.
+3 scheduled jobs. Everything else runs on-demand.
 
-| Job | Schedule (UTC) | Schedule (COT) | Model |
-|-----|----------------|----------------|-------|
-| AI Daily Brief Top5 (Previous Day) | `10 12 * * *` | 07:10 daily | Gemini 2.5 Pro |
+| # | Job | Schedule (UTC) | Schedule (COT) | Model | Timeout |
+|---|-----|----------------|----------------|-------|---------|
+| 1 | AI Daily Brief Top5 (Previous Day) | `10 12 * * *` | 07:10 daily | Gemini 2.5 Pro | 180s |
+| 2 | Expert Network Brief (Morning) | `0 12 * * *` | 07:00 daily | Gemini 2.5 Flash | 120s |
+| 3 | Expert Network Brief (Evening) | `0 23 * * *` | 18:00 daily | Gemini 2.5 Flash | 90s |
 
-Session: isolated. Timeout: 180s. Delivery: Telegram channel. Max concurrent runs: 1.
+Session: isolated. Delivery: Telegram channel `-1003826801947`. Max concurrent runs: 1.
 
 ### 13. Additional Tuning
 
@@ -199,6 +201,42 @@ Compatibility aliases: `/ai_daily_brief_top5`, `/ai_daily_brief_morning`, etc.
 - Stale `last_run.status="running"` locks cleared by `infrastructure/reconcile-ai-brief-state.sh`
 - Monthly archive: `workspace/outputs/summaries/ai-brief-stories-YYYY-MM.json`
 - Output channel: `-1003826801947` (Telegram channel, bot is admin)
+
+## Expert Network Intelligence Brief
+
+Automated competitive intelligence on the expert network industry, tailored for Dialectica. Monitors 8 competitors for AI capabilities, product launches, and strategic moves.
+
+### Competitors Monitored
+GLG, AlphaSights, Guidepoint, Third Bridge, Capvision, Prospex (by Capvision), Coleman Research, Atheneum Partners. Also tracks Dialectica for market positioning context.
+
+### Commands
+```
+/expert_network_brief                  # Full morning scan (default)
+/expert_network_brief morning          # Full scan
+/expert_network_brief evening          # Delta since morning
+/expert_network_brief status           # Last run + health
+/expert_network_brief help             # Command reference
+/enb                                   # Shorthand for morning scan
+/expert_network_brief_status           # Status alias
+```
+
+### Intelligence Priorities (ranked)
+1. **AI capabilities, features, products** (HIGHEST — Dialectica's strategic focus)
+2. Strategic moves — acquisitions, mergers, partnerships, funding
+3. Market expansion — new geographies, verticals, client segments
+4. Leadership changes, industry trends
+
+### Cost Profile
+- Model: **Gemini 2.5 Flash** (structured search + summary — no deep synthesis needed)
+- Brave queries: 2-3 per morning scan, 1-2 per evening delta
+- Est. cost per run: ~$0.005 | Daily (2 runs): ~$0.01 | Monthly: ~**$0.30**
+- State file: `workspace/logs/enb-state.json`
+
+### Schedule
+| Scan | UTC | COT | Mode |
+|------|-----|-----|------|
+| Morning | 12:00 | 07:00 | Full scan (2-3 Brave queries) |
+| Evening | 23:00 | 18:00 | Delta update (new findings only) |
 
 ## Job Radar
 
@@ -342,7 +380,7 @@ for _ in range(max_tool_iterations):    # Capped at 4
 │
 ├── openclaw/                              # OpenClaw Gateway configuration
 │   ├── openclaw-config.json               # Gateway runtime config (schema-valid)
-│   ├── jobs.json                          # Cron job registry (daily brief at 12:10 UTC)
+│   ├── jobs.json                          # Cron job registry (3 jobs: AI brief + ENB AM/PM)
 │   ├── docker-compose.yml                 # Docker config with resource limits
 │   ├── SOUL.md                            # Root SOUL (runtime bootstrap)
 │   ├── BOOT.md                            # Startup health checks
@@ -377,6 +415,8 @@ for _ in range(max_tool_iterations):    # Capped at 4
 │   │   ├── ai-daily-brief-builder/SKILL.md
 │   │   ├── ai-daily-brief-status/SKILL.md
 │   │   ├── ai-daily-brief-watchlist/SKILL.md
+│   │   ├── expert-network-brief/SKILL.md  # Competitor intel (Flash, 2x daily)
+│   │   ├── expert-network-brief-status/SKILL.md # ENB status alias
 │   │   ├── daily-briefing/SKILL.md        # Morning planning briefing
 │   │   ├── job-radar/SKILL.md             # Job Radar command router
 │   │   ├── research-assistant/SKILL.md    # Deep research (Pro, on-demand)
@@ -605,12 +645,14 @@ cat /root/.openclaw/workspace/logs/api-cost-rollup.json | python3 -m json.tool
 | Sentinel provider toggle | Gemini Flash default; Anthropic available as fallback for resilience. |
 | Silent hours 23:00-07:00 | Eliminates proactive API calls during sleep hours. |
 | Multi-agent main + work | Separates personal/professional data with sandboxing. Reduces context per agent. |
-| 1 cron job only | Only the daily brief is automated. Everything else is on-demand to control spend. |
+| 3 cron jobs (AI Brief + ENB 2x) | AI brief on Pro, ENB on Flash. Everything else on-demand. |
+| ENB on Flash only | Structured search + summary doesn't need Pro. ~$0.30/month for 2x daily. |
 | Sub-agents on Flash | Prevents accidental Pro escalation from sub-agent spawns. |
 | imageModel Flash | Image generation uses Flash, not Pro -- significant cost reduction. |
 | Docker weekly auto-prune | Prevents multi-GB build cache accumulation on the 80GB disk. |
 | Health check TTL 3h | Job Radar external checks cached for 3 hours -- prevents dashboard-driven API spend. |
 | Content-based digest dedup | Prevents duplicate Job Radar digests when the same jobs appear across runs. |
+| Batch competitor queries | ENB batches 8 competitors into 2-3 Brave calls instead of 8 separate calls. |
 
 ## Config Versioning
 
