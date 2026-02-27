@@ -29,7 +29,7 @@
         "google/gemini-2.5-flash": {}
       },
       "compaction": {
-        "mode": "safeguard"
+        "mode": "default"
       },
       "contextPruning": {
         "mode": "cache-ttl",
