@@ -62,8 +62,7 @@ TOOLS = [
                 },
                 "lines": {
                     "type": "integer",
-                    "description": "Number of log lines to retrieve (default 50, max 200)",
-                    "maximum": 200
+                    "description": "Number of log lines to retrieve (default 50, max 200)"
                 }
             },
             "required": ["container_name"]
