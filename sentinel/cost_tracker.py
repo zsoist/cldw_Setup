@@ -83,18 +83,20 @@ class _Pricing:
     output_per_million: float
 
 
-# Approximate list prices in USD per 1M tokens. Override in code if needed.
+# List prices in USD per 1M tokens. Updated: 2026-02-27.
+# Sources: ai.google.dev/gemini-api/docs/pricing
+#          platform.claude.com/docs/en/about-claude/pricing
 _MODEL_PRICING: dict[str, _Pricing] = {
-    "google/gemini-2.5-flash": _Pricing(input_per_million=0.10, output_per_million=0.40),
-    "google/gemini-2.5-pro": _Pricing(input_per_million=1.25, output_per_million=5.00),
-    "anthropic/claude-haiku-4-5": _Pricing(input_per_million=0.80, output_per_million=4.00),
+    "google/gemini-2.5-flash": _Pricing(input_per_million=0.30, output_per_million=2.50),
+    "google/gemini-2.5-pro": _Pricing(input_per_million=1.25, output_per_million=10.00),
+    "anthropic/claude-haiku-4-5": _Pricing(input_per_million=1.00, output_per_million=5.00),
     "anthropic/claude-sonnet-4-6": _Pricing(input_per_million=3.00, output_per_million=15.00),
-    "anthropic/claude-opus-4-6": _Pricing(input_per_million=15.00, output_per_million=75.00),
+    "anthropic/claude-opus-4-6": _Pricing(input_per_million=5.00, output_per_million=25.00),
 }
 
 _PROVIDER_DEFAULT_PRICING: dict[str, _Pricing] = {
-    "google": _Pricing(input_per_million=0.10, output_per_million=0.40),
-    "anthropic": _Pricing(input_per_million=0.80, output_per_million=4.00),
+    "google": _Pricing(input_per_million=0.30, output_per_million=2.50),
+    "anthropic": _Pricing(input_per_million=1.00, output_per_million=5.00),
 }
 
 
@@ -160,6 +162,8 @@ class APICostTracker:
         self._summary_path = Path(summary_file)
         self._retention_days = max(30, retention_days)
         self._lock = threading.Lock()
+        self._records_since_prune = 0
+        self._prune_interval = 100  # prune every N records, not every call
         self._prepare_paths()
 
     def _prepare_paths(self) -> None:
@@ -217,7 +221,10 @@ class APICostTracker:
             self._append_event(event)
             summary = self._load_summary()
             self._apply_event(summary, event, ts)
-            self._prune_summary(summary, ts)
+            self._records_since_prune += 1
+            if self._records_since_prune >= self._prune_interval:
+                self._prune_summary(summary, ts)
+                self._records_since_prune = 0
             summary["updated_at"] = _utc_iso(ts)
             self._write_summary(summary)
 
@@ -239,7 +246,7 @@ class APICostTracker:
         except (json.JSONDecodeError, OSError):
             return self._new_summary()
 
-        data.setdefault("version", "2026-02-26-v1")
+        data.setdefault("version", "2026-02-27-v2")
         data.setdefault("currency", "USD")
         data.setdefault("generated_by", "sentinel")
         data.setdefault("updated_at", _utc_iso())
@@ -251,7 +258,7 @@ class APICostTracker:
     @staticmethod
     def _new_summary() -> dict[str, Any]:
         return {
-            "version": "2026-02-26-v1",
+            "version": "2026-02-27-v2",
             "currency": "USD",
             "generated_by": "sentinel",
             "updated_at": _utc_iso(),
@@ -399,8 +406,8 @@ class APICostTracker:
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(summary, f, indent=2, ensure_ascii=False)
                 f.write("\n")
+            os.chmod(tmp_path, 0o640)
             os.replace(tmp_path, self._summary_path)
-            os.chmod(self._summary_path, 0o640)
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)

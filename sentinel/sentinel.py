@@ -348,10 +348,32 @@ class SentinelAgent:
             window.append(now)
             return True, 0
 
+    def _cleanup_stale_users(self, now: float) -> None:
+        """Remove per-user state for users inactive longer than 2x conversation TTL.
+
+        Prevents unbounded dict growth across conversations, _last_activity,
+        _request_windows, and _last_request_stats.
+        MUST be called while self._state_lock is held.
+        """
+        stale_threshold = self.config.conversation_ttl_seconds * 2
+        stale_ids = [
+            uid for uid, last_seen in self._last_activity.items()
+            if (now - last_seen) > stale_threshold
+        ]
+        for uid in stale_ids:
+            self.conversations.pop(uid, None)
+            self._last_activity.pop(uid, None)
+            self._request_windows.pop(uid, None)
+            self._last_request_stats.pop(uid, None)
+        if stale_ids:
+            logger.debug("Cleaned up state for %d stale user(s)", len(stale_ids))
+
     def _prepare_history(self, user_id: int) -> list[dict[str, Any]]:
         """Get mutable message history and expire stale sessions."""
         now = time.monotonic()
         with self._state_lock:
+            self._cleanup_stale_users(now)
+
             last_seen = self._last_activity.get(user_id)
             if last_seen is not None and (now - last_seen) > self.config.conversation_ttl_seconds:
                 self.conversations[user_id] = []
@@ -488,6 +510,12 @@ class SentinelAgent:
         if usage_obj is None:
             usage_obj = getattr(response, "usageMetadata", None)
         if usage_obj is None:
+            logger.debug(
+                "Gemini response has no usage_metadata; token counts unavailable "
+                "(response type: %s, has candidates: %s)",
+                type(response).__name__,
+                bool(getattr(response, "candidates", None)),
+            )
             return 0, 0
         # Proto objects expose fields as attributes, NOT dict keys
         input_tokens = int(

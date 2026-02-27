@@ -10,6 +10,18 @@
 | LLM API (target) | $6-15 |
 | **Total target** | **$14-23/month** |
 
+## Current API pricing (verified 2026-02-27)
+
+| Model | Input (per 1M tokens) | Output (per 1M tokens) | Role |
+|-------|----------------------|------------------------|------|
+| Gemini 2.5 Flash | $0.30 | $2.50 | Default (everything) |
+| Gemini 2.5 Pro | $1.25 | $10.00 | Escalation (complex synthesis) |
+| Claude Sonnet 4.6 | $3.00 | $15.00 | Manual explicit only |
+| Claude Opus 4.6 | $5.00 | $25.00 | Manual explicit only |
+| Claude Haiku 4.5 | $1.00 | $5.00 | BANNED (never used) |
+
+Sources: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing), [platform.claude.com/docs/en/about-claude/pricing](https://platform.claude.com/docs/en/about-claude/pricing)
+
 ## API spending limits
 
 1. Google AI Studio / Gemini billing:

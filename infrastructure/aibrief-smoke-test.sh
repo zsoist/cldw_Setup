@@ -687,7 +687,7 @@ PY
       -H 'Accept-Encoding: gzip' \
       -H "X-Subscription-Token: ${BRAVE_API_KEY}" \
       -H 'Content-Type: application/json' \
-      -d '{"q":"latest ai model release updates","count":5,"maximum_number_of_tokens":2048,"context_threshold_mode":"balanced"}' \
+      -d '{"q":"latest ai model release updates","count":1,"maximum_number_of_tokens":512,"context_threshold_mode":"balanced"}' \
       'https://api.search.brave.com/res/v1/llm/context' \
       2>/tmp/aibrief-brave-context.err || true)"
     if [ "$BRAVE_HTTP_CODE" = "200" ]; then

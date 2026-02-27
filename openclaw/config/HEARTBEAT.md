@@ -3,7 +3,7 @@
 # Heartbeat Configuration
 
 ## Schedule
-- Interval: every 55 minutes (cache-aligned)
+- Interval: every 90 minutes (cost-optimized)
 - Active hours: 07:00 - 23:00 COT (UTC-5)
 - Silent hours: 23:00 - 07:00 (no proactive messages)
 
