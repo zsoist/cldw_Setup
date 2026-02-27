@@ -306,6 +306,14 @@ class SentinelAgent:
             return "Please send a command or question."
         if normalized in {"hi", "hello", "hey", "hola", "buenas"}:
             return "Hello. How can I help?"
+        if normalized in {"thanks", "thank you", "thx", "gracias", "ty"}:
+            return "You're welcome."
+        if normalized in {"ok", "okay", "got it", "understood", "k"}:
+            return "Standing by."
+        if normalized in {"help", "?"}:
+            return "Commands: /status, /openclaw, /security, /backup, /cost, or describe what you need."
+        if normalized == "ping":
+            return "Pong."
         if any(
             token in normalized
             for token in (
@@ -368,13 +376,13 @@ class SentinelAgent:
             }
             raw = json.dumps(fallback, ensure_ascii=False)
 
-        if len(raw) <= 4000:
+        if len(raw) <= 2000:
             return raw, False
 
         truncated = {
             "truncated": True,
             "original_length": len(raw),
-            "preview": raw[:3500],
+            "preview": raw[:1500],
         }
         return json.dumps(truncated, ensure_ascii=False), True
 
@@ -473,20 +481,29 @@ class SentinelAgent:
         return max(input_tokens, 0), max(output_tokens, 0)
 
     def _extract_google_usage(self, response: Any) -> tuple[int, int]:
+        """Extract token counts from Gemini proto objects via direct attribute access."""
         usage_obj = getattr(response, "usage_metadata", None)
         if usage_obj is None:
             usage_obj = getattr(response, "usageMetadata", None)
-        usage = self._coerce_mapping(usage_obj)
-        input_tokens = int(usage.get("prompt_token_count") or usage.get("promptTokenCount") or 0)
+        if usage_obj is None:
+            return 0, 0
+        # Proto objects expose fields as attributes, NOT dict keys
+        input_tokens = int(
+            getattr(usage_obj, "prompt_token_count", 0)
+            or getattr(usage_obj, "promptTokenCount", 0)
+            or 0
+        )
         output_tokens = int(
-            usage.get("candidates_token_count")
-            or usage.get("candidatesTokenCount")
-            or usage.get("output_token_count")
-            or usage.get("outputTokenCount")
+            getattr(usage_obj, "candidates_token_count", 0)
+            or getattr(usage_obj, "candidatesTokenCount", 0)
             or 0
         )
         if output_tokens == 0:
-            total_tokens = int(usage.get("total_token_count") or usage.get("totalTokenCount") or 0)
+            total_tokens = int(
+                getattr(usage_obj, "total_token_count", 0)
+                or getattr(usage_obj, "totalTokenCount", 0)
+                or 0
+            )
             if total_tokens > 0 and input_tokens > 0:
                 output_tokens = max(0, total_tokens - input_tokens)
         return max(input_tokens, 0), max(output_tokens, 0)

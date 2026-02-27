@@ -7,7 +7,7 @@ triggers:
   - "top ai news"
   - "top ai stories"
   - "/ai_daily_brief"
-schedule: "0 7 * * *"
+schedule: "10 12 * * *"
 model: google/gemini-2.5-pro
 cost_tier: standard
 ---

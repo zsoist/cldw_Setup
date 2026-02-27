@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 TOOLS = [
     {
         "name": "system_stats",
-        "description": "Get current CPU, memory, disk usage, and uptime of the VPS.",
+        "description": "Get CPU, RAM, disk, swap, uptime stats.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -28,7 +28,7 @@ TOOLS = [
     },
     {
         "name": "docker_status",
-        "description": "List all Docker containers with their status, uptime, and resource usage.",
+        "description": "List Docker containers with status and resource usage.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -37,7 +37,7 @@ TOOLS = [
     },
     {
         "name": "docker_restart",
-        "description": "Restart a Docker container by name. Use for recovering crashed services.",
+        "description": "Restart a Docker container by name.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -69,7 +69,7 @@ TOOLS = [
     },
     {
         "name": "run_command",
-        "description": "Execute a shell command on the VPS. RESTRICTED: only whitelisted commands allowed (systemctl, journalctl, df, free, top, ufw, ss, ping, dig, curl for health checks). No rm, no sudo su, no package management.",
+        "description": "Run a whitelisted shell command (systemctl, journalctl, df, free, top, ufw, ss, ping, dig, curl).",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -83,7 +83,7 @@ TOOLS = [
     },
     {
         "name": "check_security",
-        "description": "Run a basic security audit: check open ports, failed SSH attempts, UFW status, running services, disk encryption status.",
+        "description": "Run security audit: ports, SSH, UFW, services.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -92,7 +92,7 @@ TOOLS = [
     },
     {
         "name": "check_openclaw_health",
-        "description": "Verify OpenClaw gateway is running, check its logs for errors, and report uptime.",
+        "description": "Check OpenClaw gateway health and recent errors.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -101,7 +101,7 @@ TOOLS = [
     },
     {
         "name": "backup_openclaw",
-        "description": "Create a compressed backup of OpenClaw's config and workspace directories.",
+        "description": "Create compressed backup of OpenClaw config.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -110,7 +110,7 @@ TOOLS = [
     },
     {
         "name": "cost_summary",
-        "description": "Get API cost and token usage summary for all services (Sentinel + OpenClaw). Shows daily, weekly, monthly totals broken down by provider and model.",
+        "description": "Get API cost summary. Period: today/week/month/all.",
         "input_schema": {
             "type": "object",
             "properties": {

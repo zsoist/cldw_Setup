@@ -1,4 +1,5 @@
 """Telegram bot interface for Sentinel."""
+import json
 import logging
 from telegram import Update
 from telegram.error import BadRequest
@@ -12,6 +13,14 @@ from telegram.ext import (
 
 from config import SentinelConfig
 from sentinel import SentinelAgent
+from tools import (
+    execute_system_stats,
+    execute_docker_status,
+    execute_check_openclaw_health,
+    execute_check_security,
+    execute_backup_openclaw,
+    execute_cost_summary,
+)
 
 logger = logging.getLogger("sentinel.telegram")
 
@@ -93,47 +102,149 @@ class SentinelTelegramBot:
             parse_mode="Markdown"
         )
 
+    def _format_static_stats(self, user_id: int) -> str:
+        """Format system status directly from tools — zero LLM cost."""
+        stats = execute_system_stats()
+        docker = execute_docker_status()
+        lines = [
+            f"*System Status*",
+            f"CPU: {stats.get('cpu_percent', '?')}% | "
+            f"RAM: {stats.get('memory_used_gb', '?')}/{stats.get('memory_total_gb', '?')}GB "
+            f"({stats.get('memory_percent', '?')}%)",
+            f"Disk: {stats.get('disk_used_gb', '?')}/{stats.get('disk_total_gb', '?')}GB "
+            f"({stats.get('disk_percent', '?')}%)",
+            f"Swap: {stats.get('swap_used_gb', '?')}/{stats.get('swap_total_gb', '?')}GB",
+            f"Uptime: {stats.get('uptime', '?')}",
+            "",
+            "*Containers:*",
+        ]
+        for c in docker.get("containers", []):
+            lines.append(f"• {c.get('name', '?')}: {c.get('status', '?')}")
+        # Set zero-cost stats so footer shows 0 tokens
+        zero_stats = self.agent._new_request_stats()
+        zero_stats["status"] = "cached"
+        self.agent._store_last_request_stats(user_id, zero_stats)
+        return "\n".join(lines)
+
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Quick system status."""
+        """Quick system status — direct tool execution, zero LLM cost."""
         if not self._is_authorized(update.effective_user.id):
             return
-        response = self.agent.process_message(
-            update.effective_user.id,
-            "Give me a quick system status: CPU, RAM, disk, and Docker containers. Be concise."
-        )
+        try:
+            response = self._format_static_stats(update.effective_user.id)
+        except Exception as e:
+            logger.error(f"Status command failed: {e}", exc_info=True)
+            response = f"Error getting status: {str(e)[:200]}"
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
     async def openclaw_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Check OpenClaw health."""
+        """Check OpenClaw health — direct tool execution, zero LLM cost."""
         if not self._is_authorized(update.effective_user.id):
             return
-        response = self.agent.process_message(
-            update.effective_user.id,
-            "Check OpenClaw gateway health: is it running, any recent errors, HTTP status."
-        )
+        try:
+            result = execute_check_openclaw_health()
+            lines = [f"*OpenClaw Health*"]
+            lines.append(f"Container: {result.get('container_status', '?')}")
+            lines.append(f"Uptime: {result.get('uptime', '?')}")
+            lines.append(f"HTTP: {result.get('http_status', '?')}")
+            errors = result.get("recent_errors", [])
+            if errors:
+                lines.append(f"\n*Recent Errors ({len(errors)}):*")
+                for e in errors[:5]:
+                    lines.append(f"• {str(e)[:120]}")
+            else:
+                lines.append("No recent errors.")
+            response = "\n".join(lines)
+        except Exception as e:
+            logger.error(f"OpenClaw command failed: {e}", exc_info=True)
+            response = f"Error checking OpenClaw: {str(e)[:200]}"
+        zero_stats = self.agent._new_request_stats()
+        zero_stats["status"] = "cached"
+        self.agent._store_last_request_stats(update.effective_user.id, zero_stats)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
     async def security_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Run security audit."""
+        """Run security audit — direct tool execution, zero LLM cost."""
         if not self._is_authorized(update.effective_user.id):
             return
-        response = self.agent.process_message(
-            update.effective_user.id,
-            "Run a security audit: UFW status, failed SSH attempts, open ports, running services."
-        )
+        try:
+            result = execute_check_security()
+            lines = [f"*Security Audit*"]
+            for section in ["ufw_status", "open_ports", "failed_ssh_attempts", "running_services"]:
+                val = result.get(section, "N/A")
+                label = section.replace("_", " ").title()
+                if isinstance(val, list):
+                    lines.append(f"\n*{label}:*")
+                    for item in val[:10]:
+                        lines.append(f"• {str(item)[:120]}")
+                else:
+                    lines.append(f"{label}: {str(val)[:200]}")
+            response = "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Security command failed: {e}", exc_info=True)
+            response = f"Error running security audit: {str(e)[:200]}"
+        zero_stats = self.agent._new_request_stats()
+        zero_stats["status"] = "cached"
+        self.agent._store_last_request_stats(update.effective_user.id, zero_stats)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
     async def backup_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Trigger OpenClaw backup."""
+        """Trigger OpenClaw backup — direct tool execution, zero LLM cost."""
         if not self._is_authorized(update.effective_user.id):
             return
-        response = self.agent.process_message(
-            update.effective_user.id,
-            "Create a backup of OpenClaw's config and workspace. Report the file path and size."
-        )
+        try:
+            result = execute_backup_openclaw()
+            if result.get("status") == "success":
+                response = (
+                    f"*Backup Complete*\n"
+                    f"File: `{result.get('backup_file', '?')}`\n"
+                    f"Size: {result.get('size_bytes', 0) / 1024 / 1024:.1f} MB"
+                )
+            else:
+                response = f"Backup failed: {result.get('error', 'unknown')}"
+        except Exception as e:
+            logger.error(f"Backup command failed: {e}", exc_info=True)
+            response = f"Error creating backup: {str(e)[:200]}"
+        zero_stats = self.agent._new_request_stats()
+        zero_stats["status"] = "cached"
+        self.agent._store_last_request_stats(update.effective_user.id, zero_stats)
+        response = self._append_usage_footer(update.effective_user.id, response)
+        await self._reply_text_safe_chunked(update.message, response)
+
+    async def cost_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Show API cost summary — direct tool execution, zero LLM cost."""
+        if not self._is_authorized(update.effective_user.id):
+            return
+        try:
+            args = (context.args[0] if context.args else "today")
+            result = execute_cost_summary(args)
+            lines = [f"*API Cost Summary ({args})*"]
+            for svc_name, svc_data in result.items():
+                if svc_name in ("grand_total", "daily_budget_remaining"):
+                    continue
+                if not isinstance(svc_data, dict):
+                    continue
+                in_t = svc_data.get("input_tokens", 0)
+                out_t = svc_data.get("output_tokens", 0)
+                usd = svc_data.get("estimated_usd", 0)
+                lines.append(f"\n*{svc_name}:* {in_t}/{out_t} tokens — ${usd:.6f}")
+            total = result.get("grand_total", {})
+            if total:
+                cop = total.get("estimated_cop", 0)
+                lines.append(f"\n*Total:* ${total.get('estimated_usd', 0):.6f} USD / ${cop:,.0f} COP")
+            remaining = result.get("daily_budget_remaining")
+            if remaining is not None:
+                lines.append(f"Daily budget remaining: ${remaining:.4f}")
+            response = "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Cost command failed: {e}", exc_info=True)
+            response = f"Error getting cost summary: {str(e)[:200]}"
+        zero_stats = self.agent._new_request_stats()
+        zero_stats["status"] = "cached"
+        self.agent._store_last_request_stats(update.effective_user.id, zero_stats)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
@@ -167,6 +278,7 @@ class SentinelTelegramBot:
         app.add_handler(CommandHandler("openclaw", self.openclaw_command))
         app.add_handler(CommandHandler("security", self.security_command))
         app.add_handler(CommandHandler("backup", self.backup_command))
+        app.add_handler(CommandHandler("cost", self.cost_command))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
         logger.info("Sentinel Telegram bot starting...")

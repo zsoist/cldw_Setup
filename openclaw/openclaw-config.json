@@ -19,10 +19,8 @@
       "thinkingDefault": "off",
       "verboseDefault": "off",
       "imageModel": {
-        "primary": "google/gemini-2.5-pro",
-        "fallbacks": [
-          "google/gemini-2.5-flash"
-        ]
+        "primary": "google/gemini-2.5-flash",
+        "fallbacks": []
       },
       "models": {
         "google/gemini-2.5-pro": {
@@ -33,6 +31,12 @@
       "compaction": {
         "mode": "safeguard"
       },
+      "contextPruning": {
+        "mode": "cache-ttl",
+        "ttl": "30m",
+        "keepLastAssistants": 3,
+        "minPrunableToolChars": 50000
+      },
       "subagents": {
         "model": "google/gemini-2.5-flash",
         "maxConcurrent": 1,
@@ -40,7 +44,7 @@
         "archiveAfterMinutes": 30
       },
       "heartbeat": {
-        "every": "55m",
+        "every": "90m",
         "model": "google/gemini-2.5-flash",
         "ackMaxChars": 100,
         "activeHours": {
@@ -51,7 +55,7 @@
       },
       "timeoutSeconds": 300,
       "workspace": "/home/node/.openclaw/workspace",
-      "contextTokens": 131072,
+      "contextTokens": 65536,
       "maxConcurrent": 4
     }
   },
