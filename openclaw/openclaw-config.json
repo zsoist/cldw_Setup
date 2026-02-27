@@ -101,6 +101,32 @@
       "search": {
         "provider": "brave"
       }
+    },
+    "media": {
+      "models": ["google/gemini-2.5-flash"],
+      "concurrency": 2,
+      "image": {
+        "enabled": true,
+        "maxBytes": 10485760,
+        "maxChars": 4000,
+        "timeoutSeconds": 60,
+        "scope": "auto"
+      },
+      "video": {
+        "enabled": true,
+        "maxBytes": 52428800,
+        "maxChars": 4000,
+        "timeoutSeconds": 120,
+        "scope": "auto"
+      },
+      "audio": {
+        "enabled": true,
+        "maxBytes": 26214400,
+        "maxChars": 4000,
+        "timeoutSeconds": 60,
+        "language": "en",
+        "scope": "auto"
+      }
     }
   },
   "plugins": {

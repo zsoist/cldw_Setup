@@ -11,11 +11,36 @@
 
 ## Current State
 
-`main` is current through **2026-02-27 (Model optimization + Expert Network Brief + cost optimization audit + docs overhaul)**. All services healthy on VPS.
+`main` is current through **2026-02-27 (Gemini best practices + media integration + cost optimization + model optimization)**. All services healthy on VPS.
 
-Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-27, Model Optimization)** as authoritative.
+Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-27, Gemini Best Practices + Media Integration)** as authoritative.
 
-### Latest pass (2026-02-27, Model Optimization — Haiku Purge + Auto-Fallback Disabled)
+### Latest pass (2026-02-27, Gemini Best Practices + Media Integration)
+
+Applied Google's Gemini prompting best practices across the system. Enabled image/video/audio understanding. Improved Sentinel generation config.
+
+**openclaw.json changes (template + live):**
+- Added `tools.media` section: image understanding (60s timeout, 10MB, auto scope), video understanding (120s timeout, 50MB, auto scope), audio understanding (60s timeout, 25MB, en language, auto scope)
+- Shared media models: `google/gemini-2.5-flash`, concurrency: 2
+- `nano-banana-pro` alias → `google/gemini-2.5-pro` (unchanged, for high-quality image ops)
+
+**sentinel.py changes:**
+- System prompt restructured with XML-like sections (`<role>`, `<responsibilities>`, `<rules>`, `<environment>`, `<output_format>`) per Gemini prompting guidelines
+- Added Job Radar containers to system prompt (previously only OpenClaw gateway)
+- Generation config: explicit `temperature: 1.0` (Gemini recommended default)
+- API timeout: `request_options={"timeout": 60}` for Gemini calls, `timeout=60.0` for Anthropic calls
+- Retry rule added to system prompt: retry once with adjusted params before reporting failure
+
+**Workspace config changes:**
+- `SOUL.md` — Added image generation guidelines, video generation guidelines, media understanding section, Gemini prompting best practices section
+- `TOOLS.md` — Added image/video/audio understanding to allowed tools, full media tool policies section, sub-agent tool inheritance updated
+- `AGENTS.md` — Added media routing section (image/video/audio understanding + generation routing with models, timeouts, capabilities)
+
+**Docs changes:**
+- `docs/setup/model-routing-policy.md` — Expanded image routing, added video routing (Veo), added audio routing
+- `ARCHITECTURE.md` — Added media config values to quick reference table
+
+### Previous pass (2026-02-27, Model Optimization — Haiku Purge + Auto-Fallback Disabled)
 
 Enforced model policy: Flash 2.5 = default for everything. Pro 2.5 = escalation for complex. Sonnet 4.6 = manual explicit only. Opus 4.6 = manual explicit only. **Haiku is NEVER used.**
 

@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.23-channel-commands-v1 -->
+<!-- config-version: 2026.02.27-media-routing-v1 -->
 
 # Agent Registry & Model Routing
 
@@ -118,6 +118,32 @@
 4. anthropic/claude-opus-4-6 (manual explicit only)
 
 > **Haiku is NEVER used.** Auto-fallback to Anthropic is disabled. If Gemini is down, the system retries once then returns an error — it does NOT silently switch to Anthropic.
+
+## Media Routing
+
+### Image Understanding (Vision)
+- Primary: `google/gemini-2.5-flash` (multimodal, cost-efficient)
+- Escalation: `nano-banana-pro` alias → `google/gemini-2.5-pro` (complex OCR, detailed analysis)
+- Timeout: 60 seconds per request
+- Concurrency: 2 concurrent media operations
+
+### Image Generation
+- Primary: `google/gemini-2.5-flash` (quick drafts, simple requests)
+- Quality: `nano-banana-pro` → `google/gemini-2.5-pro` (professional output, text in images)
+- Supported resolutions: 512px, 1K, 2K, 4K
+- Aspect ratios: 1:1, 16:9, 9:16, 3:2, 4:3, and more
+- Prompt strategy: describe scenes naturally (subject + context + style + lighting + mood)
+- All output includes SynthID watermarks
+
+### Video Understanding
+- Primary: `google/gemini-2.5-flash`
+- Timeout: 120 seconds per request (videos require more processing time)
+- Max payload: 50 MB
+
+### Audio Understanding
+- Primary: `google/gemini-2.5-flash`
+- Timeout: 60 seconds per request
+- Language: English primary, Spanish supported
 
 ## Token Guardrails
 - Compaction mode: safeguard

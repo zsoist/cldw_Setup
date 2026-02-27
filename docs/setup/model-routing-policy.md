@@ -49,8 +49,18 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 > **Haiku is NEVER used.** Auto-fallback to Anthropic is disabled. If Gemini fails, retry then error — no silent provider switch.
 
 ## Image Routing
-1. `google/gemini-2.5-flash` (image primary)
-2. Alias `nano-banana-pro` maps to `google/gemini-2.5-pro`
+1. **Image Understanding (Vision):** `google/gemini-2.5-flash` (primary). Escalate to `nano-banana-pro` → Pro for complex OCR/detail.
+2. **Image Generation:** Flash for drafts, `nano-banana-pro` → Pro for professional quality and text rendering.
+3. Alias `nano-banana-pro` maps to `google/gemini-2.5-pro`.
+4. Timeout: 60 seconds per image request.
+
+## Video Routing
+1. **Video Understanding:** `google/gemini-2.5-flash` (primary). Timeout: 120 seconds.
+2. **Video Generation (Veo):** Veo 3.1 for quality, Veo 3.1 Fast for latency. Duration: 4-8 seconds. Latency: 11s-6min.
+
+## Audio Routing
+1. **Audio Understanding:** `google/gemini-2.5-flash` (primary). Timeout: 60 seconds.
+2. Language: English primary, Spanish supported.
 
 ## Escalation Logic
 1. Start with Flash.

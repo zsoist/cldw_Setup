@@ -210,6 +210,12 @@
 | Sentinel max_tokens | 768 | sentinel.env SENTINEL_MAX_TOKENS |
 | Sentinel max_tool_iterations | 4 | sentinel.env SENTINEL_MAX_TOOL_ITERATIONS |
 | Brave search | provider: brave | openclaw.json tools.web.search.provider |
+| Media understanding | image/video/audio enabled | openclaw.json tools.media.* |
+| Image understanding timeout | 60s | openclaw.json tools.media.image.timeoutSeconds |
+| Video understanding timeout | 120s | openclaw.json tools.media.video.timeoutSeconds |
+| Media concurrency | 2 | openclaw.json tools.media.concurrency |
+| Sentinel temperature | 1.0 (Gemini recommended) | sentinel.py generation_config |
+| Sentinel API timeout | 60s | sentinel.py request_options.timeout |
 | DM policy | allowlist | openclaw.json channels.telegram.dmPolicy |
 | thinkingDefault | off | openclaw.json agents.defaults.thinkingDefault |
 | verboseDefault | off | openclaw.json agents.defaults.verboseDefault |
