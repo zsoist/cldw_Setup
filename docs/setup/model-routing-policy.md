@@ -40,16 +40,17 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 - Explicit `/model opus` trigger only
 - Confirm before switching and downgrade immediately after completion
 
-## Cross-Provider Fallback Chain
-1. `google/gemini-2.5-flash` (primary)
-2. `anthropic/claude-haiku-4-5` (cross-provider fallback)
-3. `anthropic/claude-sonnet-4-6` (escalation fallback)
-4. `anthropic/claude-opus-4-6` (manual only)
+## Model Chain (no automatic fallback)
+1. `google/gemini-2.5-flash` (primary — default for everything)
+2. `google/gemini-2.5-pro` (escalation for complex tasks)
+3. `anthropic/claude-sonnet-4-6` (manual explicit only)
+4. `anthropic/claude-opus-4-6` (manual explicit only)
+
+> **Haiku is NEVER used.** Auto-fallback to Anthropic is disabled. If Gemini fails, retry then error — no silent provider switch.
 
 ## Image Routing
-1. `google/gemini-2.5-pro` (image primary)
-2. `google/gemini-2.5-flash` (image fallback)
-3. Alias `nano-banana-pro` maps to `google/gemini-2.5-pro`
+1. `google/gemini-2.5-flash` (image primary)
+2. Alias `nano-banana-pro` maps to `google/gemini-2.5-pro`
 
 ## Escalation Logic
 1. Start with Flash.

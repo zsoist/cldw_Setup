@@ -759,8 +759,8 @@ docker compose logs --since=120s openclaw-gateway | grep -Ei 'gemini|google|mode
 
 Expected behavior:
 - With `GEMINI_API_KEY` set and valid, routine chat should use `google/gemini-2.5-flash`.
-- If Gemini is unavailable, fallback should proceed to Anthropic (`claude-haiku-4-5`, then Sonnet).
-- If `GEMINI_API_KEY` is unset/invalid, system should continue in Anthropic-only fallback mode.
+- If Gemini is unavailable, Sentinel retries once then returns an error. Auto-fallback to Anthropic is disabled (Haiku is never used).
+- For manual Anthropic override: set `SENTINEL_PROVIDER=anthropic` in sentinel.env (uses Sonnet 4.6).
 
 Claude-only mode (intentional temporary rollback):
 ```bash
@@ -772,7 +772,7 @@ docker compose up -d --force-recreate
 ```
 
 ### High token usage
-1. Check provider usage dashboards (Gemini primary + Anthropic fallback) for daily breakdown
+1. Check provider usage dashboards (Gemini primary; Anthropic manual-only — auto-fallback disabled) for daily breakdown
 2. Verify AGENTS.md has Gemini Flash as default (not Gemini Pro/Sonnet)
 3. Check if heartbeat is running during silent hours (it shouldn't)
 4. Review conversation logs for unnecessary Gemini Pro/Sonnet/Opus escalations
@@ -966,7 +966,7 @@ If you still see high call volume:
 
 **Cause (fixed 2026-02-27):** Health checks previously used real LLM endpoints:
 - Brave: sent LLM Context query (`/res/v1/llm/context`) every 3h
-- Anthropic: sent a real Haiku completion every 3h
+- Anthropic: sent a real completion every 3h (previously used Haiku — now banned)
 
 **Current behavior (zero-cost):**
 - Brave: uses cheap web search endpoint (`/res/v1/web/search` with count=1) — no LLM cost

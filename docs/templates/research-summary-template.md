@@ -4,7 +4,7 @@
 # Research: [Topic]
 **Date:** YYYY-MM-DD
 **Requested by:** [name or cron job]
-**Model used:** [Haiku/Sonnet/Opus]
+**Model used:** [Flash/Pro/Sonnet/Opus]
 **Sources checked:** [count]
 
 ## TL;DR

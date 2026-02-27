@@ -22,7 +22,7 @@ This is NOT first-run behavior (see BOOTSTRAP.md for that).
 ## On Failure
 - If any check fails: log to logs/change-log.md with timestamp
 - If gateway HTTP fails: notify via Telegram if channel is available
-- If model config unreadable: fall back to Haiku defaults, log warning
+- If model config unreadable: fall back to Flash defaults, log warning
 - Do NOT attempt auto-repair of config files
 
 ## Status Report

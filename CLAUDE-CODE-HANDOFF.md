@@ -11,11 +11,45 @@
 
 ## Current State
 
-`main` is current through **2026-02-27 (Expert Network Brief + cost optimization audit + docs overhaul)**. All services healthy on VPS.
+`main` is current through **2026-02-27 (Model optimization + Expert Network Brief + cost optimization audit + docs overhaul)**. All services healthy on VPS.
 
-Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-27, Expert Network Brief)** as authoritative.
+Precedence rule: if historical notes below conflict, treat the **Latest pass (2026-02-27, Model Optimization)** as authoritative.
 
-### Latest pass (2026-02-27, Expert Network Intelligence Brief)
+### Latest pass (2026-02-27, Model Optimization — Haiku Purge + Auto-Fallback Disabled)
+
+Enforced model policy: Flash 2.5 = default for everything. Pro 2.5 = escalation for complex. Sonnet 4.6 = manual explicit only. Opus 4.6 = manual explicit only. **Haiku is NEVER used.**
+
+**sentinel.py changes:**
+- `_normalize_anthropic_model_name()` — All Haiku model aliases now map to `claude-sonnet-4-6`. No path returns Haiku.
+- `_get_fallback_provider()` — Returns `None` always. Auto-fallback to Anthropic is DISABLED. If Gemini fails, retry once then error.
+
+**Config/docs changes:**
+- `openclaw/config/AGENTS.md` — Fallback chain replaced with "Model chain (no automatic fallback)", Haiku removed
+- `openclaw/config/BOOT.md` — "Haiku defaults" → "Flash defaults"
+- `docs/setup/model-routing-policy.md` — Cross-provider fallback replaced, Haiku purged
+- `docs/TROUBLESHOOTING.md` — Updated Gemini unavailability behavior, clarified no auto-fallback
+- `docs/DEPLOYMENT.md` — Clarified Anthropic is manual-only
+- `docs/setup/performance-tuning.md` — "cheaper model (Haiku)" → "default model (Flash)"
+- `docs/templates/research-summary-template.md` — Haiku → Flash
+- `docs/playbooks/meeting-prep.md` — Haiku → Flash
+- `docs/research/job-search-automation.md` — All Haiku → Flash
+- `openclaw/workspace/logs/cron-job-results.md` — Haiku/Sonnet → Flash/Pro
+- `infrastructure/aibrief-smoke-test.sh` — API key validation changed from Haiku to Sonnet
+- `README.md` — "Anthropic fallbacks" → "Anthropic manual-only", 5 references updated
+
+**Test changes:**
+- `sentinel/tests/conftest.py` — `claude-haiku-4-5` → `claude-sonnet-4-6`
+- `sentinel/tests/test_telegram.py` — All Haiku → Sonnet
+- `sentinel/tests/test_provider_fallback.py` — All Haiku → Sonnet
+- `sentinel/tests/test_cost_tracker.py` — All Haiku → Sonnet
+
+**Kept (historical/defensive):**
+- `sentinel/cost_tracker.py` — Haiku pricing entries retained for accurate historical cost accounting
+- `sentinel/sentinel.py` — Haiku entries in alias_map retained as defensive remapping (Haiku → Sonnet)
+
+**Deployed on VPS:** sentinel.py + tests synced to /opt/sentinel/, service restarted.
+
+### Previous pass (2026-02-27, Expert Network Intelligence Brief)
 
 New feature: competitive intelligence brief monitoring 8 expert network competitors for Dialectica.
 

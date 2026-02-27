@@ -1,6 +1,6 @@
 # OpenClaw + Sentinel + Job Radar: Cost-Optimized AI System
 
-A production dual-bot AI system on a Hetzner CPX22 VPS, targeting **$14-23/month total** (VPS + API). OpenClaw is the personal AI gateway, Sentinel is the autonomous sysadmin bot, and Job Radar handles automated job discovery and digests -- all on a Gemini-first model stack with Anthropic fallbacks.
+A production dual-bot AI system on a Hetzner CPX22 VPS, targeting **$14-23/month total** (VPS + API). OpenClaw is the personal AI gateway, Sentinel is the autonomous sysadmin bot, and Job Radar handles automated job discovery and digests -- all on a Gemini-first model stack (Anthropic Sonnet/Opus available for manual override only).
 
 ## Architecture
 
@@ -281,7 +281,7 @@ Content-based dedup hash ensures identical job sets don't produce duplicate dige
 
 ## Sentinel: Agentic Sysadmin Bot
 
-Runs as a systemd service at `/opt/sentinel/`. Dual-provider: Google Gemini Flash (primary), Anthropic fallback.
+Runs as a systemd service at `/opt/sentinel/`. Primary: Google Gemini Flash. Anthropic (Sonnet/Opus) available for manual override only -- auto-fallback is disabled.
 
 ### Tool Architecture
 
@@ -499,7 +499,7 @@ for _ in range(max_tool_iterations):    # Capped at 4
 | Component | Cost |
 |-----------|------|
 | Hetzner CPX22 (3 vCPU, 4GB, 80GB NVMe) | ~$8 |
-| LLM APIs (Gemini-first + Anthropic fallback) | $6-15 |
+| LLM APIs (Gemini-first, Anthropic manual-only) | $6-15 |
 | **Total** | **$14-23** |
 
 ### Per-Interaction Cost Breakdown
@@ -573,7 +573,7 @@ Test coverage:
 - **Config validation** -- missing tokens, provider API keys, user IDs
 - **Config parsing edge cases** -- non-numeric/empty/multi-comment user ID parsing
 - **Cost tracking** -- append-only events, daily/weekly/monthly aggregation
-- **Provider fallback** -- Gemini-to-Anthropic fallback with conversation history clearing
+- **Provider fallback** -- Gemini-to-Anthropic provider switch with conversation history clearing (auto-fallback disabled; tests verify manual override path)
 
 ## Quick Start
 
@@ -642,7 +642,7 @@ cat /root/.openclaw/workspace/logs/api-cost-rollup.json | python3 -m json.tool
 | Loopback gateway binding | No public exposure -- SSH tunnel only. No TLS cert management needed. |
 | systemd for Sentinel | Lighter than Docker for a single Python process. Auto-restart on crash. |
 | 7-day backup rotation | Prevents disk fill on 80GB NVMe while keeping recovery points. |
-| Sentinel provider toggle | Gemini Flash default; Anthropic available as fallback for resilience. |
+| Sentinel provider toggle | Gemini Flash default; Anthropic (Sonnet/Opus) manual-only — auto-fallback disabled. |
 | Silent hours 23:00-07:00 | Eliminates proactive API calls during sleep hours. |
 | Multi-agent main + work | Separates personal/professional data with sandboxing. Reduces context per agent. |
 | 3 cron jobs (AI Brief + ENB 2x) | AI brief on Pro, ENB on Flash. Everything else on-demand. |

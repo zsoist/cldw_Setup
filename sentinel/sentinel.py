@@ -145,15 +145,19 @@ class SentinelAgent:
 
     @staticmethod
     def _normalize_anthropic_model_name(raw_model: str) -> str:
-        """Normalize aliases/provider-prefixed model ids for Anthropic calls."""
+        """Normalize aliases/provider-prefixed model ids for Anthropic calls.
+
+        Policy: Haiku is NEVER used. Default Anthropic model is Sonnet 4.6.
+        Anthropic is only for explicit manual provider override, not auto-fallback.
+        """
         model = (raw_model or "").strip()
         alias_map = {
-            "haiku": "claude-haiku-4-5",
-            "claude-haiku-4-5": "claude-haiku-4-5",
-            "claude-haiku-4-6": "claude-haiku-4-5",
-            "sonnet": "claude-sonnet-4-5",
-            "claude-sonnet-4-5": "claude-sonnet-4-5",
-            "claude-sonnet-4-6": "claude-sonnet-4-5",
+            "haiku": "claude-sonnet-4-6",
+            "claude-haiku-4-5": "claude-sonnet-4-6",
+            "claude-haiku-4-6": "claude-sonnet-4-6",
+            "sonnet": "claude-sonnet-4-6",
+            "claude-sonnet-4-5": "claude-sonnet-4-6",
+            "claude-sonnet-4-6": "claude-sonnet-4-6",
             "opus": "claude-opus-4-6",
             "claude-opus-4-6": "claude-opus-4-6",
         }
@@ -163,10 +167,8 @@ class SentinelAgent:
             stripped = model.split("/", 1)[1]
             return alias_map.get(stripped, stripped)
         if model.startswith("google/") or "gemini" in model:
-            if "pro" in model:
-                return "claude-sonnet-4-5"
-            return "claude-haiku-4-5"
-        return model or "claude-haiku-4-5"
+            return "claude-sonnet-4-6"
+        return model or "claude-sonnet-4-6"
 
     def _resolve_model_for_provider(self, provider: str) -> str:
         """Select a model id valid for the target provider."""
@@ -795,10 +797,10 @@ class SentinelAgent:
         return "Reached maximum tool iterations. Something may be stuck. Please try again."
 
     def _get_fallback_provider(self) -> str | None:
-        if self.provider == "anthropic" and self.google_client is not None:
-            return "google"
-        if self.provider == "google" and self.anthropic_client is not None:
-            return "anthropic"
+        """Auto-fallback DISABLED. Model policy: Flash only, no automatic
+        provider switching. Anthropic (Sonnet/Opus) is manual-explicit only.
+        If Gemini fails, retry once then return error — don't silently switch
+        to Anthropic (which was defaulting to Haiku)."""
         return None
 
     @staticmethod

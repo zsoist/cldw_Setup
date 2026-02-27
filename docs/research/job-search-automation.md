@@ -24,9 +24,9 @@ Deliver curated job listings via Telegram at defined windows:
 
 | Schedule | Content | Model |
 |----------|---------|-------|
-| Weekdays 08:00 | New postings matching criteria | Haiku |
-| Weekly Friday 17:00 | Week summary + pipeline status | Haiku |
-| On-demand | Deep research on specific company/role | Sonnet |
+| Weekdays 08:00 | New postings matching criteria | Flash |
+| Weekly Friday 17:00 | Week summary + pipeline status | Flash |
+| On-demand | Deep research on specific company/role | Pro |
 
 Uses cron (timezone-aware, disk-persistent, retry-capable). Jobs run in isolated mode when clean context is preferred.
 
@@ -44,11 +44,11 @@ OpenClaw can generate tailored output for each application:
 
 | Output | Agent | Model |
 |--------|-------|-------|
-| Outreach messages (LinkedIn, email) | Work | Haiku/Sonnet |
-| Tailored resume bullet points | Work | Sonnet |
-| Cover letter variants by company | Work | Sonnet |
-| Interview prep notes | Work | Haiku |
-| Company research briefs | Work (Researcher sub-agent) | Sonnet |
+| Outreach messages (LinkedIn, email) | Work | Flash/Pro |
+| Tailored resume bullet points | Work | Pro |
+| Cover letter variants by company | Work | Pro |
+| Interview prep notes | Work | Flash |
+| Company research briefs | Work (Researcher sub-agent) | Pro |
 
 All drafts saved to `workspace/outputs/drafts/` for review before sending.
 

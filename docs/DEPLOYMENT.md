@@ -202,13 +202,13 @@ Important:
 
 ## Step 8: Post-deployment
 
-1. Set provider spending limits (Gemini primary budget, Anthropic fallback budget)
+1. Set provider spending limits (Gemini primary budget; Anthropic is manual-only, no auto-fallback)
 2. Set up backup cron:
    ```bash
    crontab -e
    # Add: 0 3 * * * /root/openclaw-project/infrastructure/backup.sh
    ```
-3. Monitor API usage for the first 24 hours at console.anthropic.com
+3. Monitor API usage for the first 24 hours at console.cloud.google.com (primary) and console.anthropic.com (manual only)
 
 ## Fast AI Brief Config Rollout (post-deploy updates)
 

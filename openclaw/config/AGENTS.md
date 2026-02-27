@@ -111,11 +111,13 @@
 - Confirm before switching
 - **Downgrade immediately after the complex task finishes**
 
-### Fallback chain
-1. google/gemini-2.5-flash (primary)
-2. anthropic/claude-haiku-4-5 (first fallback, cross-provider)
-3. anthropic/claude-sonnet-4-6 (escalation fallback)
-4. anthropic/claude-opus-4-6 (manual only)
+### Model chain (no automatic fallback)
+1. google/gemini-2.5-flash (primary — default for everything)
+2. google/gemini-2.5-pro (escalation for complex tasks)
+3. anthropic/claude-sonnet-4-6 (manual explicit only — never auto-triggered)
+4. anthropic/claude-opus-4-6 (manual explicit only)
+
+> **Haiku is NEVER used.** Auto-fallback to Anthropic is disabled. If Gemini is down, the system retries once then returns an error — it does NOT silently switch to Anthropic.
 
 ## Token Guardrails
 - Compaction mode: safeguard

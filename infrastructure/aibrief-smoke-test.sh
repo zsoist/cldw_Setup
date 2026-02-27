@@ -744,7 +744,7 @@ PY
       -H "x-api-key: ${ANTHROPIC_API_KEY}" \
       -H 'anthropic-version: 2023-06-01' \
       -H 'content-type: application/json' \
-      -d '{"model":"claude-haiku-4-5","max_tokens":8,"messages":[{"role":"user","content":"ping"}]}' \
+      -d '{"model":"claude-sonnet-4-6","max_tokens":8,"messages":[{"role":"user","content":"ping"}]}' \
       'https://api.anthropic.com/v1/messages' \
       2>/tmp/aibrief-anthropic-check.err || true)"
     if [ "$ANTHROPIC_HTTP_CODE" = "200" ]; then

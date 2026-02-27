@@ -57,7 +57,7 @@ def test_sentinel_agent_writes_usage_summary(tmp_path):
         allowed_user_ids=[12345],
         provider="anthropic",
         anthropic_api_key="anthropic-key",
-        model="claude-haiku-4-5",
+        model="claude-sonnet-4-6",
         log_file=str(tmp_path / "sentinel.log"),
         audit_log_file=str(tmp_path / "audit.log"),
         api_usage_log_file=str(cost_log),

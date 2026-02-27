@@ -6,7 +6,7 @@ Append-only log of cron job executions and outcomes.
 ```
 ## YYYY-MM-DD HH:MM — [Job Name]
 **Status:** OK / WARN / FAIL
-**Model used:** Haiku / Sonnet
+**Model used:** Flash / Pro
 **Duration:** Xs
 **Output file:** path (if generated)
 **Notes:** any issues or findings

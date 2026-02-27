@@ -41,4 +41,4 @@ What should happen immediately after this meeting?
 - Keep under 300 words
 - Prioritize decisions and questions over background
 - Flag if missing context blocks adequate prep
-- Use Sonnet only for high-importance meetings; Haiku for routine check-ins
+- Use Pro for high-importance meetings; Flash for routine check-ins

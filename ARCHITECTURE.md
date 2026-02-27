@@ -29,7 +29,7 @@
 
 | File | Purpose | Key Values |
 |------|---------|------------|
-| sentinel.py | Main bot: agentic loop, provider abstraction, token tracking | max_iterations=4, providers: google/anthropic |
+| sentinel.py | Main bot: agentic loop, provider abstraction, token tracking | max_iterations=4, primary: google/gemini-flash, anthropic manual-only (auto-fallback disabled) |
 | telegram_handler.py | Telegram interface, slash commands, auth | Zero-cost /status /openclaw /security /backup /cost |
 | tools.py | 9 tool definitions + whitelist/blocklist security | system_stats, docker_status, docker_restart, docker_logs, run_command, check_security, check_openclaw_health, backup_openclaw, cost_summary |
 | config.py | Dataclass config with env var parsing | SENTINEL_MAX_TOKENS=768, SENTINEL_PROVIDER=google |

@@ -16,7 +16,7 @@ def config():
         allowed_user_ids=[12345],
         provider="anthropic",
         anthropic_api_key="test-key",
-        model="claude-haiku-4-5",
+        model="claude-sonnet-4-6",
     )
 
 

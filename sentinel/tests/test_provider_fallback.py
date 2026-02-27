@@ -45,7 +45,7 @@ def _build_config(tmp_path) -> SentinelConfig:
         provider="anthropic",
         anthropic_api_key="anthropic-key",
         google_api_key="google-key",
-        model="claude-haiku-4-5",
+        model="claude-sonnet-4-6",
         log_file=str(tmp_path / "sentinel.log"),
         audit_log_file=str(tmp_path / "audit.log"),
     )
@@ -64,7 +64,8 @@ def _build_google_primary_config(tmp_path) -> SentinelConfig:
     )
 
 
-def test_falls_back_to_google_on_anthropic_auth_failure(tmp_path):
+def test_no_auto_fallback_on_anthropic_auth_failure(tmp_path):
+    """Auto-fallback is disabled. When Anthropic fails, return error — don't switch to Google."""
     config = _build_config(tmp_path)
 
     with patch("sentinel.Anthropic") as mock_anthropic, patch(
@@ -81,12 +82,14 @@ def test_falls_back_to_google_on_anthropic_auth_failure(tmp_path):
         agent = SentinelAgent(config)
         result = agent.process_message(12345, "status")
 
-        assert result == "fallback ok"
-        assert anthropic_client.messages.create.call_count == 1
-        assert google_model.generate_content.call_count == 1
+        assert "temporarily unavailable" in result.lower() or "retry" in result.lower()
+        assert anthropic_client.messages.create.call_count >= 1
+        # Auto-fallback disabled: Google should NOT be called
+        assert google_model.generate_content.call_count == 0
 
 
-def test_backoff_skips_primary_provider_after_failure(tmp_path):
+def test_repeated_failures_return_error_without_fallback(tmp_path):
+    """Auto-fallback disabled. Repeated provider failures return error each time — no Google fallback."""
     config = _build_config(tmp_path)
 
     with patch("sentinel.Anthropic") as mock_anthropic, patch(
@@ -101,17 +104,18 @@ def test_backoff_skips_primary_provider_after_failure(tmp_path):
         mock_google_init.return_value = (MagicMock(), google_model)
 
         agent = SentinelAgent(config)
-        assert agent.process_message(12345, "status one") == "fallback ok"
+        result1 = agent.process_message(12345, "status one")
+        assert "temporarily unavailable" in result1.lower() or "retry" in result1.lower()
 
-        anthropic_calls_after_first = anthropic_client.messages.create.call_count
-        assert anthropic_calls_after_first == 1
+        result2 = agent.process_message(12345, "status two")
+        assert "temporarily unavailable" in result2.lower() or "retry" in result2.lower()
 
-        assert agent.process_message(12345, "status two") == "fallback ok"
-        assert anthropic_client.messages.create.call_count == anthropic_calls_after_first
-        assert google_model.generate_content.call_count == 2
+        # Auto-fallback disabled: Google should NEVER be called
+        assert google_model.generate_content.call_count == 0
 
 
-def test_recoverable_primary_failure_does_not_persist_orphan_user_turn(tmp_path):
+def test_provider_failure_does_not_persist_orphan_user_turn(tmp_path):
+    """When provider fails, the user turn should not persist in conversation history."""
     config = _build_config(tmp_path)
 
     with patch("sentinel.Anthropic") as mock_anthropic, patch(
@@ -128,7 +132,7 @@ def test_recoverable_primary_failure_does_not_persist_orphan_user_turn(tmp_path)
         agent = SentinelAgent(config)
         result = agent.process_message(12345, "status")
 
-        assert result == "fallback ok"
+        assert "temporarily unavailable" in result.lower() or "retry" in result.lower()
         assert agent.conversations.get(12345, []) == []
 
 

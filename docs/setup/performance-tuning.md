@@ -81,7 +81,7 @@ Two execution modes for scheduled jobs:
 
 Our single cron job (CRON.md) defaults to main-session mode. Use isolated mode for:
 - Jobs that don't need prior conversation context
-- Jobs where a cheaper model (Haiku) is sufficient regardless of session model
+- Jobs where the default model (Flash) is sufficient regardless of session model
 - Batch processing that should not pollute the main session
 
 ## 7. Scheduler Reliability
