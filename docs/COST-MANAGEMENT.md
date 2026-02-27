@@ -47,7 +47,7 @@ Sources: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-ap
 
 ### 3. Compaction + context pruning
 - Compaction: `safeguard` mode compresses long chat history
-- Context pruning: `cache-ttl` mode evicts stale tool results after 30m
+- Context pruning: `cache-ttl` mode evicts stale tool results after 5m
 - contextTokens: 65,536 per session (reduced from 131K default and 1M overrides)
 - Avoid carrying oversized context across model escalations
 
@@ -85,7 +85,7 @@ Sources: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-ap
 - [ ] Default model is Gemini Flash (agents.defaults.model.primary)
 - [ ] imageModel is Gemini Flash (not Pro)
 - [ ] contextTokens is 65536 (check gateway + per-session overrides)
-- [ ] contextPruning is cache-ttl with 30m TTL
+- [ ] contextPruning is cache-ttl with 5m TTL
 - [ ] Compaction mode is safeguard
 - [ ] Heartbeat interval is 90m
 - [ ] thinkingDefault is off
