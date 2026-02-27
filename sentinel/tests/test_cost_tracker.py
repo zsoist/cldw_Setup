@@ -120,8 +120,9 @@ def test_pricing_table_matches_current_rates():
     # Provider defaults match primary model in each tier
     assert _PROVIDER_DEFAULT_PRICING["google"].input_per_million == 0.30
     assert _PROVIDER_DEFAULT_PRICING["google"].output_per_million == 2.50
-    assert _PROVIDER_DEFAULT_PRICING["anthropic"].input_per_million == 1.00
-    assert _PROVIDER_DEFAULT_PRICING["anthropic"].output_per_million == 5.00
+    # Anthropic default = Sonnet 4.6 (Haiku is banned from production use)
+    assert _PROVIDER_DEFAULT_PRICING["anthropic"].input_per_million == 3.00
+    assert _PROVIDER_DEFAULT_PRICING["anthropic"].output_per_million == 15.00
 
 
 def test_pruning_throttled_to_interval(tmp_path):

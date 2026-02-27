@@ -3,6 +3,7 @@
 Each tool is a function that can be called by Claude via tool_use.
 Tools are restricted to safe operations. Destructive commands require confirmation.
 """
+import os
 import subprocess
 import shlex
 import re
@@ -61,7 +62,8 @@ TOOLS = [
                 },
                 "lines": {
                     "type": "integer",
-                    "description": "Number of log lines to retrieve (default 50, max 200)"
+                    "description": "Number of log lines to retrieve (default 50, max 200)",
+                    "maximum": 200
                 }
             },
             "required": ["container_name"]
@@ -713,9 +715,10 @@ def execute_cost_summary(period: str = "today") -> dict[str, Any]:
             total_input += svc.get("input_tokens", 0)
             total_output += svc.get("output_tokens", 0)
 
+    cop_rate = float(os.environ.get("SENTINEL_USD_TO_COP_RATE", "4000"))
     result["total"] = {
         "usd": round(total_usd, 6),
-        "cop": round(total_usd * 4000, 2),
+        "cop": round(total_usd * cop_rate, 2),
         "input_tokens": total_input,
         "output_tokens": total_output,
         "daily_budget_remaining": round(5.0 - total_usd, 6) if period == "today" else None,

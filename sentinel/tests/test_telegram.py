@@ -3,10 +3,11 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 pytest.importorskip("telegram")
 from telegram import Update, User, Message, Chat
+from telegram.error import BadRequest, TelegramError
 
 from config import SentinelConfig
 from sentinel import SentinelAgent
-from telegram_handler import SentinelTelegramBot
+from telegram_handler import SentinelTelegramBot, _escape_md, _safe_str, _MAX_CHUNK
 
 
 @pytest.fixture
@@ -236,3 +237,135 @@ class TestConfigValidation:
         )
         errors = config.validate()
         assert any("SENTINEL_ALLOWED_USERS" in e for e in errors)
+
+
+class TestEscapeMd:
+    """Test Markdown v1 special character escaping."""
+
+    def test_escapes_underscores(self):
+        assert _escape_md("hello_world") == r"hello\_world"
+
+    def test_escapes_asterisks(self):
+        assert _escape_md("*bold*") == r"\*bold\*"
+
+    def test_escapes_backticks(self):
+        assert _escape_md("`code`") == r"\`code\`"
+
+    def test_escapes_brackets(self):
+        assert _escape_md("[link](url)") == r"\[link\](url)"
+
+    def test_escapes_multiple_chars(self):
+        assert _escape_md("a_b*c[d]e`f") == r"a\_b\*c\[d\]e\`f"
+
+    def test_plain_text_unchanged(self):
+        assert _escape_md("hello world 123") == "hello world 123"
+
+    def test_empty_string(self):
+        assert _escape_md("") == ""
+
+    def test_dollar_signs_not_escaped(self):
+        # Dollar signs are safe in Markdown v1 (unlike MarkdownV2)
+        assert _escape_md("$100.00") == "$100.00"
+
+
+class TestSafeStr:
+    """Test safe string conversion with escaping and truncation."""
+
+    def test_truncates_long_strings(self):
+        result = _safe_str("a" * 500, max_len=10)
+        assert len(result) <= 15  # 10 chars + potential escapes
+
+    def test_escapes_special_chars(self):
+        result = _safe_str("error_in_module")
+        assert r"\_" in result
+
+    def test_handles_non_string_input(self):
+        result = _safe_str(42)
+        assert result == "42"
+
+    def test_handles_exception_object(self):
+        result = _safe_str(ValueError("test_error"))
+        assert "test" in result
+        assert r"\_" in result  # underscore escaped
+
+
+class TestChunking:
+    """Test message chunking for Telegram's 4096-char limit."""
+
+    @pytest.mark.asyncio
+    async def test_short_message_no_chunking(self, bot):
+        update = make_update(12345)
+        await bot._reply_text_safe_chunked(update.message, "short message")
+        update.message.reply_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_long_message_chunked(self, bot):
+        # Create a message that exceeds _MAX_CHUNK
+        lines = ["Line " + str(i) for i in range(_MAX_CHUNK // 6)]
+        long_text = "\n".join(lines)
+        assert len(long_text) > _MAX_CHUNK
+
+        update = make_update(12345)
+        await bot._reply_text_safe_chunked(update.message, long_text)
+        assert update.message.reply_text.call_count >= 2
+
+        # Each chunk should have a [N/M] header
+        first_call = update.message.reply_text.call_args_list[0]
+        assert "[1/" in first_call[0][0]
+
+    @pytest.mark.asyncio
+    async def test_empty_message_handled(self, bot):
+        update = make_update(12345)
+        await bot._reply_text_safe_chunked(update.message, "")
+        update.message.reply_text.assert_called_once()
+        assert "(empty response)" in update.message.reply_text.call_args[0][0]
+
+
+class TestSendTyping:
+    """Test crash-safe typing indicator."""
+
+    @pytest.mark.asyncio
+    async def test_typing_success(self, bot):
+        context = MagicMock()
+        context.bot = MagicMock()
+        context.bot.send_chat_action = AsyncMock()
+        await bot._send_typing(context, 12345)
+        context.bot.send_chat_action.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_typing_error_swallowed(self, bot):
+        context = MagicMock()
+        context.bot = MagicMock()
+        context.bot.send_chat_action = AsyncMock(side_effect=TelegramError("forbidden"))
+        # Should NOT raise
+        await bot._send_typing(context, 12345)
+
+
+class TestNoneMessageGuard:
+    """Test that non-text messages are handled gracefully."""
+
+    @pytest.mark.asyncio
+    async def test_none_text_returns_error(self, bot):
+        update = make_update(12345)
+        update.message.text = None  # Simulate a photo/sticker message
+        context = MagicMock()
+        await bot.handle_message(update, context)
+        update.message.reply_text.assert_called_once()
+        assert "text messages" in update.message.reply_text.call_args[0][0]
+
+
+class TestMarkdownFallback:
+    """Test Markdown parse error fallback to plain text."""
+
+    @pytest.mark.asyncio
+    async def test_markdown_parse_error_falls_back(self, bot):
+        update = make_update(12345)
+        # First call raises parse error, second (plain text) succeeds
+        update.message.reply_text = AsyncMock(
+            side_effect=[BadRequest("Can't parse entities"), None]
+        )
+        await bot._reply_text_safe(update.message, "test *broken markdown")
+        assert update.message.reply_text.call_count == 2
+        # Second call should NOT have parse_mode
+        second_call = update.message.reply_text.call_args_list[1]
+        assert "parse_mode" not in (second_call[1] if second_call[1] else {})

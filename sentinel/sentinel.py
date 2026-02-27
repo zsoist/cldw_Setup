@@ -32,26 +32,29 @@ logger = logging.getLogger("sentinel")
 
 SYSTEM_PROMPT = """\
 <role>
-You are Sentinel, a sysadmin bot managing a Hetzner CPX22 VPS running Ubuntu 24.04.
+You are Sentinel — the infrastructure landlord of a Hetzner CPX22 VPS (Ubuntu 24.04).
+You are NOT the user-facing AI assistant. That role belongs to OpenClaw, which runs
+inside a Docker container that you monitor and manage. Your job is strictly sysadmin:
+keep the host healthy, Docker containers running, and report costs.
 </role>
 
 <responsibilities>
-- Monitor system health: CPU, RAM, disk, network
-- Manage Docker containers (OpenClaw gateway, Job Radar API, Job Radar DB)
-- Run security audits and report findings
+- Monitor system health: CPU, RAM, disk, swap, uptime
+- Manage Docker containers: OpenClaw gateway, Job Radar API, Job Radar DB
+- Run security audits (UFW, fail2ban, open ports, SSH attempts)
 - Create backups of OpenClaw configuration
-- Diagnose and fix common issues
-- Report API cost summaries
+- Diagnose and fix infrastructure issues
+- Report API cost summaries across all services
 </responsibilities>
 
 <rules>
-- Use ONLY the provided tools. Never suggest manual SSH commands.
-- Keep responses concise with bullet points — this is Telegram, not an essay.
-- If something looks dangerous or unusual, alert the user and wait for confirmation.
+- Use ONLY the provided tools — never suggest manual SSH commands.
+- Keep responses concise with bullet points — this is Telegram.
 - Confirm before executing restarts or destructive actions.
-- Never expose secrets, tokens, or API keys in responses.
 - If a tool call fails, retry once with adjusted parameters before reporting failure.
 - When multiple tools are needed, call them in logical sequence; do not speculate.
+- Never expose secrets, tokens, or API keys in responses.
+- You do NOT handle AI research, daily briefs, job search, or image generation — that is OpenClaw's domain.
 </rules>
 
 <environment>
@@ -63,9 +66,9 @@ You are Sentinel, a sysadmin bot managing a Hetzner CPX22 VPS running Ubuntu 24.
 </environment>
 
 <output_format>
-- Use bullet points for status reports.
-- Use code blocks for command output or logs.
-- End with a one-line summary when reporting multi-step results.
+- Bullet points for status reports.
+- Code blocks for command output or logs.
+- One-line summary at end for multi-step results.
 </output_format>
 """
 
@@ -115,7 +118,6 @@ class SentinelAgent:
         self.conversations: dict[int, list[dict[str, Any]]] = {}
         self._last_activity: dict[int, float] = {}
         self._request_windows: dict[int, deque[float]] = {}
-        self._provider_backoff_until: dict[str, float] = {}
         self._last_request_stats: dict[int, dict[str, Any]] = {}
         self._state_lock = threading.Lock()
 
@@ -577,7 +579,7 @@ class SentinelAgent:
             tools=GOOGLE_TOOLS,
             generation_config={
                 "max_output_tokens": self.config.max_tokens,
-                "temperature": 1.0,
+                "temperature": 0.2,  # Low: sysadmin tasks need deterministic, factual output
             },
             request_options={"timeout": 60},
         )
@@ -847,21 +849,16 @@ class SentinelAgent:
         )
         return "Reached maximum tool iterations. Something may be stuck. Please try again."
 
-    def _get_fallback_provider(self) -> str | None:
-        """Auto-fallback DISABLED. Model policy: Flash only, no automatic
-        provider switching. Anthropic (Sonnet/Opus) is manual-explicit only.
-        If Gemini fails, retry once then return error — don't silently switch
-        to Anthropic (which was defaulting to Haiku)."""
-        return None
-
     @staticmethod
     def _is_recoverable_provider_error(exc: Exception) -> bool:
+        """Detect provider errors that deserve a friendly message instead of a raw traceback."""
         details = f"{type(exc).__name__}: {exc}".lower()
         markers = (
             "authentication_error",
             "invalid x-api-key",
             "status code: 401",
             "status code: 429",
+            "status code: 503",
             "status code: 529",
             "rate limit",
             "overload",
@@ -876,20 +873,6 @@ class SentinelAgent:
         """Return True for non-provider outages where Gemini returned no usable text."""
         details = f"{type(exc).__name__}: {exc}".lower()
         return "google_empty_response" in details or "empty_response" in details
-
-    def _set_provider_backoff(self, provider: str, seconds: int = 300) -> None:
-        deadline = time.monotonic() + max(1, seconds)
-        with self._state_lock:
-            self._provider_backoff_until[provider] = deadline
-
-    def _clear_provider_backoff(self, provider: str) -> None:
-        with self._state_lock:
-            self._provider_backoff_until.pop(provider, None)
-
-    def _provider_in_backoff(self, provider: str) -> bool:
-        with self._state_lock:
-            deadline = self._provider_backoff_until.get(provider, 0.0)
-        return time.monotonic() < deadline
 
     def _process_with_provider(
         self,
@@ -974,25 +957,8 @@ class SentinelAgent:
             self._store_last_request_stats(user_id, request_stats)
             return static_response
 
-        fallback_provider = self._get_fallback_provider()
-        if fallback_provider and self._provider_in_backoff(self.provider):
-            logger.warning(
-                "Primary provider %s is in backoff; using fallback %s",
-                self.provider,
-                fallback_provider,
-            )
-            response = self._process_with_provider(
-                fallback_provider,
-                user_id,
-                user_message,
-                persist_history=False,
-                use_existing_history=False,
-                request_stats=request_stats,
-            )
-            request_stats["status"] = "fallback_backoff"
-            self._store_last_request_stats(user_id, request_stats)
-            return response
-
+        # Auto-fallback is DISABLED. If Gemini fails, we retry-once or return
+        # a friendly error — no silent switch to Anthropic.
         try:
             response = self._process_with_provider(
                 self.provider,
@@ -1002,7 +968,6 @@ class SentinelAgent:
                 use_existing_history=True,
                 request_stats=request_stats,
             )
-            self._clear_provider_backoff(self.provider)
             request_stats["status"] = "success"
             self._store_last_request_stats(user_id, request_stats)
             return response
@@ -1010,7 +975,7 @@ class SentinelAgent:
             if self.provider == "google" and self._is_soft_google_response_error(primary_exc):
                 self._append_audit_event(
                     user_id,
-                    "provider_soft_error_no_fallback",
+                    "provider_soft_error",
                     {
                         "provider": self.provider,
                         "error_type": type(primary_exc).__name__,
@@ -1021,67 +986,21 @@ class SentinelAgent:
                 self._store_last_request_stats(user_id, request_stats)
                 return "Gemini returned an empty response. Please retry your request."
 
-            if not self._is_recoverable_provider_error(primary_exc):
-                request_stats["status"] = "error"
-                self._store_last_request_stats(user_id, request_stats)
-                raise
-
-            if not fallback_provider:
+            if self._is_recoverable_provider_error(primary_exc):
                 self._append_audit_event(
                     user_id,
-                    "provider_recoverable_error_no_fallback",
+                    "provider_recoverable_error",
                     {
                         "provider": self.provider,
                         "error_type": type(primary_exc).__name__,
                         "error_preview": str(primary_exc)[:200],
                     },
                 )
-                request_stats["status"] = "recoverable_no_fallback"
+                request_stats["status"] = "recoverable_error"
                 self._store_last_request_stats(user_id, request_stats)
                 return "Provider temporarily unavailable. Please retry in a few seconds."
 
-            self._set_provider_backoff(self.provider)
-            logger.warning(
-                "Primary provider %s failed (%s). Falling back to %s.",
-                self.provider,
-                type(primary_exc).__name__,
-                fallback_provider,
-            )
-            self._append_audit_event(
-                user_id,
-                "provider_fallback",
-                {
-                    "primary_provider": self.provider,
-                    "fallback_provider": fallback_provider,
-                    "error_type": type(primary_exc).__name__,
-                    "error_preview": str(primary_exc)[:200],
-                },
-            )
-
-            try:
-                return self._process_with_provider(
-                    fallback_provider,
-                    user_id,
-                    user_message,
-                    persist_history=False,
-                    use_existing_history=False,
-                    request_stats=request_stats,
-                )
-            except Exception as fallback_exc:
-                self._append_audit_event(
-                    user_id,
-                    "provider_fallback_failed",
-                    {
-                        "primary_provider": self.provider,
-                        "fallback_provider": fallback_provider,
-                        "primary_error_type": type(primary_exc).__name__,
-                        "fallback_error_type": type(fallback_exc).__name__,
-                    },
-                )
-                request_stats["status"] = "fallback_failed"
-                self._store_last_request_stats(user_id, request_stats)
-                raise
-            finally:
-                if request_stats.get("status") != "fallback_failed":
-                    request_stats["status"] = "fallback_success"
-                    self._store_last_request_stats(user_id, request_stats)
+            # Non-recoverable error — propagate to handler
+            request_stats["status"] = "error"
+            self._store_last_request_stats(user_id, request_stats)
+            raise

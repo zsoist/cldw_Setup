@@ -38,7 +38,7 @@ A production dual-bot AI system on a Hetzner CPX22 VPS, targeting **$14-23/month
 
 **Multi-Agent Architecture.** Two agent profiles run within the gateway -- `main` (personal) and `work` (professional). Each has separate workspace files, memory, tool policies, and risk profiles. The work agent runs in an agent-scope sandbox for data isolation.
 
-**Tenant-Landlord Model.** OpenClaw is the "tenant" -- it handles user-facing tasks inside a resource-constrained Docker container. Sentinel is the "landlord" -- it monitors the system, manages Docker, runs security audits, and creates backups. Neither can interfere with the other.
+**Tenant-Landlord Model.** OpenClaw is the "tenant" — it handles user-facing tasks (research, AI briefs, job search, scheduling, image/video/audio) inside a resource-constrained Docker container. Sentinel is the "landlord" — it monitors the VPS, manages Docker, runs security audits, tracks API costs, and creates backups. Neither can interfere with the other, and Sentinel has a strict command whitelist preventing destructive operations. Sentinel does NOT run AI briefs, research, or media generation — that is OpenClaw's domain.
 
 **Zero-Trust API Cost Control.** Every design decision prioritizes minimizing LLM API spend without sacrificing utility. The system targets **$14-23/month total** (VPS + API combined).
 
@@ -279,9 +279,9 @@ Digests are sent directly via Telegram Bot API to channel `-1003826801947` (not 
 
 Content-based dedup hash ensures identical job sets don't produce duplicate digests.
 
-## Sentinel: Agentic Sysadmin Bot
+## Sentinel: Infrastructure Landlord Bot
 
-Runs as a systemd service at `/opt/sentinel/`. Primary: Google Gemini Flash. Anthropic (Sonnet/Opus) available for manual override only -- auto-fallback is disabled.
+Runs as a systemd service at `/opt/sentinel/`. Primary: Google Gemini Flash (`temperature: 0.2` for deterministic sysadmin output). Anthropic (Sonnet/Opus) available for manual override only — auto-fallback is disabled. Sentinel is strictly infrastructure — it does NOT handle research, AI briefs, job search, or media generation.
 
 ### Tool Architecture
 
@@ -565,15 +565,20 @@ pytest tests/ -v
 ```
 
 Test coverage:
-- **Command whitelist/blocklist logic** -- dangerous commands rejected
-- **Tool schema validation** -- all 9 tools have required function declaration fields
-- **Tool execution** -- mocked psutil, Docker, subprocess calls
-- **Telegram authorization** -- authorized vs unauthorized user handling
-- **Slash command handlers** -- `/start`, `/status`, `/openclaw`, `/security`, `/backup`, `/cost`
-- **Config validation** -- missing tokens, provider API keys, user IDs
-- **Config parsing edge cases** -- non-numeric/empty/multi-comment user ID parsing
-- **Cost tracking** -- append-only events, daily/weekly/monthly aggregation
-- **Provider fallback** -- Gemini-to-Anthropic provider switch with conversation history clearing (auto-fallback disabled; tests verify manual override path)
+- **Command whitelist/blocklist logic** — dangerous commands rejected
+- **Tool schema validation** — all 9 tools have required function declaration fields
+- **Tool execution** — mocked psutil, Docker, subprocess calls
+- **Telegram authorization** — authorized vs unauthorized user handling
+- **Slash command handlers** — `/start`, `/status`, `/openclaw`, `/security`, `/backup`, `/cost`
+- **Markdown escaping** — `_escape_md()`, `_safe_str()` special character handling
+- **Message chunking** — newline-boundary splitting, empty messages, long messages
+- **Crash-safe typing** — `_send_typing()` error swallowing
+- **None message guard** — non-text message handling
+- **Markdown fallback** — parse error detection and plain-text retry
+- **Config validation** — missing tokens, provider API keys, user IDs
+- **Config parsing edge cases** — non-numeric/empty/multi-comment user ID parsing
+- **Cost tracking** — append-only events, daily/weekly/monthly aggregation, correct pricing
+- **Provider error handling** — recoverable vs non-recoverable errors (auto-fallback disabled)
 
 ## Quick Start
 
