@@ -33,9 +33,9 @@
       },
       "contextPruning": {
         "mode": "cache-ttl",
-        "ttl": "30m",
-        "keepLastAssistants": 3,
-        "minPrunableToolChars": 50000
+        "ttl": "15m",
+        "keepLastAssistants": 2,
+        "minPrunableToolChars": 8000
       },
       "subagents": {
         "model": "google/gemini-2.5-flash",
