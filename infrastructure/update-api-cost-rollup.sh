@@ -2,7 +2,7 @@
 # Build a combined API cost rollup from AI Brief state + Sentinel summary.
 set -euo pipefail
 
-AI_BRIEF_STATE="${1:-/root/.openclaw/workspace/logs/ai-brief-state.json}"
+AI_BRIEF_STATE="${1:-/root/.openclaw/workspace/logs/news-brief-state.json}"
 SENTINEL_SUMMARY="${2:-/var/log/sentinel/api-cost-summary.json}"
 OUTPUT_FILE="${3:-/root/.openclaw/workspace/logs/api-cost-rollup.json}"
 

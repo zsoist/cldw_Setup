@@ -3,7 +3,7 @@
 set -euo pipefail
 
 CHANNEL_INPUT="${1:-}"
-STATE_FILE="${2:-/root/.openclaw/workspace/logs/ai-brief-state.json}"
+STATE_FILE="${2:-/root/.openclaw/workspace/logs/news-brief-state.json}"
 ENV_FILE="${3:-/root/openclaw/.env}"
 
 usage() {

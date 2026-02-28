@@ -50,7 +50,7 @@ Rule: canonical command path is preferred; compatibility aliases must resolve to
 - Request method: prefer `POST` with JSON body (GET is fallback)
 - Config source:
   - `.env`: `BRAVE_API_KEY`
-  - state: `config.brave_llm_context` in `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
+  - state: `config.brave_llm_context` in `/home/node/.openclaw/workspace/logs/news-brief-state.json`
 - Default threshold mode: `balanced`
 - Mode threshold policy:
   - `top5`: `strict`
@@ -203,7 +203,7 @@ Return run-health metadata plus technical system info:
 ```
 
 ## State and Duplicate Suppression
-State file: `/home/node/.openclaw/workspace/logs/ai-brief-state.json`
+State file: `/home/node/.openclaw/workspace/logs/news-brief-state.json`
 - Keep `last_successful_run` per slot
 - Track recent story fingerprints
 - Suppress unchanged stories for at least 48h (configurable)

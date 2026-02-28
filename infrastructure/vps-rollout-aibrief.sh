@@ -143,12 +143,12 @@ for deprecated in \
   rm -rf "$OPENCLAW_CFG/skills/$deprecated"
 done
 bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \
-  "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" \
-  "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
+  "$PROJECT_DIR/openclaw/workspace/logs/news-brief-state.json" \
+  "$OPENCLAW_CFG/workspace/logs/news-brief-state.json"
 bash "$PROJECT_DIR/infrastructure/reconcile-ai-brief-state.sh" \
-  "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json"
+  "$OPENCLAW_CFG/workspace/logs/news-brief-state.json"
 bash "$PROJECT_DIR/infrastructure/update-api-cost-rollup.sh" \
-  "$OPENCLAW_CFG/workspace/logs/ai-brief-state.json" \
+  "$OPENCLAW_CFG/workspace/logs/news-brief-state.json" \
   "/var/log/sentinel/api-cost-summary.json" \
   "$OPENCLAW_CFG/workspace/logs/api-cost-rollup.json" || log "WARN: failed to update API cost rollup"
 

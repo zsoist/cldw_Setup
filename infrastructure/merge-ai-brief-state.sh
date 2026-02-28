@@ -2,8 +2,8 @@
 # Merge AI brief state template into runtime state while preserving runtime values.
 set -euo pipefail
 
-TEMPLATE_PATH="${1:-/root/openclaw-project/openclaw/workspace/logs/ai-brief-state.json}"
-RUNTIME_PATH="${2:-/root/.openclaw/workspace/logs/ai-brief-state.json}"
+TEMPLATE_PATH="${1:-/root/openclaw-project/openclaw/workspace/logs/news-brief-state.json}"
+RUNTIME_PATH="${2:-/root/.openclaw/workspace/logs/news-brief-state.json}"
 
 if [ ! -f "$TEMPLATE_PATH" ]; then
   echo "Template state not found: $TEMPLATE_PATH" >&2

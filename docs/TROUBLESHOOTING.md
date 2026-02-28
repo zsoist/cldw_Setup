@@ -104,7 +104,7 @@ docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
 
 ### Cron daily brief times out (`FailoverError: LLM request timed out`)
 
-**Symptom:** `ai-brief-state.json` shows `lastRunStatus: "error"`, `consecutiveErrors: N`, `lastError: "cron: job execution timed out"`. OpenClaw logs:
+**Symptom:** `news-brief-state.json` shows `lastRunStatus: "error"`, `consecutiveErrors: N`, `lastError: "cron: job execution timed out"`. OpenClaw logs:
 ```
 lane task error: lane=cron durationMs=60045 error="FailoverError: LLM request timed out."
 ```
@@ -262,7 +262,7 @@ docker exec openclaw-openclaw-gateway-1 node openclaw.mjs pairing approve telegr
 ### AI brief should post to channel but still lands in DM
 Checks:
 ```bash
-python3 -m json.tool /root/.openclaw/workspace/logs/ai-brief-state.json | sed -n '1,120p'
+python3 -m json.tool /root/.openclaw/workspace/logs/news-brief-state.json | sed -n '1,120p'
 ```
 Confirm:
 - `config.output_channel` is set (e.g. `@dandailybriefAI`)
@@ -347,8 +347,7 @@ Then test in Telegram:
 If still wrong, inspect:
 - `/root/.openclaw/workspace/AGENTS.md`
 - `/root/.openclaw/workspace/SOUL.md`
-- `/root/.openclaw/skills/ai-daily-brief/SKILL.md`
-- `/root/.openclaw/skills/daily-briefing/SKILL.md`
+- `/root/.openclaw/skills/news-brief/SKILL.md`
 
 If `/root/.openclaw/workspace/AGENTS.md` or `/root/.openclaw/workspace/SOUL.md` is missing, the gateway falls back to default behavior and command routing becomes inconsistent. Re-run:
 ```bash
@@ -447,7 +446,7 @@ Avoid `openclaw doctor --fix` as part of AI-brief rollout automation. It can rew
 ### AI brief returns "unknown error" and `last_run.status` stays `running`
 Symptom:
 - Telegram returns `An unknown error occurred` for `/ai_daily_brief_top5` or `/ai_daily_brief_evening`.
-- `ai-brief-state.json` shows `last_run.status="running"` long after the run should have ended.
+- `news-brief-state.json` shows `last_run.status="running"` long after the run should have ended.
 
 Cause:
 - The skill is prompt-driven and can be interrupted before finalize writes happen.
@@ -456,7 +455,7 @@ Cause:
 Fix:
 ```bash
 cd /root/openclaw-project
-./infrastructure/reconcile-ai-brief-state.sh /root/.openclaw/workspace/logs/ai-brief-state.json
+./infrastructure/reconcile-ai-brief-state.sh /root/.openclaw/workspace/logs/news-brief-state.json
 ./infrastructure/aibrief-smoke-test.sh
 ```
 
@@ -468,9 +467,9 @@ Notes:
 - `vps-rollout-aibrief.sh` now runs this reconcile step automatically.
 - stale threshold defaults to 900s (override with `STALE_AFTER_SECONDS=...` if needed).
 
-### `ai-brief-state.json` is invalid JSON after cron timeout
+### `news-brief-state.json` is invalid JSON after cron timeout
 
-**Symptom:** Any command that reads `ai-brief-state.json` fails silently or with a parse error. Python validation shows:
+**Symptom:** Any command that reads `news-brief-state.json` fails silently or with a parse error. Python validation shows:
 ```
 json.decoder.JSONDecodeError: Expecting ',' delimiter: line NNN column 3
 ```
@@ -487,7 +486,7 @@ json.decoder.JSONDecodeError: Expecting ',' delimiter: line NNN column 3
 ```python
 import json
 
-path = '/root/.openclaw/workspace/logs/ai-brief-state.json'
+path = '/root/.openclaw/workspace/logs/news-brief-state.json'
 text = open(path).read()
 
 # Fix the malformed closing brace
@@ -501,13 +500,13 @@ if old in text:
     print('Fixed OK')
 else:
     print('Pattern not found — inspect file manually')
-    # Try: python3 -m json.tool ai-brief-state.json to find the error location
+    # Try: python3 -m json.tool news-brief-state.json to find the error location
 ```
 
 After fixing, run the reconcile script to clear any stale running lock:
 ```bash
 bash /root/openclaw-project/infrastructure/reconcile-ai-brief-state.sh \
-  /root/.openclaw/workspace/logs/ai-brief-state.json
+  /root/.openclaw/workspace/logs/news-brief-state.json
 ```
 
 **Prevention:** Keep `timeoutSeconds` in `jobs.json` at `120` or above. If the brief is still timing out at 120s, raise to `150` — but do not go above `180` (causes zombie runs).
@@ -635,7 +634,7 @@ No files under `/root/.openclaw/workspace/outputs/summaries/ai-brief-*.md` means
 Checks:
 ```bash
 /root/openclaw-project/infrastructure/aibrief-smoke-test.sh
-python3 -m json.tool /root/.openclaw/workspace/logs/ai-brief-state.json | sed -n '1,120p'
+python3 -m json.tool /root/.openclaw/workspace/logs/news-brief-state.json | sed -n '1,120p'
 ```
 
 Run manually from Telegram:
@@ -699,7 +698,7 @@ Verify active runtime state:
 ```bash
 python3 - <<'PY'
 import json
-p='/root/.openclaw/workspace/logs/ai-brief-state.json'
+p='/root/.openclaw/workspace/logs/news-brief-state.json'
 with open(p) as f:d=json.load(f)
 cfg=(d.get('config') or {}).get('brave_llm_context') or {}
 perf=(d.get('config') or {}).get('performance') or {}
@@ -807,7 +806,7 @@ Regenerate and inspect:
 ```bash
 cd /root/openclaw-project
 ./infrastructure/update-api-cost-rollup.sh \
-  /root/.openclaw/workspace/logs/ai-brief-state.json \
+  /root/.openclaw/workspace/logs/news-brief-state.json \
   /var/log/sentinel/api-cost-summary.json \
   /root/.openclaw/workspace/logs/api-cost-rollup.json
 
@@ -821,17 +820,16 @@ Expected files:
 
 ## Expert Network Brief Issues
 
-### `/expert_network_brief` not responding or routing wrong
+### `/expert_network_brief` or `/brief` not responding or routing wrong
 ```bash
-# Verify skill files exist on runtime
-ls -la /root/.openclaw/skills/expert-network-brief/SKILL.md
-ls -la /root/.openclaw/skills/expert-network-brief-status/SKILL.md
+# Verify news-brief skill exists on runtime (V4 — single skill for all brief commands)
+ls -la /root/.openclaw/skills/news-brief/SKILL.md
 
 # Verify state file
-python3 -m json.tool /root/.openclaw/workspace/logs/enb-state.json
+python3 -m json.tool /root/.openclaw/workspace/logs/news-brief-state.json
 
 # Check ownership
-ls -la /root/.openclaw/skills/expert-network-brief*/SKILL.md
+ls -la /root/.openclaw/skills/news-brief/SKILL.md
 # Expected: sentinel:systemd-journal
 
 # Re-sync from repo if needed
@@ -854,7 +852,7 @@ for j in d['jobs']:
 # Check for recent ENB runs
 python3 -c "
 import json
-with open('/root/.openclaw/workspace/logs/enb-state.json') as f: d = json.load(f)
+with open('/root/.openclaw/workspace/logs/news-brief-state.json') as f: d = json.load(f)
 print('last_run:', d.get('last_run'))
 print('history count:', len(d.get('history', [])))
 "
@@ -876,11 +874,11 @@ state = {
     'history': [],
     'recent_story_fingerprints': []
 }
-with open('/root/.openclaw/workspace/logs/enb-state.json', 'w') as f:
+with open('/root/.openclaw/workspace/logs/news-brief-state.json', 'w') as f:
     json.dump(state, f, indent=2)
 print('Created OK')
 "
-chown sentinel:systemd-journal /root/.openclaw/workspace/logs/enb-state.json
+chown sentinel:systemd-journal /root/.openclaw/workspace/logs/news-brief-state.json
 ```
 
 ### OpenClaw out of memory (OOM killed)

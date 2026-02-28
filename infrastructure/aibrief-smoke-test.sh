@@ -4,7 +4,7 @@ set -euo pipefail
 
 OPENCLAW_DIR="${OPENCLAW_DIR:-/root/openclaw}"
 PROJECT_DIR="${PROJECT_DIR:-/root/openclaw-project}"
-STATE_FILE="${STATE_FILE:-/root/.openclaw/workspace/logs/ai-brief-state.json}"
+STATE_FILE="${STATE_FILE:-/root/.openclaw/workspace/logs/news-brief-state.json}"
 ENV_FILE="${ENV_FILE:-/root/openclaw/.env}"
 
 PASS=0
@@ -18,10 +18,10 @@ warn() { echo "[WARN] $1"; WARN=$((WARN + 1)); }
 printf '=== AI Daily Brief Smoke Test ===\n'
 printf 'Date: %s\n\n' "$(date -u)"
 
-if [ -f "/root/.openclaw/skills/ai-daily-brief/SKILL.md" ]; then
-  pass "Canonical AI brief skill exists (/root/.openclaw/skills/ai-daily-brief/SKILL.md)"
+if [ -f "/root/.openclaw/skills/news-brief/SKILL.md" ]; then
+  pass "Canonical news-brief skill exists (/root/.openclaw/skills/news-brief/SKILL.md)"
 else
-  fail "Canonical AI brief skill missing (/root/.openclaw/skills/ai-daily-brief/SKILL.md)"
+  fail "Canonical news-brief skill missing (/root/.openclaw/skills/news-brief/SKILL.md)"
 fi
 
 WORKSPACE_BOOTSTRAP_MISSING=()

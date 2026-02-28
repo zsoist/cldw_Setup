@@ -1,6 +1,6 @@
 # Architecture Index
 > LLM-optimized codebase map for zsoist/cldw_Setup
-> Last updated: 2026-02-27
+> Last updated: 2026-02-28
 > Read this file FIRST in any new session.
 
 ## System Overview
@@ -60,7 +60,7 @@
 | MEMORY.md | Persistent memory system | /root/.openclaw/workspace/MEMORY.md |
 | IDENTITY.md | Persona tone + style | /root/.openclaw/workspace/IDENTITY.md |
 | CHANNELS.md | Channel security policy + allowlists | /root/.openclaw/workspace/CHANNELS.md |
-| CRON.md | Cron registry (1 job: AI brief at 12:10 UTC) | /root/.openclaw/workspace/CRON.md |
+| CRON.md | Cron registry (2 jobs: AI 12:10 UTC, ENB 12:00 UTC) | /root/.openclaw/workspace/CRON.md |
 | BOOT.md | Startup health checks | /root/.openclaw/workspace/BOOT.md |
 | BOOTSTRAP.md | First-run behavior (retires after setup) | /root/.openclaw/workspace/BOOTSTRAP.md |
 | SANDBOX.md | Sandbox policy + agent isolation | /root/.openclaw/workspace/SANDBOX.md |
@@ -79,19 +79,8 @@
 
 | Skill Directory | Trigger | Model Hint |
 |----------------|---------|-----------|
-| ai-daily-brief/ | /ai_daily_brief | Flash |
-| ai-daily-brief-top5/ | /ai_daily_brief_top5 | Flash |
-| ai-daily-brief-morning/ | /ai_daily_brief_morning | Flash |
-| ai-daily-brief-evening/ | /ai_daily_brief_evening | Flash |
-| ai-daily-brief-builder/ | /ai_daily_brief_builder | Flash |
-| ai-daily-brief-status/ | /ai_daily_brief_status | Flash |
-| ai-daily-brief-watchlist/ | /ai_daily_brief_watchlist | Flash |
-| expert-network-brief/ | /expert_network_brief | Flash (2x daily cron) |
-| expert-network-brief-status/ | /expert_network_brief_status | Flash |
-| daily-briefing/ | /daily_briefing | Flash |
+| news-brief/ | /brief, /ai_daily_brief*, /expert_network_brief*, /enb, NL | Flash |
 | job-radar/ | /job_* | Flash |
-| research-assistant/ | /research | Pro (on-demand) |
-| task-tracker/ | /task | Flash |
 
 **CRITICAL: Skills are prompt-based. NEVER exec shell scripts from skill directories -- none exist.**
 
@@ -102,7 +91,7 @@
 | openclaw-config.json | Gateway config TEMPLATE (placeholder secrets) | Repo copy of /root/.openclaw/openclaw.json |
 | jobs.json | Cron job definitions TEMPLATE | Repo copy of /root/.openclaw/cron/jobs.json |
 | docker-compose.yml | OpenClaw Docker Compose (in openclaw/ subdir) | NOT the infra one |
-| SOUL.md, AGENTS.md, CHANNELS.md, CRON.md, BOOT.md | Root-level duplicates (some legacy) | config/ versions are canonical |
+| SOUL.md, AGENTS.md, CHANNELS.md, CRON.md, BOOT.md | Root-level canonical config (synced to config/ dir) | These are the source of truth |
 
 ### openclaw/workspace/ -- Runtime Workspace Content Templates
 
@@ -111,7 +100,7 @@
 | personal/ | goals.md, routines.md, projects/.gitkeep |
 | business/ | goals-okrs.md, operating-rules.md, projects/active/.gitkeep, projects/archived/.gitkeep |
 | outputs/ | summaries/.gitkeep, reports/.gitkeep, drafts/.gitkeep, exports/.gitkeep |
-| logs/ | change-log.md, cron-job-results.md, ai-brief-state.json |
+| logs/ | change-log.md, cron-job-results.md, news-brief-state.json |
 
 ### infrastructure/ -- Deployment & Operations Scripts
 
@@ -170,7 +159,7 @@
 | Path | Purpose | Owner | Critical Notes |
 |------|---------|-------|----------------|
 | /root/.openclaw/openclaw.json | Live gateway config | sentinel:systemd-journal (640) | Edit tool resets to root:root -- always chown after |
-| /root/.openclaw/cron/jobs.json | Live cron jobs (3 jobs) | sentinel:systemd-journal | AI Brief: Pro/180s, ENB AM: Flash/120s, ENB PM: Flash/90s |
+| /root/.openclaw/cron/jobs.json | Live cron jobs (2 jobs) | sentinel:systemd-journal | AI Brief: Flash/90s, ENB: Flash/90s |
 | /root/.openclaw/workspace/ | Live workspace (SOUL.md, AGENTS.md, etc.) | sentinel:systemd-journal | Bind-mounted into container |
 | /root/.openclaw/skills/ | Live skills | sentinel:systemd-journal | Synced from repo openclaw/skills/ |
 | /root/.openclaw/secrets/ | Token files | sentinel:systemd-journal | telegram-default.token |
@@ -199,13 +188,12 @@
 | Active hours | 07:00-23:00 COT | openclaw.json agents.defaults.heartbeat.activeHours |
 | Session timeout | 300s | openclaw.json agents.defaults.timeoutSeconds |
 | Sub-agent model | Flash | openclaw.json agents.defaults.subagents.model |
-| AI Brief cron model | Gemini 2.5 Pro | jobs.json [0].payload.model |
-| AI Brief cron timeout | 180s | jobs.json [0].payload.timeoutSeconds |
+| AI Brief cron model | Gemini 2.5 Flash | jobs.json [0].payload.model |
+| AI Brief cron timeout | 90s | jobs.json [0].payload.timeoutSeconds |
 | AI Brief cron schedule | 10 12 * * * UTC (07:10 COT) | jobs.json [0].schedule.expr |
-| ENB morning cron model | Gemini 2.5 Flash | jobs.json [1].payload.model |
-| ENB morning cron schedule | 0 12 * * * UTC (07:00 COT) | jobs.json [1].schedule.expr |
-| ENB evening cron schedule | 0 23 * * * UTC (18:00 COT) | jobs.json [2].schedule.expr |
-| ENB state file | enb-state.json | workspace/logs/enb-state.json |
+| ENB cron model | Gemini 2.5 Flash | jobs.json [1].payload.model |
+| ENB cron schedule | 0 12 * * * UTC (07:00 COT) | jobs.json [1].schedule.expr |
+| News Brief state file | news-brief-state.json | workspace/logs/news-brief-state.json |
 | Sentinel provider | google | sentinel.env SENTINEL_PROVIDER |
 | Sentinel max_tokens | 768 | sentinel.env SENTINEL_MAX_TOKENS |
 | Sentinel max_tool_iterations | 4 | sentinel.env SENTINEL_MAX_TOOL_ITERATIONS |

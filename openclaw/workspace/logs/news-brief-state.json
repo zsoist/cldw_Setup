@@ -1,0 +1,19 @@
+{
+  "v": "4.0",
+  "default_topic": "ai",
+  "output_channel": "-1003826801947",
+  "tz": "America/Bogota",
+  "last_run": {
+    "run_id": null,
+    "topic": null,
+    "mode": null,
+    "status": null,
+    "started_at": null,
+    "finished_at": null,
+    "stories_found": 0,
+    "brave_calls": 0
+  },
+  "history": [],
+  "recent_fingerprints": [],
+  "errors": { "consecutive": 0, "last_error": null }
+}

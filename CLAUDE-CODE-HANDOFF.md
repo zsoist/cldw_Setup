@@ -112,7 +112,7 @@ docker exec openclaw-openclaw-gateway-1 npx openclaw cron list
 | Config reload silent | SIGUSR1 logs nothing on success, only errors. |
 | Compaction modes | Only `"default"` and `"safeguard"` valid. |
 | `<think>` tags | Absolute ban in SKILL.md + SOUL.md — wastes 20K tokens, crashes sessions. |
-| AIDB_BRAVE_* vars | Hard caps for web_search. Currently: count=8, max_tokens=2048 (set in container env). |
+| AIDB_BRAVE_* vars | Hard caps for web_search. Currently: count=5, max_tokens=1024, threshold=strict (set in container env). |
 | State file overwrite | Both cron jobs write to same state file. Last writer wins. Non-critical. |
 | temperature in frontmatter | SKILL.md `temperature: 0` is a prompt hint, NOT gateway-enforced. Added to cron payloads too. |
 

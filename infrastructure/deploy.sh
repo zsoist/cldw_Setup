@@ -111,12 +111,12 @@ copy_checked "$PROJECT_DIR/openclaw/workspace/business/operating-rules.md" "$OPE
 copy_checked "$PROJECT_DIR/openclaw/workspace/logs/change-log.md" "$OPENCLAW_CONFIG/workspace/logs/change-log.md"
 copy_checked "$PROJECT_DIR/openclaw/workspace/logs/cron-job-results.md" "$OPENCLAW_CONFIG/workspace/logs/cron-job-results.md"
 bash "$PROJECT_DIR/infrastructure/merge-ai-brief-state.sh" \
-    "$PROJECT_DIR/openclaw/workspace/logs/ai-brief-state.json" \
-    "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
+    "$PROJECT_DIR/openclaw/workspace/logs/news-brief-state.json" \
+    "$OPENCLAW_CONFIG/workspace/logs/news-brief-state.json"
 bash "$PROJECT_DIR/infrastructure/reconcile-ai-brief-state.sh" \
-    "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json"
+    "$OPENCLAW_CONFIG/workspace/logs/news-brief-state.json"
 bash "$PROJECT_DIR/infrastructure/update-api-cost-rollup.sh" \
-    "$OPENCLAW_CONFIG/workspace/logs/ai-brief-state.json" \
+    "$OPENCLAW_CONFIG/workspace/logs/news-brief-state.json" \
     "/var/log/sentinel/api-cost-summary.json" \
     "$OPENCLAW_CONFIG/workspace/logs/api-cost-rollup.json" || true
 if [ -d "$PROJECT_DIR/openclaw/skills" ]; then

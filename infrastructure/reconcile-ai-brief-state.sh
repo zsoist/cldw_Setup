@@ -2,7 +2,7 @@
 # Reconcile stale ai_daily_brief "running" state entries.
 set -euo pipefail
 
-STATE_FILE="${1:-/root/.openclaw/workspace/logs/ai-brief-state.json}"
+STATE_FILE="${1:-/root/.openclaw/workspace/logs/news-brief-state.json}"
 STALE_AFTER_SECONDS="${STALE_AFTER_SECONDS:-900}"
 DRY_RUN="${DRY_RUN:-0}"
 DEFAULT_ERROR_REASON="${DEFAULT_ERROR_REASON:-Recovered stale running state (auto-finalized by reconcile-ai-brief-state.sh)}"
