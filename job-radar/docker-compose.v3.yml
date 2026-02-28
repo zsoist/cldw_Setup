@@ -1,0 +1,109 @@
+# Job Radar V3 — Standalone Agent
+# Usage: docker compose -f /root/job-radar/docker-compose.v3.yml up -d
+#
+# VPS resource budget (CPX22 — 3 vCPU / 4 GB RAM):
+#   OpenClaw gateway:  2.0 vCPU / 2560 MB  (existing)
+#   job-radar-agent:   0.5 vCPU / 512 MB
+#   job-radar-db:      0.25 vCPU / 256 MB
+#   OS + overhead:     ~400 MB
+#   TOTAL:             ~3.7 GB  fits CPX22
+
+services:
+  job-radar-db:
+    image: postgres:16-alpine
+    container_name: job-radar-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jobradar
+      POSTGRES_USER: jobradar
+      POSTGRES_PASSWORD: ${JOB_RADAR_DB_PASSWORD:-jobradar_prod_pw_2026}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - max_connections=50
+      - -c
+      - log_min_duration_statement=1000
+    volumes:
+      - jr-v3-pgdata:/var/lib/postgresql/data
+      - ./v3/sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks:
+      - job-radar-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobradar -d jobradar"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  job-radar-agent:
+    build:
+      context: ./v3
+      dockerfile: Dockerfile
+    container_name: job-radar-agent
+    restart: unless-stopped
+    depends_on:
+      job-radar-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://jobradar:${JOB_RADAR_DB_PASSWORD:-jobradar_prod_pw_2026}@job-radar-db:5432/jobradar
+      TELEGRAM_BOT_TOKEN: ${JR_TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHANNEL_ID: "${TELEGRAM_CHANNEL_ID:--1003826801947}"
+      TELEGRAM_OWNER_CHAT_ID: "${TELEGRAM_ADMIN_USER_ID:-6182588021}"
+      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
+      BRAVE_RESULTS_PER_QUERY: "10"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ENRICHMENT_MODEL: gemini-2.5-flash
+      JOB_MAX_AGE_DAYS: "21"
+      JOB_STALE_WARNING_DAYS: "14"
+      DIGEST_MIN_COMPOSITE: "45"
+      DIGEST_MAX_JOBS: "12"
+      DEDUP_FUZZY_THRESHOLD: "0.75"
+      DEDUP_WINDOW_DAYS: "60"
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - job-radar-internal
+      - openclaw_default
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  job-radar-internal:
+    driver: bridge
+  openclaw_default:
+    external: true
+
+volumes:
+  jr-v3-pgdata:
+    driver: local

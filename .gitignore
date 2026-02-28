@@ -19,3 +19,7 @@ Thumbs.db
 
 # Backups
 *.tar.gz
+backend-v1-backup/
+
+# Test cache
+.pytest_cache/
