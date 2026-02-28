@@ -1,83 +1,54 @@
-# Claude Code Handoff: OpenClaw + Sentinel
+# Claude Code Handoff
 
-> For the next LLM session. Last updated: 2026-02-27.
+> Last updated: 2026-02-28 | News Brief v4 deployed
 >
-> **Start here:** Read `README.md` for architecture overview, `ARCHITECTURE.md` for codebase navigation.
+> **Start here:** Read `README.md` for architecture, this file for deployment state.
 
 ---
 
-## System Overview
+## Current State
 
-A dual-bot AI system on a Hetzner CPX22 VPS (Ubuntu 24.04, 3 vCPU, 4GB RAM).
+All services healthy. News Brief v4 deployed and tested (both cron jobs returned `ok`).
 
-### Tenant-Landlord Architecture
+### Recent Changes (2026-02-28)
 
-| Component | Role | Runtime | Primary Model |
-|-----------|------|---------|---------------|
-| **OpenClaw** (tenant) | User-facing AI: research, briefs, job search, scheduling, image/video/audio | Docker container (`openclaw-openclaw-gateway-1`) | Gemini 2.5 Flash (default), Pro (complex tasks) |
-| **Sentinel** (landlord) | Infrastructure sysadmin: Docker mgmt, system monitoring, security, backups, cost tracking | systemd service (`sentinel.service`) | Gemini 2.5 Flash only |
-| **Job Radar** | Automated job discovery + digests | Docker containers (`job-radar-api` + `job-radar-db`) | Gemini 2.5 Flash |
-
-**Key boundary:** Sentinel does NOT handle AI briefs, research, image generation, or user tasks. That is OpenClaw's domain. Sentinel monitors the VPS, manages Docker, and tracks costs.
-
-### Model Policy
-
-- **Default:** `google/gemini-2.5-flash` — everything starts here
-- **Escalation:** `google/gemini-2.5-pro` — AI brief synthesis, complex research
-- **Manual only:** `anthropic/claude-sonnet-4-6` — explicit "think harder" requests
-- **Manual only:** `anthropic/claude-opus-4-6` — explicit `/model opus` trigger
-- **BANNED:** Haiku — all alias paths redirect to Sonnet/Flash. Never used in production.
-- **Auto-fallback:** DISABLED. If Gemini fails, retry once then error. No silent Anthropic switch.
-
----
-
-## Current State (2026-02-27)
-
-All services healthy. Branch: `main`. Recent work:
-
-1. **Telegram reliability pass** — Complete rewrite of `telegram_handler.py`: Markdown v1 escaping, crash-safe typing, newline-boundary chunking, None guard, error handling hardening. Thread-safe conversation history via `_persist_history()`.
-2. **Gemini best practices** — XML-structured system prompts, `temperature: 0.2` for Sentinel (deterministic sysadmin), 60s API timeouts, media understanding enabled in OpenClaw.
-3. **Cost optimization** — Pricing table corrected (Flash was 3x underreported), memory leak fix, pruning throttle, dead fallback code removed.
-4. **Model optimization** — Haiku purged from all active code paths, auto-fallback disabled, all Anthropic usage is manual-only.
-5. **Expert Network Brief** — Expert network competitive intelligence (8 competitors, Flash only, 2x daily).
+**News Brief v4 migration** — consolidated 9 skills + 5 state/config files into 1 skill + 1 state file:
+- Created `skills/news-brief/SKILL.md` with XML-tagged Flash prompting, 12 few-shot NL examples, scoring rubric
+- Removed 9 old skill directories (ai-daily-brief-*, expert-network-brief-*)
+- Removed old state files (ai-brief-state.json, enb-state.json)
+- Updated jobs.json: 3 jobs → 2 jobs, Pro → Flash, 180s → 90s timeout, added temperature=0
+- Updated AGENTS.md, SOUL.md, CRON.md for V4 routing
+- Fixed exec curl → web_search (gateway blocks exec elevated in cron sessions)
 
 ---
 
 ## Critical File Paths
 
-### Sentinel (landlord — `/opt/sentinel/` on VPS, `sentinel/` in repo)
+### Live (on VPS)
 
 | File | Purpose |
 |------|---------|
-| `sentinel.py` | Agentic loop, system prompt, model routing, conversation mgmt |
-| `telegram_handler.py` | Telegram interface, commands, Markdown escaping, chunking |
-| `config.py` | Dataclass config from env vars |
-| `cost_tracker.py` | Crash-safe API cost tracking + aggregation |
-| `tools.py` | 9 tools + whitelist/blocklist security |
-| `tests/` | 65+ tests (config, tools, telegram, cost, provider) |
+| `/root/.openclaw/openclaw.json` | Gateway runtime config |
+| `/root/.openclaw/skills/news-brief/SKILL.md` | News Brief v4 skill |
+| `/root/.openclaw/workspace/logs/news-brief-state.json` | Brief run state |
+| `/root/.openclaw/cron/jobs.json` | Cron registry (2 jobs) |
+| `/root/.openclaw/workspace/SOUL.md` | Core personality + routing |
+| `/root/.openclaw/workspace/AGENTS.md` | Agent registry |
+| `/root/.openclaw/workspace/CRON.md` | Cron docs |
+| `/opt/sentinel/*.py` | Sentinel source |
+| `/etc/sentinel/sentinel.env` | Sentinel env vars |
+| `/root/openclaw/docker-compose.yml` | Docker config (AIDB_BRAVE_* vars) |
 
-### OpenClaw (tenant — `/root/.openclaw/` live, `openclaw/` in repo)
+### Repo (this repo)
 
-| File | Purpose |
+| File | Mirrors |
 |------|---------|
-| `openclaw-config.json` | Gateway runtime config (model routing, media, compaction) |
-| `config/SOUL.md` | Orchestrator identity (~800 tokens, sent with every request) |
-| `config/AGENTS.md` | Sub-agent registry + model routing policy |
-| `config/TOOLS.md` | Tool policy + permissions + media policies |
-| `config/HEARTBEAT.md` | 90-min interval, active hours, minimal tasks |
-| `skills/` | Skill definitions (AI brief, ENB, job-radar, research, etc.) |
-| `workspace/logs/ai-brief-state.json` | AI brief run state (check for zombie locks) |
-
-### Infrastructure
-
-| File | Purpose |
-|------|---------|
-| `infrastructure/docker-compose.yml` | Resource limits, env defaults |
-| `infrastructure/ocdash.sh` | Mac convenience script: SSH tunnel + dashboard URL + browser |
-| `infrastructure/ssh-config-snippet` | SSH config for Mac (`Host openclaw` → VPS) |
-| `infrastructure/aibrief-smoke-test.sh` | AI brief health + token smoke test |
-| `/etc/sentinel/sentinel.env` | Sentinel runtime env vars |
-| `/root/openclaw/docker-compose.yml` | Live Docker compose (AIDB_BRAVE_* vars) |
+| `openclaw/skills/news-brief/SKILL.md` | `/root/.openclaw/skills/news-brief/SKILL.md` |
+| `openclaw/jobs.json` | `/root/.openclaw/cron/jobs.json` |
+| `openclaw/SOUL.md` | `/root/.openclaw/workspace/SOUL.md` |
+| `openclaw/AGENTS.md` | `/root/.openclaw/workspace/AGENTS.md` |
+| `openclaw/CRON.md` | `/root/.openclaw/workspace/CRON.md` |
+| `openclaw/openclaw-config.json` | `/root/.openclaw/openclaw.json` |
 
 ---
 
@@ -86,47 +57,50 @@ All services healthy. Branch: `main`. Recent work:
 **CRITICAL:** Editing files resets ownership to `root:root`. Always fix after:
 
 ```bash
-# After editing any Sentinel file:
-chown sentinel:sentinel /opt/sentinel/*.py
-
 # After editing any OpenClaw config:
-chown sentinel:systemd-journal /root/.openclaw/openclaw.json
+chown sentinel:systemd-journal /root/.openclaw/skills/news-brief/SKILL.md
+chown sentinel:systemd-journal /root/.openclaw/workspace/SOUL.md
+chown sentinel:systemd-journal /root/.openclaw/cron/jobs.json
+# etc — all files in /root/.openclaw/ must be sentinel:systemd-journal, 640
+
+# After editing Sentinel source:
+chown sentinel:sentinel /opt/sentinel/*.py
 ```
 
 ---
 
-## Deployment Checklist
+## Cron Jobs (2 total)
+
+| Job ID | Name | Schedule (UTC) | COT | Model |
+|--------|------|---------------|-----|-------|
+| `news-brief-ai` | AI Top 5 | `10 12 * * *` | 07:10 | Flash |
+| `news-brief-enb` | ENB Top 5 | `0 12 * * *` | 07:00 | Flash |
+
+Test a cron job: `docker exec openclaw-openclaw-gateway-1 npx openclaw cron run news-brief-ai --expect-final --timeout 120000`
+
+---
+
+## Deployment
 
 ```bash
-# 1. Run tests
-cd /root/openclaw-project/sentinel && python3 -m pytest tests/ -v
+# 1. Sync config to VPS
+cp openclaw/skills/news-brief/SKILL.md /root/.openclaw/skills/news-brief/SKILL.md
+cp openclaw/SOUL.md /root/.openclaw/workspace/SOUL.md
+cp openclaw/AGENTS.md /root/.openclaw/workspace/AGENTS.md
+cp openclaw/jobs.json /root/.openclaw/cron/jobs.json
 
-# 2. Deploy Sentinel
-cp sentinel/sentinel.py sentinel/telegram_handler.py /opt/sentinel/
-chown sentinel:sentinel /opt/sentinel/*.py
-systemctl restart sentinel && systemctl status sentinel
+# 2. Fix ownership
+chown -R sentinel:systemd-journal /root/.openclaw/skills/news-brief/
+chown sentinel:systemd-journal /root/.openclaw/workspace/SOUL.md /root/.openclaw/workspace/AGENTS.md /root/.openclaw/cron/jobs.json
+chmod 640 /root/.openclaw/skills/news-brief/SKILL.md /root/.openclaw/workspace/SOUL.md /root/.openclaw/workspace/AGENTS.md /root/.openclaw/cron/jobs.json
 
-# 3. Deploy OpenClaw config changes
-cp openclaw/openclaw-config.json /root/.openclaw/openclaw.json
-chown sentinel:systemd-journal /root/.openclaw/openclaw.json
+# 3. Reload gateway
 docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
 
 # 4. Verify
-systemctl status sentinel --no-pager
-docker ps --format 'table {{.Names}}\t{{.Status}}'
+docker exec openclaw-openclaw-gateway-1 npx openclaw skills list
+docker exec openclaw-openclaw-gateway-1 npx openclaw cron list
 ```
-
----
-
-## Cron Jobs (3 total)
-
-| # | Job | Schedule (UTC) | COT | Model |
-|---|-----|---------------|-----|-------|
-| 1 | AI Daily Brief Top5 | `10 12 * * *` | 07:10 | Gemini Pro |
-| 2 | Expert Network Brief AM | `0 12 * * *` | 07:00 | Gemini Flash |
-| 3 | Expert Network Brief PM | `0 23 * * *` | 18:00 | Gemini Flash |
-
-Session: isolated. Delivery: Telegram channel `-1003826801947`. Max concurrent: 1.
 
 ---
 
@@ -134,35 +108,21 @@ Session: isolated. Delivery: Telegram channel `-1003826801947`. Max concurrent: 
 
 | Issue | Detail |
 |-------|--------|
-| `google.generativeai` deprecation | FutureWarning on every Sentinel start. Migrate to `google.genai` SDK when stable. |
-| Config reload silent success | `docker kill --signal=SIGUSR1` logs nothing on success, only errors. |
-| Compaction modes | Only `"default"` and `"safeguard"` are valid. `"aggressive"` causes silent rejection. |
-| `heartbeatModel` | NOT a valid key. Use `agents.defaults.heartbeat.model` instead. |
-| Zombie AI brief runs | Check `ai-brief-state.json` for `last_run.status="running"` stuck state. |
-| Job Radar health checks | Every 30s is normal (Docker health check), not an error. |
-| Telegram long-poll 10s | This is NOT an LLM call — just HTTP to Telegram. Zero token cost at idle. |
-| SKILL.md `model:` field | Prompt hint only, NOT gateway-enforced. Cron `jobs.json` model IS enforced. |
-| Session constraint | Message tool is constrained to session target. Cron = unconstrained = delivers to channel. |
-
----
-
-## Cost Targets
-
-| Component | Monthly |
-|-----------|---------|
-| Hetzner CPX22 | ~$8 |
-| LLM APIs (Gemini-first) | $6-15 |
-| **Total** | **$14-23** |
-
-Daily API budget: <$5. Sentinel zero-cost commands (`/status`, `/cost`, etc.) bypass LLM entirely.
+| `exec elevated` blocked | Gateway blocks `exec` tool in cron sessions. Use `web_search` for Brave queries. |
+| Config reload silent | SIGUSR1 logs nothing on success, only errors. |
+| Compaction modes | Only `"default"` and `"safeguard"` valid. |
+| `<think>` tags | Absolute ban in SKILL.md + SOUL.md — wastes 20K tokens, crashes sessions. |
+| AIDB_BRAVE_* vars | Hard caps for web_search. Currently: count=8, max_tokens=2048 (set in container env). |
+| State file overwrite | Both cron jobs write to same state file. Last writer wins. Non-critical. |
+| temperature in frontmatter | SKILL.md `temperature: 0` is a prompt hint, NOT gateway-enforced. Added to cron payloads too. |
 
 ---
 
 ## What NOT to Change
 
-- Do not enable auto-fallback to Anthropic (cost explosion risk)
-- Do not use Haiku for anything (banned — all aliases redirect)
-- Do not set compaction to `"aggressive"` (invalid, causes silent config rejection)
-- Do not add `heartbeatModel` key (use `agents.defaults.heartbeat.model`)
-- Do not push secrets to git (`.env` is in `.gitignore`)
+- Do not enable auto-fallback to Anthropic (cost explosion)
+- Do not use Haiku (banned)
+- Do not set compaction to `"aggressive"` (invalid)
+- Do not use `exec curl` for Brave API (blocked; use web_search)
 - Do not skip `chown` after editing config files
+- Do not push secrets to git

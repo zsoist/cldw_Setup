@@ -2,12 +2,10 @@
   "version": 1,
   "jobs": [
     {
-      "id": "cb781cca-49d3-41b8-869b-9f09120f1644",
+      "id": "news-brief-ai",
       "agentId": "main",
-      "name": "Daily Brief Top5 AI (Previous Day)",
+      "name": "AI Top 5",
       "enabled": true,
-      "createdAtMs": 1771939298470,
-      "updatedAtMs": 1772107860093,
       "schedule": {
         "kind": "cron",
         "expr": "10 12 * * *",
@@ -17,23 +15,33 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "/ai_daily_brief top5",
-        "model": "google/gemini-2.5-pro",
-        "timeoutSeconds": 180
+        "message": "/brief ai top5",
+        "model": "google/gemini-2.5-flash",
+        "timeoutSeconds": 90,
+        "temperature": 0
       },
       "delivery": {
         "mode": "announce",
         "channel": "telegram",
         "to": "-1003826801947"
-      }
+      },
+      "state": {
+        "nextRunAtMs": 1772280600000,
+        "lastRunAtMs": 1772253242735,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 13480,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      },
+      "updatedAtMs": 1772253256215
     },
     {
-      "id": "a3f8b2c1-7d4e-4a9f-b6c3-2e1f0d9a8b7c",
+      "id": "news-brief-enb",
       "agentId": "main",
-      "name": "Expert Network Brief (Morning)",
+      "name": "Expert Networks Top 5",
       "enabled": true,
-      "createdAtMs": 1772150400000,
-      "updatedAtMs": 1772150400000,
       "schedule": {
         "kind": "cron",
         "expr": "0 12 * * *",
@@ -43,41 +51,27 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "/expert_network_brief morning",
+        "message": "/brief expert-networks top5",
         "model": "google/gemini-2.5-flash",
-        "timeoutSeconds": 120
+        "timeoutSeconds": 90,
+        "temperature": 0
       },
       "delivery": {
         "mode": "announce",
         "channel": "telegram",
         "to": "-1003826801947"
-      }
-    },
-    {
-      "id": "b4e9c3d2-8e5f-4b0a-c7d4-3f2a1e0b9c8d",
-      "agentId": "main",
-      "name": "Expert Network Brief (Evening)",
-      "enabled": true,
-      "createdAtMs": 1772150400000,
-      "updatedAtMs": 1772150400000,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 23 * * *",
-        "tz": "UTC"
       },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "/expert_network_brief evening",
-        "model": "google/gemini-2.5-flash",
-        "timeoutSeconds": 90
+      "state": {
+        "nextRunAtMs": 1772280000000,
+        "lastRunAtMs": 1772253273936,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 13213,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
       },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003826801947"
-      }
+      "updatedAtMs": 1772253287149
     }
   ]
 }

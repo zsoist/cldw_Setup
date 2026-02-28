@@ -7,7 +7,7 @@
       "dangerouslyAllowHostHeaderOriginFallback": true
     },
     "auth": {
-      "token": "REPLACE_WITH_GATEWAY_TOKEN"
+      "token": "9f22072a9c34521b694e50000b34967c90e90fffc4bd8213fa9f6f58a99a1dba"
     }
   },
   "agents": {
@@ -29,13 +29,13 @@
         "google/gemini-2.5-flash": {}
       },
       "compaction": {
-        "mode": "default"
+        "mode": "safeguard"
       },
       "contextPruning": {
         "mode": "cache-ttl",
-        "ttl": "5m",
+        "ttl": "3m",
         "keepLastAssistants": 1,
-        "minPrunableToolChars": 2000
+        "minPrunableToolChars": 1000
       },
       "subagents": {
         "model": "google/gemini-2.5-flash",
@@ -62,7 +62,7 @@
   "channels": {
     "telegram": {
       "enabled": true,
-      "botToken": "REPLACE_WITH_TELEGRAM_BOT_TOKEN",
+      "botToken": "8536512770:AAF3CBivb8XIElg5affrh1QJaJQY5srm1Vs",
       "commands": {
         "native": true,
         "nativeSkills": true
@@ -83,7 +83,7 @@
       "accounts": {
         "default": {
           "enabled": true,
-          "botToken": "REPLACE_WITH_TELEGRAM_BOT_TOKEN",
+          "botToken": "8536512770:AAF3CBivb8XIElg5affrh1QJaJQY5srm1Vs",
           "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
           "dmPolicy": "allowlist",
           "allowFrom": [
@@ -104,29 +104,23 @@
           {
             "name": "gemini-2.5-flash",
             "id": "gemini-2.5-flash",
-            "cost": {
-              "input": 0.15,
-              "output": 0.6,
-              "cacheRead": 0.0375
-            }
+            "cost": { "input": 0.15, "output": 0.60, "cacheRead": 0.0375 }
           },
           {
             "name": "gemini-2.5-pro",
             "id": "gemini-2.5-pro",
-            "cost": {
-              "input": 1.25,
-              "output": 10.0,
-              "cacheRead": 0.3125
-            }
+            "cost": { "input": 1.25, "output": 10.0, "cacheRead": 0.3125 }
           }
         ]
       }
     }
   },
   "tools": {
+    "deny": ["browser", "canvas", "nodes", "tts", "image"],
     "web": {
       "search": {
-        "provider": "brave"
+        "provider": "brave",
+        "enabled": true
       }
     },
     "media": {
