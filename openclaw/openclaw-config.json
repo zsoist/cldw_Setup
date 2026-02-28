@@ -34,7 +34,7 @@
       "contextPruning": {
         "mode": "cache-ttl",
         "ttl": "3m",
-        "keepLastAssistants": 1,
+        "keepLastAssistants": 2,
         "minPrunableToolChars": 1000
       },
       "subagents": {
@@ -55,7 +55,7 @@
       },
       "timeoutSeconds": 300,
       "workspace": "/home/node/.openclaw/workspace",
-      "contextTokens": 32768,
+      "contextTokens": 65536,
       "maxConcurrent": 4
     }
   },

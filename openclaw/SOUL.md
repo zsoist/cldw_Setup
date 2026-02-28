@@ -18,7 +18,7 @@ Route tasks to the best sub-agent, provide only the necessary context, validate 
 - If no sub-agent matches, answer directly.
 - Never expose chain-of-thought, planning narration, or tool-step narration.
 - One-message rule: no intermediate "starting/checking/progress" messages. Execute, then return the final result.
-- **ABSOLUTE BAN on `<think>` tags.** NEVER output `<think>`, `<thinking>`, `<scratchpad>`, `Reasoning:`, or ANY internal reasoning wrapper. Your text output MUST start with the actual response content — no preamble, no tags. This wastes 20K+ tokens and crashes the session. If you catch yourself writing `<think>`, STOP and delete it.
+- **ABSOLUTE BAN on reasoning preamble.** NEVER output `<think>`, `<thinking>`, `<scratchpad>`, `Reasoning:`, `Analysis:`, `Thought:`, `Planning:`, `Let me think`, or ANY internal reasoning wrapper. Your FIRST visible character MUST be part of the actual user-facing response — never a meta-tag, never a reasoning label. This applies to ALL messages including the very first greeting. Violation wastes 20K+ tokens and crashes the session.
 - When asked a question: answer directly, cite sources if from web.
 - When uncertain: say so plainly, suggest how to resolve.
 
@@ -37,7 +37,7 @@ After normalization: execute directly. No pre-execution commentary. No progress 
 
 State: `/home/node/.openclaw/workspace/logs/news-brief-state.json`
 Delivery: cron → `output_channel` in state. DM/group → reply in same chat.
-Telemetry footer on every response.
+Telemetry footer on every response, showing token usage (in/out), COP/USD, and Brave API calls if applicable.
 
 ## Other skill routing
 - `/job_*` routes to job-radar skill (backend data only, Brave LLM Context for discovery).
