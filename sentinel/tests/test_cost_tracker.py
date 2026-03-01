@@ -91,11 +91,11 @@ def test_sentinel_agent_writes_usage_summary(tmp_path):
 
 
 def test_pricing_table_matches_current_rates():
-    """Verify pricing table reflects actual provider rates (Feb 2026)."""
-    # Gemini 2.5 Flash: $0.30 input, $2.50 output per 1M tokens
+    """Verify pricing table reflects actual provider rates (Mar 2026)."""
+    # Gemini 2.5 Flash: $0.15 input, $0.60 output per 1M tokens
     flash = _MODEL_PRICING["google/gemini-2.5-flash"]
-    assert flash.input_per_million == 0.30
-    assert flash.output_per_million == 2.50
+    assert flash.input_per_million == 0.15
+    assert flash.output_per_million == 0.60
 
     # Gemini 2.5 Pro: $1.25 input, $10.00 output per 1M tokens
     pro = _MODEL_PRICING["google/gemini-2.5-pro"]
@@ -117,10 +117,10 @@ def test_pricing_table_matches_current_rates():
     assert opus.input_per_million == 5.00
     assert opus.output_per_million == 25.00
 
-    # Provider defaults match primary model in each tier
-    assert _PROVIDER_DEFAULT_PRICING["google"].input_per_million == 0.30
-    assert _PROVIDER_DEFAULT_PRICING["google"].output_per_million == 2.50
-    # Anthropic default = Sonnet 4.6 (Haiku is banned from production use)
+    # Provider defaults match primary model (Flash for Google)
+    assert _PROVIDER_DEFAULT_PRICING["google"].input_per_million == 0.15
+    assert _PROVIDER_DEFAULT_PRICING["google"].output_per_million == 0.60
+    # Anthropic default = Sonnet 4.6
     assert _PROVIDER_DEFAULT_PRICING["anthropic"].input_per_million == 3.00
     assert _PROVIDER_DEFAULT_PRICING["anthropic"].output_per_million == 15.00
 

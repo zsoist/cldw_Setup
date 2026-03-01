@@ -59,7 +59,7 @@ class TestToolDefinitions:
             assert tool["input_schema"]["type"] == "object"
 
     def test_tool_count(self):
-        assert len(TOOLS) == 9
+        assert len(TOOLS) == 11
 
     def test_google_function_declarations_exist(self):
         assert len(GOOGLE_TOOLS) == 1
