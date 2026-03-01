@@ -15,10 +15,10 @@ Environment=SENTINEL_ENV_FILE=/etc/sentinel/sentinel.env
 ExecStart=/opt/sentinel/venv/bin/python telegram_handler.py
 Restart=on-failure
 RestartSec=10
-Environment=PATH=/opt/sentinel/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/opt/sentinel/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LogsDirectory=sentinel
 KillMode=control-group
-NoNewPrivileges=true
+NoNewPrivileges=false
 
 [Install]
 WantedBy=multi-user.target

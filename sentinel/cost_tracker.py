@@ -169,6 +169,60 @@ class APICostTracker:
         self._prune_interval = 100  # prune every N records, not every call
         self._prepare_paths()
 
+    def get_summary(self, period: str = "today") -> dict[str, Any]:
+        """Read the current cost summary for a given period.
+
+        Returns a dict with usd, input_tokens, output_tokens, calls, errors,
+        and per-model breakdown. Thread-safe.
+        """
+        with self._lock:
+            summary = self._load_summary()
+
+        now = _utc_now()
+        today_key = _day_key(now)
+        week_key = _week_key(now)
+        month_key = _month_key(now)
+
+        totals = summary.get("totals", {})
+        if period == "today":
+            bucket = totals.get("daily", {}).get(today_key, _empty_bucket())
+        elif period == "week":
+            bucket = totals.get("weekly", {}).get(week_key, _empty_bucket())
+        elif period == "month":
+            bucket = totals.get("monthly", {}).get(month_key, _empty_bucket())
+        else:
+            bucket = totals.get("all_time", _empty_bucket())
+
+        # Model breakdown for the same period
+        models_section = summary.get("models", {})
+        by_model: dict[str, dict[str, Any]] = {}
+        for model_name, model_data in models_section.items():
+            if period == "today":
+                mbucket = model_data.get("daily", {}).get(today_key, {})
+            elif period == "week":
+                mbucket = model_data.get("weekly", {}).get(week_key, {})
+            elif period == "month":
+                mbucket = model_data.get("monthly", {}).get(month_key, {})
+            else:
+                mbucket = model_data.get("all_time", {})
+            if _safe_int(mbucket.get("calls")) > 0:
+                by_model[model_name] = {
+                    "usd": round(_safe_float(mbucket.get("usd")), 6),
+                    "calls": _safe_int(mbucket.get("calls")),
+                    "input_tokens": _safe_int(mbucket.get("input_tokens")),
+                    "output_tokens": _safe_int(mbucket.get("output_tokens")),
+                }
+
+        return {
+            "usd": round(_safe_float(bucket.get("usd")), 6),
+            "input_tokens": _safe_int(bucket.get("input_tokens")),
+            "output_tokens": _safe_int(bucket.get("output_tokens")),
+            "calls": _safe_int(bucket.get("calls")),
+            "errors": _safe_int(bucket.get("error_calls")),
+            "by_model": by_model,
+            "updated_at": summary.get("updated_at", ""),
+        }
+
     def _prepare_paths(self) -> None:
         for path in (self._usage_log_path, self._summary_path):
             path.parent.mkdir(parents=True, exist_ok=True)

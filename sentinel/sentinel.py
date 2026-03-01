@@ -59,10 +59,12 @@ keep the host healthy, Docker containers running, and report costs.
 
 <environment>
 - OS: Ubuntu 24.04 LTS
-- Containers: OpenClaw gateway (openclaw-openclaw-gateway-1), Job Radar API (job-radar-api), Job Radar DB (job-radar-db)
+- Containers: OpenClaw gateway (openclaw-openclaw-gateway-1), Job Radar API (job-radar-agent), Job Radar DB (job-radar-db)
 - Firewall: UFW (SSH only inbound)
 - Intrusion prevention: fail2ban for SSH
 - This bot: systemd service (sentinel.service)
+- Cost tracking: Sentinel exact (JSONL log), OpenClaw & Job Radar estimated from Docker logs
+- Scheduled tasks: system crontab, OpenClaw cron, Job Radar APScheduler, systemd timers
 </environment>
 
 <output_format>
@@ -451,10 +453,117 @@ class SentinelAgent:
 
     @staticmethod
     def _truncate_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Keep the latest conversation window to control token usage."""
+        """Keep the latest conversation window while preserving structural integrity.
+
+        Gemini requires strict alternation: user → model → user (function_response) → model.
+        Naive truncation can break this by cutting in the middle of a tool-call pair.
+        """
         if len(history) <= 20:
             return history
-        return history[-20:]
+
+        truncated = history[-20:]
+
+        # Strip orphaned turns from the start until we have a clean user turn.
+        while truncated:
+            first = truncated[0]
+            role = first.get("role", "")
+            parts = first.get("parts", [])
+
+            # Remove orphaned function_response at start (missing preceding function_call)
+            if role == "user" and parts and any(
+                isinstance(p, dict) and "function_response" in p for p in parts
+            ):
+                truncated = truncated[1:]
+                continue
+
+            # Must start with a user turn for Gemini
+            if role == "model":
+                truncated = truncated[1:]
+                continue
+
+            break
+
+        # Remove dangling function_call at end (model turn with function_calls but no response)
+        while truncated:
+            last = truncated[-1]
+            last_parts = last.get("parts", [])
+            if (
+                last.get("role") == "model"
+                and last_parts
+                and any(isinstance(p, dict) and "function_call" in p for p in last_parts)
+            ):
+                truncated.pop()
+                continue
+            break
+
+        return truncated if len(truncated) >= 1 else history[-2:]
+
+    @staticmethod
+    def _sanitize_google_history(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Validate and fix Gemini history to prevent 400 errors.
+
+        Enforces:
+        1. Starts with a user turn (not function_response)
+        2. function_response immediately follows a model turn with function_call
+        3. No consecutive model turns
+        """
+        if not history:
+            return history
+
+        sanitized: list[dict[str, Any]] = []
+
+        for turn in history:
+            role = turn.get("role", "")
+            parts = turn.get("parts", [])
+
+            if not parts:
+                continue
+
+            is_fn_response = (
+                role == "user"
+                and any(isinstance(p, dict) and "function_response" in p for p in parts)
+            )
+
+            if is_fn_response:
+                # Must follow a model turn with function_call
+                if not sanitized:
+                    continue
+                prev = sanitized[-1]
+                prev_parts = prev.get("parts", [])
+                has_fn_call = (
+                    prev.get("role") == "model"
+                    and any(isinstance(p, dict) and "function_call" in p for p in prev_parts)
+                )
+                if not has_fn_call:
+                    continue
+                sanitized.append(turn)
+                continue
+
+            # Prevent consecutive model turns
+            if role == "model" and sanitized and sanitized[-1].get("role") == "model":
+                sanitized[-1] = turn
+                continue
+
+            sanitized.append(turn)
+
+        # Strip dangling function_call at end
+        while sanitized:
+            last = sanitized[-1]
+            last_parts = last.get("parts", [])
+            if (
+                last.get("role") == "model"
+                and last_parts
+                and any(isinstance(p, dict) and "function_call" in p for p in last_parts)
+            ):
+                sanitized.pop()
+            else:
+                break
+
+        # Must start with user turn
+        while sanitized and sanitized[0].get("role") != "user":
+            sanitized.pop(0)
+
+        return sanitized if sanitized else history[-2:]
 
     def _persist_history(self, user_id: int, history: list[dict[str, Any]]) -> None:
         """Thread-safe persistence of truncated conversation history."""
@@ -574,8 +683,10 @@ class SentinelAgent:
         active_client = client or self.google_client
         if active_client is None:
             raise RuntimeError("Google client is not initialized")
+        # Sanitize history to prevent Gemini 400 errors from malformed turn ordering.
+        safe_history = self._sanitize_google_history(history)
         return active_client.generate_content(
-            history,
+            safe_history,
             tools=GOOGLE_TOOLS,
             generation_config={
                 "max_output_tokens": self.config.max_tokens,
@@ -850,6 +961,23 @@ class SentinelAgent:
         return "Reached maximum tool iterations. Something may be stuck. Please try again."
 
     @staticmethod
+    def _is_history_corruption_error(exc: Exception) -> bool:
+        """Detect Gemini 400 errors caused by malformed conversation history.
+
+        These are recoverable by clearing the conversation and retrying.
+        """
+        details = f"{type(exc).__name__}: {exc}".lower()
+        markers = (
+            "function call turn",
+            "function_response",
+            "please ensure",
+            "invalid argument",
+        )
+        is_400 = "400" in details
+        has_marker = any(m in details for m in markers)
+        return is_400 and has_marker
+
+    @staticmethod
     def _is_recoverable_provider_error(exc: Exception) -> bool:
         """Detect provider errors that deserve a friendly message instead of a raw traceback."""
         details = f"{type(exc).__name__}: {exc}".lower()
@@ -985,6 +1113,38 @@ class SentinelAgent:
                 request_stats["status"] = "soft_error"
                 self._store_last_request_stats(user_id, request_stats)
                 return "Gemini returned an empty response. Please retry your request."
+
+            # Gemini 400 from malformed history — clear and retry with fresh context.
+            if self._is_history_corruption_error(primary_exc):
+                logger.warning(
+                    "History corruption detected for user %d — clearing and retrying: %s",
+                    user_id,
+                    str(primary_exc)[:200],
+                )
+                self._append_audit_event(
+                    user_id,
+                    "conversation_reset",
+                    {"reason": "history_corruption_400", "error": str(primary_exc)[:200]},
+                )
+                with self._state_lock:
+                    self.conversations.pop(user_id, None)
+                try:
+                    response = self._process_with_provider(
+                        self.provider,
+                        user_id,
+                        user_message,
+                        persist_history=True,
+                        use_existing_history=False,
+                        request_stats=request_stats,
+                    )
+                    request_stats["status"] = "success"
+                    self._store_last_request_stats(user_id, request_stats)
+                    return response
+                except Exception as retry_exc:
+                    logger.error("Retry after history clear also failed: %s", retry_exc)
+                    request_stats["status"] = "error"
+                    self._store_last_request_stats(user_id, request_stats)
+                    return "Request failed after clearing history. Please try again."
 
             if self._is_recoverable_provider_error(primary_exc):
                 self._append_audit_event(

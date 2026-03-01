@@ -23,6 +23,7 @@ from tools import (
     execute_check_security,
     execute_backup_openclaw,
     execute_cost_summary,
+    execute_list_scheduled_tasks,
 )
 
 logger = logging.getLogger("sentinel.telegram")
@@ -200,13 +201,14 @@ class SentinelTelegramBot:
         await update.message.reply_text(
             "*Sentinel Online*\n\n"
             "I manage your VPS infrastructure. Commands:\n"
-            "- `/status` — System stats\n"
-            "- `/openclaw` — OpenClaw health\n"
+            "- `/status` — System stats + containers\n"
+            "- `/openclaw` — OpenClaw health check\n"
             "- `/security` — Security audit\n"
-            "- `/backup` — Backup OpenClaw\n"
-            "- `/cost` — API cost summary\n"
+            "- `/backup` — Backup OpenClaw config\n"
+            "- `/cost` — VPS cost dashboard (all services)\n"
+            "- `/tasks` — All scheduled tasks (cron, timers, jobs)\n"
             "- Or just describe what you need in plain text.\n\n"
-            "All requests go through the configured LLM provider with tool verification.",
+            "Cost tracking covers Sentinel (exact) + OpenClaw & Job Radar (estimated from logs).",
             parse_mode="Markdown",
         )
 
@@ -319,35 +321,176 @@ class SentinelTelegramBot:
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
 
+    @staticmethod
+    def _format_cost_dashboard(result: dict) -> str:
+        """Build a rich, user-friendly cost dashboard for Telegram."""
+        period = result.get("period", "today")
+        period_labels = {"today": "Today", "week": "This Week", "month": "This Month", "all": "All Time"}
+        period_label = period_labels.get(period, period.title())
+
+        lines = [f"VPS Cost Dashboard — {period_label}"]
+        lines.append("=" * 32)
+
+        services = result.get("services", {})
+        svc_configs = [
+            ("sentinel", "Sentinel", False),
+            ("openclaw", "OpenClaw Gateway", True),
+            ("job_radar", "Job Radar", True),
+        ]
+
+        for svc_key, svc_label, is_estimated in svc_configs:
+            svc = services.get(svc_key, {})
+            if not isinstance(svc, dict):
+                continue
+
+            if "error" in svc:
+                lines.append(f"\n{svc_label}: {svc['error']}")
+                continue
+
+            est_tag = " (est)" if svc.get("is_estimate") else ""
+            cost_key = "est_usd" if svc.get("is_estimate") else "usd"
+            in_key = "est_input_tokens" if svc.get("is_estimate") else "input_tokens"
+            out_key = "est_output_tokens" if svc.get("is_estimate") else "output_tokens"
+
+            cost = float(svc.get(cost_key, 0))
+            in_tokens = int(svc.get(in_key, 0))
+            out_tokens = int(svc.get(out_key, 0))
+            calls = int(svc.get("runs", svc.get("calls", 0)))
+            errors = int(svc.get("errors", 0))
+            brave = int(svc.get("brave_calls", 0))
+
+            # Status indicator
+            status = svc.get("status", "")
+            if status == "running":
+                status_icon = "[OK]"
+            elif status == "not_found":
+                status_icon = "[DOWN]"
+            elif not svc.get("is_estimate"):
+                # Sentinel (exact tracking) — always OK if we got data
+                status_icon = "[OK]"
+            else:
+                status_icon = ""
+
+            lines.append(f"\n{svc_label} {status_icon}")
+
+            # Model info
+            by_model = svc.get("by_model", {})
+            if by_model:
+                model_parts = []
+                for m, md in by_model.items():
+                    m_runs = md.get("runs", md.get("calls", 0))
+                    m_cost = md.get("est_usd", md.get("usd", 0))
+                    model_parts.append(f"  {m}: {m_runs} calls ${m_cost:.4f}")
+                lines.extend(model_parts)
+            elif calls > 0:
+                lines.append(f"  Calls: {calls}")
+
+            # Tokens
+            if in_tokens > 0 or out_tokens > 0:
+                in_k = f"{in_tokens/1000:.1f}K" if in_tokens >= 1000 else str(in_tokens)
+                out_k = f"{out_tokens/1000:.1f}K" if out_tokens >= 1000 else str(out_tokens)
+                lines.append(f"  Tokens: {in_k} in / {out_k} out")
+
+            # Cost
+            lines.append(f"  Cost{est_tag}: ${cost:.4f}")
+
+            # Errors and Brave
+            extras = []
+            if errors > 0:
+                extras.append(f"Errors: {errors}")
+            if brave > 0:
+                extras.append(f"Brave: {brave}")
+            if extras:
+                lines.append(f"  {' | '.join(extras)}")
+
+        # Grand total
+        total = result.get("total", {})
+        if total:
+            lines.append("")
+            lines.append("-" * 32)
+            t_usd = float(total.get("usd", 0))
+            t_cop = float(total.get("cop", 0))
+            t_runs = int(total.get("total_runs", 0))
+            has_est = total.get("has_estimates", False)
+
+            est_note = " ~" if has_est else " "
+            lines.append(f"TOTAL:{est_note}${t_usd:.4f} USD / ${t_cop:,.0f} COP")
+            lines.append(f"API calls: {t_runs}")
+
+            remaining = total.get("daily_budget_remaining")
+            pct = total.get("budget_pct_used")
+            if remaining is not None and pct is not None:
+                # Budget bar: 20 chars wide
+                filled = max(0, min(20, int(pct / 5)))
+                bar = "#" * filled + "-" * (20 - filled)
+                lines.append(f"Budget: [{bar}] {pct:.1f}%")
+                lines.append(f"Remaining: ${remaining:.4f} of $5.00")
+
+            if has_est:
+                lines.append("\n(~) = estimated from Docker log API call counts")
+
+        return "\n".join(lines)
+
     async def cost_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Show API cost summary — direct tool execution, zero LLM cost."""
+        """Show comprehensive VPS cost dashboard — direct tool execution, zero LLM cost."""
         if not self._is_authorized(update.effective_user.id):
             return
         try:
             raw_arg = context.args[0] if context.args else "today"
             period = raw_arg.lower().strip() if raw_arg.lower().strip() in _COST_PERIODS else "today"
             result = execute_cost_summary(period)
-            lines = [f"*API Cost Summary ({_escape_md(period)})*"]
-            for svc_name, svc_data in result.get("services", {}).items():
-                if not isinstance(svc_data, dict) or "error" in svc_data:
-                    if isinstance(svc_data, dict) and "error" in svc_data:
-                        lines.append(f"\n*{_escape_md(str(svc_name))}:* {_safe_str(svc_data['error'])}")
-                    continue
-                in_t = svc_data.get("input_tokens", 0)
-                out_t = svc_data.get("output_tokens", 0)
-                usd = svc_data.get("usd", 0)
-                lines.append(f"\n*{_escape_md(str(svc_name))}:* {in_t}/{out_t} tokens — ${usd:.6f}")
-            total = result.get("total", {})
-            if total:
-                cop = total.get("cop", 0)
-                lines.append(f"\n*Total:* ${total.get('usd', 0):.6f} USD / ${cop:,.0f} COP")
-            remaining = total.get("daily_budget_remaining") if total else None
-            if remaining is not None:
-                lines.append(f"Daily budget remaining: ${remaining:.4f}")
-            response = "\n".join(lines)
+            response = self._format_cost_dashboard(result)
         except Exception as e:
             logger.error("Cost command failed: %s", e, exc_info=True)
             response = f"Error getting cost summary: {_safe_str(e)}"
+        self._set_zero_cost_stats(update.effective_user.id)
+        response = self._append_usage_footer(update.effective_user.id, response)
+        await self._reply_text_safe_chunked(update.message, response)
+
+    async def tasks_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """List all scheduled tasks across the VPS — direct tool execution, zero LLM cost."""
+        if not self._is_authorized(update.effective_user.id):
+            return
+        try:
+            result = execute_list_scheduled_tasks()
+            lines = ["Scheduled Tasks"]
+            lines.append("=" * 28)
+
+            # System crontab
+            sys_cron = result.get("system_crontab", {})
+            lines.append(f"\nSystem Crontab ({sys_cron.get('count', 0)} jobs)")
+            for job in sys_cron.get("jobs", []):
+                lines.append(f"  {job[:80]}")
+            if not sys_cron.get("jobs"):
+                lines.append(f"  {sys_cron.get('note', 'None')}")
+
+            # OpenClaw cron
+            oc_cron = result.get("openclaw_cron", {})
+            lines.append(f"\nOpenClaw Cron ({oc_cron.get('count', 0)} jobs)")
+            for job in oc_cron.get("jobs", []):
+                lines.append(f"  {job.get('id', '?')}: {job.get('schedule', '?')}")
+            if not oc_cron.get("jobs"):
+                lines.append(f"  {oc_cron.get('note', 'None')}")
+
+            # Job Radar
+            jr = result.get("job_radar_scheduler", {})
+            lines.append(f"\nJob Radar ({jr.get('count', 0)} jobs)")
+            for job in jr.get("jobs", []):
+                lines.append(f"  {job.get('id', '?')}: {job.get('schedule', '?')}")
+                desc = job.get("desc", "")
+                if desc:
+                    lines.append(f"    {desc}")
+
+            # Systemd timers
+            timers = result.get("systemd_timers", {})
+            lines.append(f"\nSystemd Timers ({timers.get('count', 0)})")
+            for t in timers.get("timers", [])[:8]:
+                lines.append(f"  {t[:80]}")
+
+            response = "\n".join(lines)
+        except Exception as e:
+            logger.error("Tasks command failed: %s", e, exc_info=True)
+            response = f"Error listing scheduled tasks: {_safe_str(e)}"
         self._set_zero_cost_stats(update.effective_user.id)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
@@ -404,6 +547,7 @@ class SentinelTelegramBot:
         app.add_handler(CommandHandler("security", self.security_command))
         app.add_handler(CommandHandler("backup", self.backup_command))
         app.add_handler(CommandHandler("cost", self.cost_command))
+        app.add_handler(CommandHandler("tasks", self.tasks_command))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
         logger.info("Sentinel Telegram bot starting...")
