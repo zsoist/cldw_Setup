@@ -1,109 +1,50 @@
 {
-  "gateway": {
-    "mode": "local",
-    "bind": "lan",
-    "port": 18789,
-    "controlUi": {
-      "dangerouslyAllowHostHeaderOriginFallback": true
+  "meta": {
+    "lastTouchedVersion": "2026.2.26",
+    "lastTouchedAt": "2026-03-01T20:58:06.435Z"
+  },
+  "auth": {
+    "profiles": {
+      "openai-codex:default": {
+        "provider": "openai-codex",
+        "mode": "oauth"
+      }
     },
-    "auth": {
-      "token": "<REDACTED>"
-    }
-  },
-  "agents": {
-    "defaults": {
-      "model": {
-        "primary": "google/gemini-2.5-flash",
-        "fallbacks": []
-      },
-      "thinkingDefault": "off",
-      "verboseDefault": "off",
-      "imageModel": {
-        "primary": "google/gemini-2.5-flash",
-        "fallbacks": []
-      },
-      "models": {
-        "google/gemini-2.5-pro": {
-          "alias": "nano-banana-pro"
-        },
-        "google/gemini-2.5-flash": {}
-      },
-      "compaction": {
-        "mode": "safeguard"
-      },
-      "contextPruning": {
-        "mode": "cache-ttl",
-        "ttl": "3m",
-        "keepLastAssistants": 2,
-        "minPrunableToolChars": 500
-      },
-      "subagents": {
-        "model": "google/gemini-2.5-flash",
-        "maxConcurrent": 1,
-        "runTimeoutSeconds": 90,
-        "archiveAfterMinutes": 30
-      },
-      "heartbeat": {
-        "every": "180m",
-        "model": "google/gemini-2.5-flash",
-        "ackMaxChars": 100,
-        "activeHours": {
-          "start": "07:00",
-          "end": "23:00",
-          "timezone": "America/Bogota"
-        }
-      },
-      "timeoutSeconds": 300,
-      "workspace": "/home/node/.openclaw/workspace",
-      "contextTokens": 32768,
-      "maxConcurrent": 2
-    }
-  },
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "botToken": "<REDACTED>",
-      "commands": {
-        "native": true,
-        "nativeSkills": true
-      },
-      "dmPolicy": "allowlist",
-      "groups": {
-        "*": {
-          "requireMention": true
-        },
-        "-1003826801947": {
-          "requireMention": false,
-          "allowFrom": [
-            "*"
-          ]
-        }
-      },
-      "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
-      "accounts": {
-        "default": {
-          "enabled": true,
-          "botToken": "<REDACTED>",
-          "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
-          "dmPolicy": "allowlist",
-          "allowFrom": [
-            "6182588021"
-          ]
-        }
-      },
-      "allowFrom": [
-        "6182588021"
+    "order": {
+      "openai-codex": [
+        "openai-codex:default"
       ]
     }
   },
   "models": {
     "providers": {
+      "openai": {
+        "baseUrl": "https://api.openai.com",
+        "models": [
+          {
+            "id": "gpt-4o-mini",
+            "name": "gpt-4o-mini",
+            "cost": {
+              "input": 0.15,
+              "output": 0.6
+            }
+          },
+          {
+            "id": "gpt-4o",
+            "name": "gpt-4o",
+            "cost": {
+              "input": 2.5,
+              "output": 10
+            }
+          }
+        ]
+      },
       "google": {
         "baseUrl": "https://generativelanguage.googleapis.com",
         "models": [
           {
-            "name": "gemini-2.5-flash",
             "id": "gemini-2.5-flash",
+            "name": "gemini-2.5-flash",
             "cost": {
               "input": 0.15,
               "output": 0.6,
@@ -111,15 +52,75 @@
             }
           },
           {
-            "name": "gemini-2.5-pro",
             "id": "gemini-2.5-pro",
+            "name": "gemini-2.5-pro",
             "cost": {
               "input": 1.25,
-              "output": 10.0,
+              "output": 10,
               "cacheRead": 0.3125
             }
           }
         ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openai-codex/gpt-5.3-codex",
+        "fallbacks": [
+          "google/gemini-2.5-flash"
+        ]
+      },
+      "imageModel": {
+        "primary": "openai-codex/gpt-5.3-codex",
+        "fallbacks": [
+          "google/gemini-2.5-flash"
+        ]
+      },
+      "models": {
+        "openai-codex/gpt-5.3-codex": {
+          "alias": "codex"
+        },
+        "openai/gpt-4o-mini": {},
+        "openai/gpt-4o": {
+          "alias": "gpt4o"
+        },
+        "google/gemini-2.5-pro": {
+          "alias": "nano-banana-pro"
+        },
+        "google/gemini-2.5-flash": {}
+      },
+      "workspace": "/home/node/.openclaw/workspace",
+      "contextTokens": 65536,
+      "contextPruning": {
+        "mode": "cache-ttl",
+        "ttl": "3m",
+        "keepLastAssistants": 2,
+        "minPrunableToolChars": 500
+      },
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "thinkingDefault": "off",
+      "verboseDefault": "off",
+      "timeoutSeconds": 300,
+      "heartbeat": {
+        "every": "180m",
+        "activeHours": {
+          "start": "07:00",
+          "end": "23:00",
+          "timezone": "America/Bogota"
+        },
+        "model": "openai-codex/gpt-5.3-codex",
+        "ackMaxChars": 100
+      },
+      "maxConcurrent": 2,
+      "subagents": {
+        "maxConcurrent": 1,
+        "archiveAfterMinutes": 30,
+        "model": "openai-codex/gpt-5.3-codex",
+        "runTimeoutSeconds": 120
       }
     }
   },
@@ -134,12 +135,78 @@
     ],
     "web": {
       "search": {
-        "provider": "brave",
-        "enabled": true
+        "enabled": true,
+        "provider": "brave"
       }
     },
     "media": {
       "concurrency": 2
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "commands": {
+        "native": true,
+        "nativeSkills": true
+      },
+      "dmPolicy": "allowlist",
+      "botToken": "YOUR_BOT_TOKEN",
+      "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
+      "groups": {
+        "*": {
+          "requireMention": true
+        },
+        "-1003826801947": {
+          "requireMention": false,
+          "allowFrom": [
+            "*"
+          ]
+        }
+      },
+      "allowFrom": [
+        "YOUR_TELEGRAM_USER_ID"
+      ],
+      "groupPolicy": "allowlist",
+      "streaming": "off",
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "dmPolicy": "allowlist",
+          "botToken": "YOUR_BOT_TOKEN",
+          "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
+          "allowFrom": [
+            "YOUR_TELEGRAM_USER_ID"
+          ],
+          "groupPolicy": "allowlist",
+          "streaming": "off"
+        }
+      }
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "auto",
+    "controlUi": {
+      "dangerouslyAllowHostHeaderOriginFallback": true
+    },
+    "auth": {
+      "mode": "token",
+      "token": "YOUR_GATEWAY_AUTH_TOKEN"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
     }
   },
   "plugins": {

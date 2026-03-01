@@ -1,16 +1,25 @@
-<!-- config-version: 2026.02.28-news-brief-v4 -->
+<!-- config-version: 2026.03.01-codex-v2 -->
 
 # Agent Registry & Model Routing
 
 ## Sub-Agents (delegate via task packet when appropriate)
 
+All sub-agents run on **openai-codex/gpt-5.3-codex** (subscription-covered, gateway-enforced via `subagents.model`).
+
+### Sub-agent behavioral contract
+- Execute end-to-end within the delegated scope. Return final deliverable, not partial analysis.
+- Bias to action: use sensible defaults when details are unspecified.
+- No clarification questions unless truly blocked with no reasonable assumption.
+- No preamble or status messages. First output must be the deliverable.
+- Max 1 retry per step. On persistent failure, return error summary.
+
 | Agent | Triggers | Model | Use for |
 |-------|----------|-------|---------|
-| Researcher | "research", "deep dive", "analyze" | Pro | Market research, tech analysis, source gathering |
-| Chief of Staff | "briefing", "todo", "remind", "priorities" | Flash | Daily ops, task tracking, scheduling |
-| News Intelligence | `/brief`, `/ai_daily_brief*`, `/expert_network_brief*`, `/enb`, "top news", "brief me", "news on" | Flash | Any news retrieval — AI, expert networks, any topic (direct in-lane) |
-| Job Search | `/job_*`, "job radar" | Flash→Pro | Job tracking, applications, prep (backend-only data) |
-| Academic | "coursework", "thesis", "explain concept" | Pro | ML concepts, problem sets, paper review |
+| Researcher | "research", "deep dive", "analyze" | Codex | Market research, tech analysis, source gathering |
+| Chief of Staff | "briefing", "todo", "remind", "priorities" | Codex | Daily ops, task tracking, scheduling |
+| News Intelligence | `/brief`, `/ai_daily_brief*`, `/expert_network_brief*`, `/enb`, "top news", "brief me", "news on" | Codex | Any news retrieval — AI, expert networks, any topic (direct in-lane) |
+| Job Search | `/job_*`, "job radar" | Codex | Job tracking, applications, prep (backend-only data) |
+| Academic | "coursework", "thesis", "explain concept" | Codex | ML concepts, problem sets, paper review |
 
 ## News Intelligence details
 - **Role:** Topic-flexible news briefing. AI news, expert networks, or any topic via natural language.
@@ -22,7 +31,7 @@
 - **Channel context:** Strip `@BotName` suffix. Approved groups treated same as DM.
 - **Output:** Ranked stories with dates + sources. Top5 ≤200 words. Deep ≤500 words.
 - **State:** `/home/node/.openclaw/workspace/logs/news-brief-state.json`
-- **Cost:** Flash only. All modes.
+- **Cost:** Subscription-covered (Codex). All modes.
 - **Schedule:** AI daily 07:10 COT, ENB daily 07:00 COT
 
 ### Command Namespace Safety
@@ -38,9 +47,8 @@
 - Strip `@BotName` suffix before routing. Normalize `_<mode>` suffix to space arg.
 
 ## Model chain (no auto-fallback)
-1. **Flash** (default) — chat, Q&A, formatting, heartbeat, news briefs, job radar
-2. **Pro** — research, code gen, academic analysis
-3. **Sonnet** — manual "think harder" only, never auto-triggered
-4. **Opus** — manual `/model opus` only, confirm before switching
+1. **Codex** (gpt-5.3-codex, default) — ALL tasks: chat, Q&A, heartbeat, news briefs, job radar, research, academic. Subscription-covered. Reasoning effort: medium (interactive), high (complex tasks).
+2. **Flash** (gemini-2.5-flash) — fallback ONLY if Codex is unavailable
+3. **Pro** — manual research escalation only
+- API-key models (openai/gpt-4o-mini, gpt-4o): DO NOT USE. Everything runs on Codex subscription.
 - Haiku: NEVER used. Auto-fallback to Anthropic: DISABLED.
-- Downgrade back to Flash after complex step completes.

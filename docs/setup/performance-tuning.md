@@ -1,123 +1,93 @@
 # OpenClaw Performance Tuning
 
-Operational practices for minimizing API costs and maximizing responsiveness. Complements `model-routing-policy.md` (which covers model selection) and the token optimization strategy in the README.
+> Last updated: 2026-03-01 (Codex-first migration)
 
-## 1. Keep System Prompt Payload Lean
+Operational practices for maximizing responsiveness and preventing token spirals.
 
-OpenClaw injects the following into every API request:
+## 1. System Prompt Payload
 
-- Tool list definitions
-- Skill metadata (from SKILL.md files)
-- Workspace/bootstrap files
-- Memory pointers
+OpenClaw injects workspace files into every API request. Keep them lean:
 
-Tuning parameters:
+| File | Target | Notes |
+|------|--------|-------|
+| SOUL.md | < 120 lines | Sent with every request. Includes autonomy, tool efficiency, routing rules |
+| AGENTS.md | < 50 lines | Sub-agent registry + behavioral contract |
+| TOOLS.md | < 30 lines | Tool preference order, budget, safety |
+| SKILL.md (news-brief) | ~410 lines | Only loaded when skill is triggered |
 
-| Parameter | Purpose | Our Setting |
-|-----------|---------|-------------|
-| `bootstrapMaxChars` | Truncation limit per bootstrap file | Default (tune if BOOTSTRAP.md grows) |
-| `bootstrapTotalMaxChars` | Total cap across all bootstrap files | Default (monitor with `/context list`) |
-| SOUL.md word count | Sent with every request | < 500 words (target ~400) |
+**Rule:** Every word in SOUL.md costs tokens across thousands of interactions. Structure with headers and bullets, not prose.
 
-**Rule:** Every word in SOUL.md costs tokens across thousands of interactions. Keep it structured (headers, bullets), not prose.
+## 2. Context Management
 
-## 2. Monitor Context Pressure
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `contextTokens` | 65536 | Hard-cap context window per session (safe with Codex 266K window) |
+| `contextPruning.mode` | cache-ttl | Trims old tool results per request |
+| `contextPruning.ttl` | 3m | Items older than 3 minutes eligible for pruning |
+| `contextPruning.keepLastAssistants` | 2 | Always keep last 2 assistant messages |
+| `contextPruning.minPrunableToolChars` | 500 | Only prune tool results > 500 chars |
+| `compaction.mode` | safeguard | Auto-compacts when approaching context limit |
 
-Use these commands regularly:
+**Practice:** Codex has first-class compaction support. The "safeguard" mode is the correct setting — it compacts automatically when needed without aggressive premature summarization.
 
-| Command | What It Shows |
-|---------|--------------|
-| `/context list` | All items in current context with token counts |
-| `/context detail` | Per-item breakdown (files, tools, attachments) |
+## 3. Anti-Spiral Safeguards
 
-This identifies token-heavy items early. If a workspace file or tool definition is consuming disproportionate context, consider trimming or restructuring it.
+Token spirals can crash sessions and waste resources. Current safeguards:
 
-## 3. Compaction and Pruning
+| Safeguard | Setting | Purpose |
+|-----------|---------|---------|
+| SOUL.md 100K budget | >100K input tokens → abort | Prevents runaway sessions |
+| SKILL.md 100K budget | >100K input tokens → abort | Per-skill safety |
+| web_search limit | Max 5 per session | Prevents Brave API abuse |
+| Brave error circuit breaker | 2 consecutive errors → stop | Stops retrying broken API |
+| Docker restart policy | on-failure:5 | Prevents restart loops (was `unless-stopped`) |
+| maxConcurrent | 2 sessions | Limits parallel resource usage |
+| tools.deny | browser, canvas, nodes, tts, image, web_fetch | Blocks expensive/unnecessary tools |
+| thinkingDefault | off | No API-level reasoning token overhead |
 
-Two mechanisms prevent context bloat:
+## 4. Heartbeat
 
-| Mechanism | Behavior | When It Runs |
-|-----------|----------|-------------|
-| **Compaction** | Summarizes conversation history | Auto near context limit, or `/compact` manually |
-| **Pruning** | Trims old tool results in-memory per request | Automatic per request |
+| Parameter | Value |
+|-----------|-------|
+| Interval | 180 minutes |
+| Active hours | 07:00-23:00 COT |
+| Model | Codex (subscription-covered) |
+| Max chars | 100 |
+| Cost | $0 (subscription) |
 
-Our config: `"compaction": {"mode": "safeguard"}` — auto-compacts when approaching limits.
+With Codex subscription, heartbeat has zero marginal cost. The 180m interval is still appropriate to avoid unnecessary context accumulation.
 
-**Practice:** Run `/compact` manually when a session feels slow or context is stale. This is especially useful after long multi-step research tasks.
+## 5. Cron Jobs
 
-## 4. Heartbeat-Cache Alignment
+| Job | Schedule | Model | Timeout | Session |
+|-----|----------|-------|---------|---------|
+| AI Top 5 | 12:10 UTC (07:10 COT) | Codex | 120s | Isolated |
+| ENB Top 5 | 12:00 UTC (07:00 COT) | Codex | 120s | Isolated |
 
-Our heartbeat interval is **180 minutes** (cost-optimized). Cache alignment is no longer the primary driver — Gemini Flash is the default model.
+Both use isolated sessions for clean context. Cost: $0 (subscription-covered).
 
-```
-Cache TTL:     |-------- 60 min --------|-------- 60 min --------|
-Heartbeat:     |---------- 180 min ----------|---------- 180 min ----------|
-                     ↑ cache warm         ↑ cache warm
-```
+## 6. Codex-Specific Optimizations
 
-This ensures the system prompt (SOUL.md + tools + metadata) remains cached across heartbeat cycles, avoiding redundant input token charges on the static portion.
+From the OpenAI Codex Prompting Guide:
 
-**Do not change the heartbeat interval** without understanding the cache TTL implications.
+- **Reasoning effort:** "medium" recommended for interactive tasks, "high/xhigh" for complex. Current: thinkingDefault=off (model reasons internally regardless)
+- **Compaction:** First-class support in Codex. Our "safeguard" mode leverages this
+- **Parallel tool calls:** SOUL.md and TOOLS.md instruct batch parallel reads
+- **No preamble bloat:** SOUL.md bans intermediate status messages
+- **Bias to action:** Execute with defaults instead of asking clarification questions
 
-## 5. Heartbeat with Minimal Cron
-
-With 2 scheduled cron jobs, cron-driven cost is already low.
-
-| Approach | API Calls | Cost |
-|----------|-----------|------|
-| 2 scheduled cron jobs/day | 2 | Low |
-| On-demand commands for everything else | Usage-based | Controlled |
-
-Current policy: AI brief at 07:10 COT and ENB brief at 07:00 COT; everything else is on-demand.
-
-## 6. Main vs Isolated Cron
-
-Two execution modes for scheduled jobs:
-
-| Mode | Context | Model | Use When |
-|------|---------|-------|----------|
-| **Main-session** | Adds to next heartbeat, shares context | Inherits session model | Cheap checks, context-dependent tasks |
-| **Isolated** | Full separate turn, clean context | Can use cheaper model | Batch pipelines, independent analysis |
-
-Our 2 cron jobs (CRON.md) use isolated mode by default. Use isolated mode for:
-- Jobs that don't need prior conversation context
-- Jobs where the default model (Flash) is sufficient regardless of session model
-- Batch processing that should not pollute the main session
-
-## 7. Scheduler Reliability
-
-OpenClaw's built-in cron has production features:
-
-| Feature | Benefit |
-|---------|---------|
-| Disk persistence | Jobs survive restarts |
-| Retry with backoff | Handles transient failures |
-| `cron runs` command | Execution history for debugging |
-| `cron status` command | Current schedule and next-fire times |
-
-Use `cron runs` and `cron status` for operational visibility before assuming a job failed.
-
-## 8. Web Tooling Ladder
-
-Use the cheapest tool that works:
-
-| Tool | Cost | Use When |
-|------|------|----------|
-| `brave_llm_context` | Low-to-medium | Grounded web context for AI brief and job search |
-| `web_fetch` | Low | Scraping known URLs, reading docs |
-| Browser automation | High | JS-heavy pages, login-required sites |
-
-**Rule:** For AI brief and job search, use Brave LLM Context first with bounded token budgets; use browser automation only when strictly necessary.
-
-## 9. Tuning Checklist
+## 7. Tuning Checklist
 
 Periodic performance review:
 
-- [ ] SOUL.md under 500 words (`wc -w openclaw/config/SOUL.md`)
-- [ ] Run `/context list` — no single item > 20% of context
-- [ ] Heartbeat interval is 180m (cost-optimized)
-- [ ] The 2 cron jobs use isolated mode for clean context
-- [ ] No browser automation for tasks achievable with Brave LLM Context
-- [ ] `/compact` run on any session older than 2 hours of active use
-- [ ] Response token caps enforced (2048 OpenClaw, 768 Sentinel)
+- [ ] SOUL.md under 120 lines
+- [ ] contextTokens at 65536 (safe with Codex 266K window)
+- [ ] compaction mode is "safeguard" (only valid: "default", "safeguard")
+- [ ] Heartbeat interval is 180m
+- [ ] Both cron jobs use isolated mode, Codex model, 120s timeout
+- [ ] tools.deny includes browser, canvas, nodes, tts, image, web_fetch
+- [ ] maxConcurrent is 2
+- [ ] Docker restart policy is on-failure:5 (NOT unless-stopped)
+- [ ] No <think> tags in any workspace file output
 - [ ] Silent hours active (23:00-07:00 COT)
+- [ ] Sentinel max_tokens at 1500

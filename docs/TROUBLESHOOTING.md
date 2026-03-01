@@ -1,6 +1,62 @@
 # Troubleshooting Guide
 
-> Last updated: 2026-02-27. For the current system state, see `CLAUDE-CODE-HANDOFF.md`. For codebase navigation, see `ARCHITECTURE.md`.
+> Last updated: 2026-03-01 (Codex-first migration). For codebase navigation, see `ARCHITECTURE.md`.
+
+> **Model note:** As of 2026-03-01, OpenClaw uses `openai-codex/gpt-5.3-codex` (subscription-covered, OAuth) as default for all tasks. Flash references below are historical or Sentinel-specific. Sentinel still uses `google/gemini-2.5-flash`.
+
+---
+
+## Codex-Specific Issues
+
+### Bot asks clarification questions instead of executing
+
+**Symptom:** User says "top ai news" and bot responds with "Quick preference check: which scope?" or "Would you like..."
+
+**Cause:** Codex (gpt-5.3-codex) is more conversational than Flash. Without explicit anti-clarification prompting, it tends to ask questions before executing.
+
+**Fix (applied 2026-03-01):**
+- SOUL.md: "NEVER ASK CLARIFICATION QUESTIONS" rule + "bias to action" directive
+- SKILL.md: No-clarification constraint in `<constraints>` block + 14 anti-patterns
+- 20 few-shot NL parsing examples to reduce ambiguity
+
+If the issue recurs, check that SOUL.md and SKILL.md still contain these directives.
+
+### Bot says "Understood. Running now." but produces no output
+
+**Symptom:** Bot acknowledges the command but doesn't actually execute the skill.
+
+**Cause:** Codex preamble behavior — it generates status messages as its first turn, then may stop before executing.
+
+**Fix:** SOUL.md one-message rule: "No preambles like 'Sure!', 'Got it!', 'Let me...'" + SKILL.md anti-pattern: "Saying 'Understood', 'Running now' before executing — just execute silently."
+
+### Gateway dies after SIGUSR1 config reload
+
+**Symptom:** Container exits with code 0 after `docker kill --signal=SIGUSR1`. `on-failure:5` doesn't restart it.
+
+**Cause:** SIGUSR1 triggers a "full process restart" for auth changes (like Codex OAuth). Exit code 0 is a clean exit, so `on-failure:5` doesn't auto-restart.
+
+**Fix:**
+```bash
+# Safe restart pattern (always use this instead of SIGUSR1 for auth/model changes):
+cd /root/openclaw && docker compose down && docker compose up -d
+
+# Or use the reload helper (validates first, then SIGUSR1):
+/root/.openclaw/reload-config.sh
+```
+
+### Token spiral / session exceeds 100K tokens
+
+**Symptom:** Session becomes slow, context usage shows >100K tokens, or session crashes.
+
+**Cause:** Codex's 266K context window allows sessions to accumulate far more context than Flash. Without safeguards, sessions can spiral.
+
+**Fix (deployed):**
+- SOUL.md: >100K input tokens → abort session
+- SKILL.md: >100K input tokens → abort
+- contextTokens: 65536 (hard cap)
+- contextPruning: cache-ttl 3m
+- Docker restart policy: on-failure:5 (prevents restart loops)
+- tools.deny: blocks expensive tools (browser, canvas, web_fetch)
 
 ---
 
@@ -109,7 +165,7 @@ docker kill --signal=SIGUSR1 openclaw-openclaw-gateway-1
 lane task error: lane=cron durationMs=60045 error="FailoverError: LLM request timed out."
 ```
 
-**Cause:** `timeoutSeconds` in `jobs.json` is too short. Gemini Flash + Brave search typically takes 75-120s to complete a brief. The previous setting was `60` which is too tight.
+**Cause:** `timeoutSeconds` in `jobs.json` is too short. Codex + Brave search typically takes 75-120s to complete a brief. The previous setting was `60` which is too tight. Current setting: 120s.
 
 **Fix:**
 ```bash

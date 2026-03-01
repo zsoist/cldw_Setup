@@ -1,77 +1,78 @@
 # Model Routing Policy
 
+> Last updated: 2026-03-01 (Codex-first migration)
+
 Reference policy for how tasks are routed to models.
 Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 
 ## Model Tiers
 
-| Tier | Model | Role | Cost Factor |
-|------|-------|------|-------------|
-| Default | Gemini 2.5 Flash (`google/gemini-2.5-flash`) | Chat, Q&A, heartbeat, task tracking | ~0.3x |
-| Standard | Gemini 2.5 Pro (`google/gemini-2.5-pro`) | Research, AI brief synthesis, code, multi-step tools | ~2x |
-| Premium | Claude Sonnet 4.6 (`anthropic/claude-sonnet-4-6`) | "Think harder", production-grade code, nuanced analysis | ~5x |
-| Manual | Claude Opus 4.6 (`anthropic/claude-opus-4-6`) | Architecture, complex reasoning, ambiguous high-stakes tasks | ~60x |
-| Retrieval | Brave LLM Context + web search | Source retrieval and grounding | Variable |
+| Tier | Model | Role | Cost |
+|------|-------|------|------|
+| Default | OpenAI Codex (`openai-codex/gpt-5.3-codex`) | ALL tasks: chat, Q&A, heartbeat, news briefs, job radar, research, academic, sub-agents | Subscription-covered |
+| Fallback | Gemini 2.5 Flash (`google/gemini-2.5-flash`) | Codex unavailable only | ~$0.15/M input |
+| Manual | Gemini 2.5 Pro (`google/gemini-2.5-pro`) | Manual research escalation only | ~$1.25/M input |
+| Sentinel | Gemini 2.5 Flash | Sentinel bot (separate service, NOT on Codex) | ~$0.15/M input |
+| Retrieval | Brave LLM Context + web search | Source retrieval and grounding | Free tier |
+
+> **API-key models (gpt-4o-mini, gpt-4o):** Configured but NOT used as defaults.
+> **Haiku:** NEVER used. Auto-fallback to Anthropic: DISABLED.
+
+## Model Chain (no automatic fallback)
+
+1. `openai-codex/gpt-5.3-codex` (primary — subscription-covered, OAuth auth)
+2. `google/gemini-2.5-flash` (fallback ONLY if Codex is unavailable)
+3. `google/gemini-2.5-pro` (manual research escalation only)
 
 ## Routing Rules
 
 ### 1. Heartbeat / Cron (Routine)
-**Use:** Gemini Flash
-- Due reminders, light system checks, and status notifications
-- Must complete quickly with minimal tool usage
+**Use:** Codex (subscription-covered)
+- Health checks, status notifications, news brief generation
+- 180m heartbeat interval, active hours 07:00-23:00 COT
+- Cron jobs: Codex, 120s timeout, isolated sessions
 
 ### 2. Routine Assistant Work
-**Use:** Gemini Flash
-- Summaries, formatting, reminders, task tracking, lightweight file ops
+**Use:** Codex
+- Summaries, formatting, reminders, task tracking, Q&A
+- Bias to action: execute with defaults, no clarification questions
 
-### 3. Research and Multi-step Work
-**Use:** Gemini Flash (default), escalate to Pro only for complex research
-- Multi-source synthesis
-- AI Daily Brief ranking and drafting (Flash -- all modes)
-- Code generation and structured technical analysis
+### 3. News Briefs + Research
+**Use:** Codex
+- News Brief v4: Codex, temperature 0, 20 few-shot examples
+- Multi-source synthesis via Brave LLM Context API
+- Sub-agents: Codex (gateway-enforced)
 
-### 4. Production-grade / "Think harder"
-**Use:** Sonnet 4.6
-- User explicitly requests deeper reasoning
-- Gemini Pro output quality is insufficient for production decisions
+### 4. Manual Escalation
+**Use:** Pro (manual only)
+- User explicitly requests deeper research
+- Downgrade immediately after completion
 
-### 5. Manual High-Cost Escalation
-**Use:** Opus 4.6 (manual only)
-- Explicit `/model opus` trigger only
-- Confirm before switching and downgrade immediately after completion
+### 5. Sentinel (separate service)
+**Use:** Gemini Flash (unchanged)
+- 10 tool functions + check_api_spirals
+- max_tokens: 1500, max_tool_iterations: 4
+- Zero-cost commands bypass LLM entirely
 
-## Model Chain (no automatic fallback)
-1. `google/gemini-2.5-flash` (primary — default for everything)
-2. `google/gemini-2.5-pro` (escalation for complex tasks)
-3. `anthropic/claude-sonnet-4-6` (manual explicit only)
-4. `anthropic/claude-opus-4-6` (manual explicit only)
+## Codex Behavioral Tuning
 
-> **Haiku is NEVER used.** Auto-fallback to Anthropic is disabled. If Gemini fails, retry then error — no silent provider switch.
+Applied via SOUL.md and SKILL.md prompt directives:
 
-## Image Routing
-1. **Image Understanding (Vision):** `google/gemini-2.5-flash` (primary). Escalate to `nano-banana-pro` → Pro for complex OCR/detail.
-2. **Image Generation:** Flash for drafts, `nano-banana-pro` → Pro for professional quality and text rendering.
-3. Alias `nano-banana-pro` maps to `google/gemini-2.5-pro`.
-4. Timeout: 60 seconds per image request.
+- **Bias to action:** Execute with sensible defaults, never ask clarification questions for commands with defaults
+- **No preambles:** No "Sure!", "Got it!", "Let me..." — first output must be the deliverable
+- **Persistence:** Complete tasks end-to-end, don't stop at analysis
+- **Tool efficiency:** Batch parallel reads, prefer dedicated tools over exec
+- **Anti-looping:** Stop if stuck, report blockers instead of retrying unchanged prompts
+- **<think> tag ban:** Absolute — crashes sessions, wastes 20K+ tokens
 
-## Video Routing
-1. **Video Understanding:** `google/gemini-2.5-flash` (primary). Timeout: 120 seconds.
-2. **Video Generation (Veo):** Veo 3.1 for quality, Veo 3.1 Fast for latency. Duration: 4-8 seconds. Latency: 11s-6min.
+## Cost Profile
 
-## Audio Routing
-1. **Audio Understanding:** `google/gemini-2.5-flash` (primary). Timeout: 60 seconds.
-2. Language: English primary, Spanish supported.
+| Component | Monthly Cost |
+|-----------|-------------|
+| OpenClaw (Codex) | $0 (subscription-covered) |
+| Sentinel (Flash) | ~$1-3 |
+| Brave API | Free tier |
+| VPS (Hetzner CPX22) | ~$8 |
+| **Total** | **~$9-11** |
 
-## Escalation Logic
-1. Start with Flash.
-2. Escalate to Pro when task complexity requires stronger synthesis/reasoning.
-3. Escalate to Sonnet 4.6 when quality/reliability remains insufficient or user says "think harder".
-4. Never auto-escalate to Opus.
-5. Downgrade after the complex step completes.
-
-## Cost Controls
-1. Keep heartbeat and routine commands on Flash.
-2. Use Pro only for complex research/code-heavy steps (AI Brief uses Flash).
-3. Reserve Sonnet for quality-critical steps.
-4. Use Opus only on explicit command.
-5. Daily budget target: `<$5`.
+Down from $14-23/month with Flash-only architecture.

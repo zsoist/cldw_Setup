@@ -15,7 +15,7 @@ triggers:
   - "/job_sync"
   - "/job_health"
   - "/job_stats"
-model: google/gemini-2.5-flash
+model: openai-codex/gpt-5.3-codex
 cost_tier: cheap
 backend_url: http://job-radar-agent:8080
 ---

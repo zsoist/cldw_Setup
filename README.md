@@ -1,6 +1,6 @@
 # OpenClaw + Sentinel + Job Radar
 
-Production AI system on a Hetzner CPX22 VPS. Gemini-first model stack, targeting **$14-23/month total** (VPS + API).
+Production AI system on a Hetzner CPX22 VPS. Codex-first model stack, targeting **$9-11/month total** (VPS + API).
 
 ## Architecture
 
@@ -15,7 +15,7 @@ Production AI system on a Hetzner CPX22 VPS. Gemini-first model stack, targeting
                         |  |    OpenClaw Gateway      |  |   Sentinel Bot        |   |
                         |  |    Port 18789 (lo)       |  |   Python + SDK        |   |
                         |  |                          |  |                       |   |
-                        |  |  +------+  +----------+  |  |   Flash default       |   |
+                        |  |  +------+  +----------+  |  |   Flash (Gemini)      |   |
                         |  |  | main |  |   work   |  |  |   10 tool functions   |   |
   Telegram ----------->|  |  | agent|  |  agent   |  |  |   Strict whitelist    |   |
   (Sentinel Bot)       |  |  |      |  | sandbox  |  |  +-----------------------+   |
@@ -25,7 +25,7 @@ Production AI system on a Hetzner CPX22 VPS. Gemini-first model stack, targeting
                         |  +-------------------------+  +-----------------------+   |
                         |  |   job-radar-api          |  |   job-radar-db        |   |
                         |  |   FastAPI / Port 8080    |  |   PostgreSQL 16       |   |
-  Telegram <-----------|  |   Brave + HN + RemoteOK  |  |   jobs_normalized     |   |
+  Telegram <-----------|  |   Brave + HN + RemoteOK  |  |   db: jobradar        |   |
   (Digest Channel)     |  +-------------------------+  +-----------------------+   |
                         |                                                           |
   SSH Tunnel --------->|  UFW (SSH only) + fail2ban + key-only auth               |
@@ -36,20 +36,19 @@ Production AI system on a Hetzner CPX22 VPS. Gemini-first model stack, targeting
 
 | Component | Role | Runtime | Model |
 |-----------|------|---------|-------|
-| **OpenClaw** | User-facing AI: news briefs, research, job search, scheduling | Docker container | Gemini 2.5 Flash (default) |
+| **OpenClaw** | User-facing AI: news briefs, research, job search, scheduling | Docker container | GPT-5.3 Codex (subscription-covered) |
 | **Sentinel** | Infrastructure sysadmin: Docker, monitoring, security, backups, costs | systemd service | Gemini 2.5 Flash |
-| **Job Radar** | Automated job discovery + digests | Docker containers (API + PostgreSQL) | Gemini 2.5 Flash |
+| **Job Radar** | Automated job discovery + digests | Docker containers (API + PostgreSQL) | None (Brave API only) |
 
-### Model Routing
+### Model Routing (Codex-first)
 
 | Tier | Model | Use Case |
 |------|-------|----------|
-| Default | Gemini 2.5 Flash | Chat, news briefs, heartbeat, job radar, sub-agents |
-| Escalation | Gemini 2.5 Pro | Research, complex analysis (manual only) |
-| Manual | Claude Sonnet 4.6 | "Think harder" requests |
-| Manual | Claude Opus 4.6 | Explicit `/model opus` |
+| Default | GPT-5.3 Codex | Chat, news briefs, heartbeat, sub-agents, image |
+| Fallback | Gemini 2.5 Flash | Only if Codex unavailable |
+| Manual | Gemini 2.5 Pro | Research, complex analysis (manual only) |
 
-Auto-fallback to Anthropic: DISABLED. Haiku: NEVER used.
+Auto-fallback to Anthropic: DISABLED. Haiku: NEVER used. API-key models (gpt-4o-mini, gpt-4o): configured but NOT used.
 
 ---
 
@@ -61,77 +60,57 @@ Unified news intelligence system. 1 skill replaces the 9 V3 skills. Topic-flexib
 
 **Natural language** (just say what you want):
 ```
-top ai news                          → AI top 5 this week
-top ai news yesterday                → AI stories from yesterday
-news about Google last month         → entity-focused (Google) + month scope
-latest on fintech                    → any topic works
-deep analysis of AI                  → detailed mode (8 stories, 500 words)
-what's new in semiconductors         → ad-hoc topic
-expert network news                  → ENB industry brief
-brief me on crypto last year         → any topic, any timeframe
+top ai news                          -> AI top 5 this week
+top ai news yesterday                -> AI stories from yesterday
+news about Google last month         -> entity-focused (Google) + month scope
+latest on fintech                    -> any topic works
+deep analysis of AI                  -> detailed mode (8 stories, 500 words)
+what's new in semiconductors         -> ad-hoc topic
+expert network news                  -> ENB industry brief
+brief me on crypto last year         -> any topic, any timeframe
 ```
 
 **Commands:**
 ```
-/brief                               → AI top 5 this week (default)
-/brief ai top5                       → same, explicit
-/brief expert-networks               → ENB industry brief
-/brief status                        → system health
-/brief help                          → usage guide
-/brief ai deep                       → detailed mode
+/brief                               -> AI top 5 this week (default)
+/brief ai top5                       -> same, explicit
+/brief expert-networks               -> ENB industry brief
+/brief status                        -> system health
+/brief help                          -> usage guide
+/brief ai deep                       -> detailed mode
 ```
 
 **Backward-compatible aliases** (all still work):
 ```
-/ai_daily_brief                      → /brief ai top5
-/ai_daily_brief_top5                 → /brief ai top5
-/ai_daily_brief_status               → /brief status
-/ai_daily_brief_builder              → /brief ai deep
-/expert_network_brief                → /brief expert-networks top5
-/enb                                 → /brief expert-networks top5
+/ai_daily_brief                      -> /brief ai top5
+/ai_daily_brief_top5                 -> /brief ai top5
+/ai_daily_brief_status               -> /brief status
+/ai_daily_brief_builder              -> /brief ai deep
+/expert_network_brief                -> /brief expert-networks top5
+/enb                                 -> /brief expert-networks top5
 ```
 
 ### Architecture
 
 ```
 Files:  2 total (down from 14 in V1)
-  skills/news-brief/SKILL.md           ← The one skill (~220 lines)
-  workspace/logs/news-brief-state.json ← Runtime state
+  skills/news-brief/SKILL.md           <- The one skill (~410 lines)
+  workspace/logs/news-brief-state.json <- Runtime state
 
 Search:  Brave LLM Context API via gateway web_search tool
-Model:   Gemini 2.5 Flash (all modes, temperature 0)
-Output:  top5 ≤200 words, deep ≤500 words
+Model:   GPT-5.3 Codex (subscription-covered, temperature 0)
+NL:      20 few-shot parsing examples, 14 anti-patterns
+Output:  top5 <=200 words, deep <=500 words
 ```
-
-### Topics
-
-| Profile | Query Focus |
-|---------|-------------|
-| `ai` (default) | Model releases, benchmarks, regulation, tooling, open source |
-| `expert-networks` | GLG, AlphaSights, Guidepoint, Third Bridge, Capvision + competitors |
-| Any ad-hoc | Just say the topic — "fintech", "crypto", "semiconductors", etc. |
-
-### Ranking Rubric
-
-Stories scored 0-100 on 5 weighted factors: Impact (3.0), Credibility (2.5), Novelty (2.0), Freshness (1.5), Confidence (1.0). Penalties for single-source, unverified benchmark claims, and speculation.
 
 ### Cron Schedule
 
 | Job | UTC | COT | Model | Timeout |
 |-----|-----|-----|-------|---------|
-| AI Top 5 | `10 12 * * *` | 07:10 | Flash | 90s |
-| ENB Top 5 | `0 12 * * *` | 07:00 | Flash | 90s |
+| AI Top 5 | `10 12 * * *` | 07:10 | Codex | 120s |
+| ENB Top 5 | `0 12 * * *` | 07:00 | Codex | 120s |
 
 Delivery: Telegram channel `-1003826801947`. Session: isolated.
-
-### Cost
-
-| Metric | V1 (9 skills) | V4 (1 skill) |
-|--------|--------------|--------------|
-| Files | 14 | 2 |
-| Tool calls/run | 6-8 | 2-3 |
-| Model | Pro ($0.015-0.03/run) | Flash ($0.003-0.006/run) |
-| Monthly | $2.89-3.79 | $0.72-1.20 |
 
 ### Error Codes
 
@@ -146,16 +125,17 @@ Delivery: Telegram channel `-1003826801947`. Session: isolated.
 
 ---
 
-## Job Radar
+## Job Radar v3
 
-Automated job discovery. Separate Docker containers, sends digests directly via Telegram Bot API.
+Automated job discovery. Separate Docker containers, sends digests directly via Telegram Bot API. No LLM cost.
 
 | Setting | Value |
 |---------|-------|
-| Connectors | Brave Web Search, HN "Who's Hiring", RemoteOK RSS |
+| Connectors | Brave, HN "Who's Hiring", RemoteOK, WWR, Jobicy, Watchlist |
 | Digest schedule | AM 08:00 COT, PM 18:00 COT |
 | Channel | `-1003826801947` |
 | Dedup | Content-based hash |
+| Enrichment | Brave API (no LLM) |
 
 Commands: `/job_radar`, `/job_search`, `/job_why`, `/job_trends`, `/job_skills`, `/job_hidden`, `/job_save`, `/job_dismiss`, `/job_health`
 
@@ -163,7 +143,7 @@ Commands: `/job_radar`, `/job_search`, `/job_why`, `/job_trends`, `/job_skills`,
 
 ## Sentinel
 
-Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. 10 tools with whitelist/blocklist security.
+Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. Google/Gemini 2.5 Flash, max_tokens 1500, 10 tools + `check_api_spirals`.
 
 | Tool | Description | Safety |
 |------|-------------|--------|
@@ -176,23 +156,28 @@ Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. 10 tools with 
 | `check_openclaw_health` | Container health | Read-only |
 | `backup_openclaw` | Tar.gz config | Safe location only |
 | `cost_summary` | API cost tracking | Read-only |
+| `check_api_spirals` | Restart count, error rate, Brave volume, cost anomalies | Read-only |
 
-Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost` — bypass LLM entirely.
+Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost` -- bypass LLM entirely.
+
+Config: max_tool_iterations=4, conversation_ttl=900s. VPS-wide cost tracking with persistent cache.
 
 ---
 
-## Token Optimization
+## Configuration
 
-| Optimization | Detail |
-|-------------|--------|
-| Flash default | All routine work on cheapest model |
-| Heartbeat 180m | Bounded to active hours (07:00-23:00 COT) |
-| SOUL.md ~800 tokens | Sent with every request, trimmed 63% from original |
-| Compaction: safeguard | Only `"default"` and `"safeguard"` are valid |
-| Context pruning | cache-ttl 3m, keep 2 last assistants, prune tool output >500 chars |
-| contextTokens 32,768 | Hard-caps context window per session |
-| Sub-agents on Flash | maxConcurrent=1, timeout 90s, archive after 30m |
-| Silent hours | No proactive messages 23:00-07:00 COT |
+| Setting | Value |
+|---------|-------|
+| contextTokens | 65,536 |
+| contextPruning | cache-ttl, 3m TTL, keep 2 last assistants, prune tool output >500 chars |
+| compaction | safeguard |
+| thinkingDefault | off (Codex reasons internally regardless) |
+| Session timeout | 300s |
+| Sub-agent model | GPT-5.3 Codex |
+| Sub-agent timeout | 120s |
+| maxConcurrent | 2 sessions |
+| Heartbeat | every 180m, active hours 07:00-23:00 COT, model: Codex |
+| Codex tuning | bias to action, no clarification questions, no preamble |
 
 ---
 
@@ -200,45 +185,45 @@ Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost` — 
 
 ```
 .
-├── README.md                              # This file
-├── CLAUDE-CODE-HANDOFF.md                 # Handoff for next Claude Code session
+├── README.md
+├── ARCHITECTURE.md
+├── CLAUDE-CODE-HANDOFF.md
 ├── .gitignore
 │
-├── sentinel/                              # Sysadmin Bot
+├── sentinel/                              # Sysadmin Bot source
 │   ├── sentinel.py                        # Agentic loop + tool chaining
 │   ├── telegram_handler.py                # Telegram interface + auth
 │   ├── config.py                          # Config validation
 │   ├── cost_tracker.py                    # API cost accounting
 │   ├── tools.py                           # 10 tools + security
-│   └── tests/                             # 65+ tests (zero API cost)
+│   ├── sentinel.service
+│   ├── requirements.txt
+│   └── tests/
 │
 ├── openclaw/                              # OpenClaw Gateway config
-│   ├── openclaw-config.json               # Gateway runtime config
-│   ├── jobs.json                          # Cron registry (2 jobs)
-│   ├── SOUL.md                            # Core personality + routing
-│   ├── AGENTS.md                          # Agent registry + model routing
-│   ├── CRON.md                            # Cron documentation
-│   ├── BOOT.md                            # Startup health checks
-│   ├── CHANNELS.md                        # Channel security
+│   ├── openclaw-config.json               # Config template (secrets placeholder)
+│   ├── jobs.json                          # Cron registry (2 jobs: AI + ENB briefs)
 │   ├── docker-compose.yml                 # Docker config
-│   ├── config/                            # Agent workspace files
-│   ├── agents/work/                       # Work agent (sandboxed)
+│   ├── SOUL.md, AGENTS.md, CRON.md
+│   ├── config/                            # Workspace file templates
 │   ├── skills/
-│   │   ├── news-brief/SKILL.md            # News Brief v4 (unified)
+│   │   ├── news-brief/SKILL.md            # News Brief v4 (~410 lines)
 │   │   └── job-radar/SKILL.md             # Job Radar commands
-│   ├── workspace/logs/
-│   │   └── news-brief-state.json          # Brief run state
-│   └── memory/
+│   └── workspace/                         # Runtime workspace structure
+│
+├── job-radar/                             # Job Radar v3
+│   ├── docker-compose.v3.yml
+│   └── v3/                                # FastAPI app source
 │
 ├── infrastructure/                        # Deployment scripts
-│   ├── deploy.sh, secure.sh               # VPS setup
-│   ├── backup.sh, restore.sh              # Backup/restore
-│   ├── health-check.sh                    # System health
+│   ├── deploy.sh, secure.sh, backup.sh, restore.sh
+│   ├── health-check.sh, reload-config.sh
+│   ├── docker-compose.yml, Dockerfile
 │   └── ...
 │
 └── docs/                                  # Documentation
-    ├── DEPLOYMENT.md
-    ├── TROUBLESHOOTING.md
+    ├── DEPLOYMENT.md, TROUBLESHOOTING.md, COST-MANAGEMENT.md
+    ├── setup/, security/, playbooks/, templates/, research/
     └── ...
 ```
 
@@ -249,7 +234,8 @@ Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost` — 
 - **Network:** UFW deny-all except SSH, gateway on loopback only, fail2ban, key-only SSH
 - **Application:** Sentinel whitelist/blocklist, Telegram user allowlist, Docker isolation (uid=999)
 - **Agent isolation:** main/work agents separated, work agent sandboxed
-- **Secrets:** `.env` in `.gitignore`, 600 permissions, excluded from backups
+- **Secrets:** `.env` files in `.gitignore`, never committed. No real keys in repo.
+- **Telegram:** 2 bots (OpenClaw Bot + Sentinel Bot), delivery channel `-1003826801947`
 
 ---
 
@@ -258,8 +244,12 @@ Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost` — 
 | Component | Monthly |
 |-----------|---------|
 | Hetzner CPX22 | ~$8 |
-| LLM APIs | $4-12 |
-| **Total** | **$12-20** |
+| Codex (subscription-covered) | $0 |
+| Sentinel LLM (Flash) | ~$1-3 |
+| Brave API | Free tier |
+| **Total** | **$9-11** |
+
+Down from $14-23/month with the Flash-only stack.
 
 ---
 
@@ -281,12 +271,12 @@ cat /root/.openclaw/workspace/logs/news-brief-state.json | python3 -m json.tool
 
 ### Telegram Smoke Tests
 ```
-/brief status              → system health
-/brief help                → usage guide
-/brief ai top5             → 5 ranked AI stories
-top ai news yesterday      → natural language test
-/brief expert-networks     → ENB industry brief
-/ai_daily_brief            → backward compat test
+/brief status              -> system health
+/brief help                -> usage guide
+/brief ai top5             -> 5 ranked AI stories
+top ai news yesterday      -> natural language test
+/brief expert-networks     -> ENB industry brief
+/ai_daily_brief            -> backward compat test
 ```
 
 ---
@@ -295,13 +285,15 @@ top ai news yesterday      → natural language test
 
 | Issue | Detail |
 |-------|--------|
-| Config reload | `docker kill --signal=SIGUSR1` logs nothing on success, only errors |
+| SIGUSR1 reload | Can trigger exit-0. `on-failure:5` won't auto-restart. Use `docker compose down && up -d` instead |
+| File ownership | Edit/Write resets to `root:root`. Always `chown sentinel:systemd-journal` for `/root/.openclaw/*`, `sentinel:sentinel` for `/opt/sentinel/*` |
 | Compaction modes | Only `"default"` and `"safeguard"` valid. `"aggressive"` silently rejected |
 | `heartbeatModel` | NOT valid. Use `agents.defaults.heartbeat.model` |
 | SKILL.md `model:` | Prompt hint only, NOT gateway-enforced. Cron `model` IS enforced |
-| File ownership | Edit/Write resets to `root:root`. Always `chown sentinel:systemd-journal` after |
+| `<think>` tags | Absolute ban -- crashes sessions, wastes 20K+ tokens |
+| thinkingDefault | Must be `"off"` for Codex (model reasons internally regardless) |
+| Codex behavior | Tuned for "bias to action" -- no clarification questions, no preamble messages |
 | Telegram long-poll | 10s interval is HTTP to Telegram, NOT an LLM call. Zero cost at idle |
-| `<think>` tags | Absolute ban — wastes 20K+ tokens and crashes sessions |
 
 ---
 

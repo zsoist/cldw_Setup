@@ -1,142 +1,91 @@
 # Cost Management Guide
 
-> Last updated: 2026-02-27
+> Last updated: 2026-03-01 (Codex-first migration)
 
 ## Monthly budget breakdown
 
 | Component | Cost |
 |---|---|
 | Hetzner CPX22 | ~$8/mo (3 vCPU, 4GB RAM, 80GB NVMe) |
-| LLM API (target) | $6-15 |
-| **Total target** | **$14-23/month** |
+| OpenClaw (Codex) | $0 (subscription-covered) |
+| Sentinel (Flash) | ~$1-3 |
+| Brave API | Free tier |
+| **Total** | **~$9-11/month** |
 
-## Current API pricing (verified 2026-02-27)
+Down from $14-23/month with Flash-only architecture.
 
-| Model | Input (per 1M tokens) | Output (per 1M tokens) | Role |
-|-------|----------------------|------------------------|------|
-| Gemini 2.5 Flash | $0.15 | $0.60 | Default (everything) |
-| Gemini 2.5 Pro | $1.25 | $10.00 | Escalation (complex synthesis) |
-| Claude Sonnet 4.6 | $3.00 | $15.00 | Manual explicit only |
-| Claude Opus 4.6 | $5.00 | $25.00 | Manual explicit only |
-| Claude Haiku 4.5 | $1.00 | $5.00 | BANNED (never used) |
+## Model cost profile
 
-Sources: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing), [platform.claude.com/docs/en/about-claude/pricing](https://platform.claude.com/docs/en/about-claude/pricing)
+| Model | Cost | Role |
+|-------|------|------|
+| OpenAI Codex (gpt-5.3-codex) | Subscription-covered | OpenClaw default (all tasks) |
+| Gemini 2.5 Flash | $0.15/$0.60 per 1M tokens | Sentinel default, OpenClaw fallback |
+| Gemini 2.5 Pro | $1.25/$10.00 per 1M tokens | Manual research escalation only |
+| gpt-4o-mini, gpt-4o | API-key pricing | Configured but NOT used |
+| Anthropic models | N/A | DISABLED. Auto-fallback off. Haiku: NEVER. |
 
-## API spending limits
+## Cost optimization strategies
 
-1. Google AI Studio / Gemini billing:
-   - Set monthly budget target: $15
-   - Set alert at $10
-2. Anthropic billing:
-   - Set monthly budget cap: $10-15 for fallback and premium use
-   - Set alert at $8
+### 1. Codex subscription (biggest impact)
+- All OpenClaw tasks run on Codex subscription — zero per-token cost
+- Chat, Q&A, heartbeat, news briefs, sub-agents, cron jobs — all $0
+- Only Sentinel and Brave API have marginal costs
 
-## Token optimization strategies
+### 2. Sentinel cost control
+- Provider: Gemini 2.5 Flash (cheapest viable model)
+- max_tokens: 1500 (prevents verbose responses)
+- Zero-cost commands: /status, /openclaw, /security, /backup, /cost bypass LLM entirely
+- 10s Telegram long-poll timeout — zero cost at idle
+- conversation_ttl: 900s (clears stale history)
+- VPS-wide cost tracking: persistent cache at /var/log/sentinel/vps-cost-cache.json
 
-### 1. Model tiering (biggest impact)
-- **Gemini 2.5 Flash** (default): chat, Q&A, reminders, heartbeat, task tracking, sub-agents, image generation
-- **Gemini 2.5 Flash** (standard): AI Daily Brief cron synthesis, research
-- **Claude Sonnet 4.6** (premium): "think harder" production-grade analysis (manual only)
-- **Claude Opus 4.6** (manual only): architecture decisions and highest-complexity tasks
+### 3. Anti-spiral safeguards
+- contextTokens: 65536 (hard cap prevents runaway sessions)
+- contextPruning: cache-ttl 3m (evicts stale tool results)
+- compaction: safeguard (auto-compacts near limits)
+- SOUL.md: >100K input tokens → abort session
+- SKILL.md: >100K input tokens → abort
+- web_search: max 5 per session
+- Brave error circuit breaker: 2 consecutive errors → stop
+- Docker restart policy: on-failure:5 (prevents restart spirals)
+- tools.deny: blocks expensive tools (browser, canvas, web_fetch)
 
-### 2. Escalation discipline
-- Start on Flash, escalate only when quality requires it
-- Downgrade immediately after complex steps complete
-- Never auto-escalate to Opus
-- Anthropic models are manual-only (auth not auto-configured in gateway)
+### 4. System prompt efficiency
+- SOUL.md: ~120 lines (includes autonomy, routing, tool efficiency)
+- Sent with every API request — keep it lean
+- Compaction reduces effective prompt size over long conversations
 
-### 3. Compaction + context pruning
-- Compaction: `safeguard` mode compresses long chat history
-- Context pruning: `cache-ttl` mode evicts stale tool results after 3m
-- contextTokens: 32,768 per session (reduced from 131K default and 1M overrides)
-- Avoid carrying oversized context across model escalations
-
-### 4. Response limits
-- Default max tokens per response: 2048 (OpenClaw), 768 (Sentinel)
-- Keep routine responses concise; avoid long free-form outputs when structured bullets work
-
-### 5. System prompt efficiency
-- SOUL.md: ~800 tokens / ~3.2KB (trimmed 63% from 8.8KB)
-- Every word in SOUL.md is sent with every API request — compound cost
-- No duplicate workspace files (AGENTS.md was duplicated — fixed)
-
-### 6. Zero-cost operations
-| Operation | Mechanism |
-|-----------|-----------|
-| Sentinel /status, /openclaw, /security, /backup | Direct tool execution, no LLM |
-| Sentinel /cost | Direct file read, no LLM |
-| Sentinel "hi", "thanks", "ok", "help", "ping" | Static responses, no LLM |
-| Job Radar health checks (Brave) | Web search endpoint (not LLM Context) |
-| Job Radar health checks (Anthropic) | Empty-messages validation (zero tokens) |
-| Sentinel idle polling | HTTP long-poll to Telegram (no API cost) |
-
-### 7. Heartbeat alignment
-- Interval: 180 minutes (cost-optimized, reduced heartbeat frequency)
-- Active hours: 07:00-23:00 COT only
-- ~5 checks/day instead of ~17
-
-### 8. Operational budgets
-- Soft cap per task: $0.25
-- Hard cap per task: $0.75
-- Daily target: <$5.00
-
-## Token optimization checklist
-
-- [ ] Default model is Gemini Flash (agents.defaults.model.primary)
-- [ ] imageModel is Gemini Flash (not Pro)
-- [ ] contextTokens is 32768 (check gateway + per-session overrides)
-- [ ] contextPruning is cache-ttl with 3m TTL
-- [ ] Compaction mode is safeguard
-- [ ] Heartbeat interval is 180m
-- [ ] thinkingDefault is off
-- [ ] verboseDefault is off
-- [ ] No duplicate workspace files (AGENTS.md, SOUL.md)
-- [ ] Sentinel slash commands bypass LLM
-- [ ] Job Radar health checks are zero-cost
-- [ ] Max concurrent tasks capped at 2
-- [ ] Sub-agents use Flash model
-- [ ] Alias skills (morning/evening/builder) use Flash
-- [ ] AI Brief cron uses Flash (gateway-enforced in payload)
-- [ ] ENB cron uses Flash (both AM and PM jobs)
-- [ ] ENB uses 1 web_search call per brief (not multiple per-competitor)
+### 5. Cron cost
+- 2 jobs/day, both Codex (subscription-covered) = $0/day
+- Isolated sessions for clean context
+- 120s timeout prevents runaway cron jobs
 
 ## Monitoring
 
-### Sentinel cost tracking
 ```bash
-# View recent API calls
-tail -20 /var/log/sentinel/api-usage.jsonl | python3 -m json.tool
+# Sentinel cost summary (exact, from JSONL)
+curl -s http://localhost:8080/health/full  # Job Radar (no LLM cost)
 
-# View cost summary
-cat /var/log/sentinel/api-cost-summary.json | python3 -m json.tool
+# Docker container resource usage
+docker stats --no-stream
 
-# View unified rollup (Sentinel + AI Brief)
-cat /root/.openclaw/workspace/logs/api-cost-rollup.json | python3 -m json.tool
-
-# Regenerate rollup
-/root/openclaw-project/infrastructure/update-api-cost-rollup.sh
+# Sentinel cost command (via Telegram)
+/cost
 ```
 
-### Telegram /cost command
-Send `/cost` to the Sentinel bot for zero-cost API usage summary. Accepts: `/cost today`, `/cost week`, `/cost month`, `/cost all`.
+## API billing
 
-### Provider dashboards
-- Check daily provider dashboards for usage/cost trend
-- If >$1/day consistently: inspect which tasks escalated to Pro/Sonnet and whether they needed escalation
+| Provider | Billing | Budget |
+|----------|---------|--------|
+| OpenAI Codex | Subscription (fixed monthly) | Covered by subscription |
+| Google AI Studio | Pay-per-token | Set alert at $5/month |
+| Anthropic | Not actively used | Auto-fallback disabled |
+| Brave | Free tier | Gateway-enforced caps |
 
-## Cost estimation per interaction type
+## What NOT to do
 
-| Interaction | Model | Est. cost |
-|---|---|---|
-| Simple Q&A | Gemini Flash | ~$0.0005-0.001 |
-| Heartbeat check | Gemini Flash | ~$0.0003-0.0008 |
-| Daily briefing | Gemini Flash | ~$0.001-0.002 |
-| AI Daily Brief (cron) | Gemini Flash | ~$0.003-0.006 |
-| Expert Network Brief (morning) | Gemini Flash | ~$0.005 |
-| Expert Network Brief (evening delta) | Gemini Flash | ~$0.003 |
-| Research deep dive | Gemini Pro | ~$0.01-0.03 |
-| Code generation | Gemini Pro | ~$0.015-0.05 |
-| Sentinel /status, /openclaw, etc. | None (zero-cost) | $0.00 |
-| Sentinel free-text query | Gemini Flash | ~$0.001-0.003 |
-| Job Radar health check | None (zero-cost) | $0.00 |
-| Complex analysis | Sonnet/Opus | ~$0.05-0.30 |
+- Do not enable auto-fallback to Anthropic (incompatible history format, cost explosion)
+- Do not switch Sentinel from Flash to a more expensive model
+- Do not increase maxConcurrent above 2 (resource contention on 4GB RAM)
+- Do not remove anti-spiral safeguards (contextTokens cap, session budget, tools.deny)
+- Do not set Docker restart policy to `unless-stopped` (caused 54 restarts in 50 min)
