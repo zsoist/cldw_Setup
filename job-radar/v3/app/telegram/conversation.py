@@ -54,14 +54,14 @@ Hot = composite>=70 | Hidden junior = no seniority title + jr>=55 + <=7 reqs
 
 # Sources (6 connectors)
 Brave, HN Who's Hiring, RemoteOK, WeWorkRemotely, Jobicy, Watchlist (27 AI startups)
-Sync 4x/day | AM digest 08:00 COT | PM 18:00 COT
+Sync 2x/day (05:00, 17:00 UTC) | AM digest 08:00 COT | PM 18:00 COT
 
 # Tweakable (via "tweak" intent)
 weight_opportunity/junior/colombia: 0-100 (must sum 100)
 digest_min_composite: 0-100 | digest_max_jobs: 1-30 | job_max_age_days: 7-90
 
 # Response: ALWAYS valid JSON
-{{"intent":"search|explain|stats|tweak|system|chat","params":{{}},"reply":"short text"}}
+{{"intent":"search|explain|stats|tweak|system|manage|chat","params":{{}},"reply":"short text"}}
 
 Params by intent:
 - search: {{"query":"text","filter":"hot|hidden|saved|applied|all","limit":5}}
@@ -69,12 +69,18 @@ Params by intent:
 - stats: {{"days":7}}
 - tweak: {{"key":"param_name","value":number}}
 - system: {{"topic":"scoring|dedup|connectors|watchlist|digest"}}
+- manage: {{"action":"dismiss_all|pause|resume|cron_status"}}
 - chat: {{}}
 
 CRITICAL RULES:
 - For search/stats/explain: keep "reply" to ONE short intro sentence. The system appends real data.
 - For system/chat: put full answer in "reply" (max 3 short paragraphs).
 - For tweak: confirm change in "reply".
+- For manage: map user intent to action:
+  "cancel all"/"dismiss all"/"clear jobs"/"start fresh" → dismiss_all
+  "pause cron"/"stop syncs"/"cancel cron"/"pause scheduler" → pause
+  "resume cron"/"start syncs"/"resume" → resume
+  "cron status"/"show cron"/"scheduled jobs" → cron_status
 - Match user's language. Never fabricate data. Be concise.
 """
 
@@ -107,6 +113,18 @@ FEW_SHOT = [
 
     ("search python machine learning",
      '{"intent":"search","params":{"query":"python machine learning","limit":10},"reply":"Python/ML jobs:"}'),
+
+    ("cancel all",
+     '{"intent":"manage","params":{"action":"dismiss_all"},"reply":"Dismissing all active jobs."}'),
+
+    ("cancel all cron jobs",
+     '{"intent":"manage","params":{"action":"pause"},"reply":"Pausing all scheduled jobs."}'),
+
+    ("resume cron",
+     '{"intent":"manage","params":{"action":"resume"},"reply":"Resuming all scheduled jobs."}'),
+
+    ("show cron jobs",
+     '{"intent":"manage","params":{"action":"cron_status"},"reply":"Current scheduler status:"}'),
 ]
 
 
@@ -137,6 +155,10 @@ async def process_message(text: str, chat_id: int) -> NLResponse:
             return await _handle_stats(params, reply)
         elif intent == "tweak":
             resp = await _handle_tweak(params, reply)
+            _add_history(chat_id, "model", resp.text[:80])
+            return resp
+        elif intent == "manage":
+            resp = await _handle_manage(params, reply)
             _add_history(chat_id, "model", resp.text[:80])
             return resp
         else:
@@ -403,6 +425,48 @@ async def _handle_stats(params: dict, reply: str) -> NLResponse:
             lines.append(f"  {s['reason'] or 'unspecified'}: {s['count']}")
 
     return NLResponse(text="\n".join(lines))
+
+
+async def _handle_manage(params: dict, reply: str) -> NLResponse:
+    """Handle management actions: dismiss_all, pause, resume, cron_status."""
+    from app.scheduler import pause_scheduler, resume_scheduler, get_scheduler_status
+
+    action = params.get("action", "")
+
+    if action == "dismiss_all":
+        async with get_conn() as conn:
+            count = await conn.fetchval(
+                "SELECT COUNT(*) FROM jobs WHERE status NOT IN ('dismissed', 'expired', 'closed')"
+            )
+            if count == 0:
+                return NLResponse(text="No active jobs to dismiss. Pipeline is already clean.")
+            result = await conn.execute(
+                "UPDATE jobs SET status = 'dismissed' "
+                "WHERE status NOT IN ('dismissed', 'expired', 'closed')"
+            )
+        dismissed = int(result.split()[-1])
+        logger.info("NL bulk-dismissed %d jobs", dismissed)
+        return NLResponse(
+            text=f"✅ Dismissed {dismissed} jobs. Pipeline is clean.\nUse /sync to fetch fresh leads."
+        )
+
+    elif action == "pause":
+        msg = pause_scheduler()
+        return NLResponse(text=msg)
+
+    elif action == "resume":
+        msg = resume_scheduler()
+        return NLResponse(text=msg)
+
+    elif action == "cron_status":
+        msg = get_scheduler_status()
+        return NLResponse(text=msg)
+
+    else:
+        return NLResponse(
+            text="Available actions: dismiss all jobs, pause cron, resume cron, show cron status.\n"
+                 "Or use /dismiss_all, /pause, /resume, /cron."
+        )
 
 
 async def _handle_tweak(params: dict, reply: str) -> NLResponse:

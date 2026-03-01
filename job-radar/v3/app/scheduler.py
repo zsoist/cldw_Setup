@@ -73,3 +73,38 @@ def setup_scheduler() -> AsyncIOScheduler:
     _scheduler = scheduler
     logger.info("Scheduler configured with %d jobs", len(scheduler.get_jobs()))
     return scheduler
+
+
+def get_scheduler() -> AsyncIOScheduler | None:
+    return _scheduler
+
+
+def pause_scheduler() -> str:
+    """Pause all scheduled jobs. Returns status message."""
+    if not _scheduler:
+        return "Scheduler not initialized."
+    for job in _scheduler.get_jobs():
+        job.pause()
+    logger.info("All scheduler jobs paused")
+    return f"⏸ Paused {len(_scheduler.get_jobs())} scheduled jobs."
+
+
+def resume_scheduler() -> str:
+    """Resume all scheduled jobs. Returns status message."""
+    if not _scheduler:
+        return "Scheduler not initialized."
+    for job in _scheduler.get_jobs():
+        job.resume()
+    logger.info("All scheduler jobs resumed")
+    return f"▶️ Resumed {len(_scheduler.get_jobs())} scheduled jobs."
+
+
+def get_scheduler_status() -> str:
+    """Get human-readable scheduler status."""
+    if not _scheduler:
+        return "Scheduler not initialized."
+    lines = ["📋 Scheduled Jobs", "━" * 30]
+    for job in _scheduler.get_jobs():
+        state = "⏸ paused" if job.next_run_time is None else f"▶️ next: {job.next_run_time.strftime('%H:%M UTC')}"
+        lines.append(f"  {job.id}: {state}")
+    return "\n".join(lines)

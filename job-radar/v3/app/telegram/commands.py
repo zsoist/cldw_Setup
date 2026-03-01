@@ -7,6 +7,7 @@ from app.telegram.formatters import format_job_card, format_stats, format_job_de
 from app.telegram.callbacks import build_job_buttons
 from app.config import cfg
 from app.telegram.conversation import process_message
+from app.scheduler import pause_scheduler, resume_scheduler, get_scheduler_status
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stats — Pipeline health (7d)\n"
         "/health — System health\n"
         "/sync — Force discovery sync\n"
+        "/cron — Show scheduled jobs\n"
+        "/pause — Pause all cron jobs\n"
+        "/resume — Resume all cron jobs\n"
+        "/dismiss_all — Dismiss all active jobs\n"
         "/help — This message"
     )
 
@@ -276,6 +281,56 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Fetched: {stats['fetched']} | New: {stats['stored']} | "
         f"Dupes: {stats['deduped']} | Errors: {stats['errors']}"
     )
+
+
+async def cmd_dismiss_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dismiss all active jobs. Requires confirmation: /dismiss_all confirm"""
+    if not _is_authorized(update):
+        return
+
+    args = context.args or []
+    if not args or args[0].lower() != "confirm":
+        async with get_conn() as conn:
+            count = await conn.fetchval(
+                "SELECT COUNT(*) FROM jobs WHERE status NOT IN ('dismissed', 'expired', 'closed')"
+            )
+        await update.message.reply_text(
+            f"⚠️ This will dismiss {count} active jobs.\n\n"
+            f"Type /dismiss_all confirm to proceed."
+        )
+        return
+
+    async with get_conn() as conn:
+        result = await conn.execute(
+            "UPDATE jobs SET status = 'dismissed' WHERE status NOT IN ('dismissed', 'expired', 'closed')"
+        )
+    count = int(result.split()[-1])
+    logger.info("Bulk-dismissed %d jobs", count)
+    await update.message.reply_text(f"✅ Dismissed {count} jobs. Pipeline is now clean.\nUse /sync to fetch fresh leads.")
+
+
+async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Pause all scheduled jobs (syncs, digests)."""
+    if not _is_authorized(update):
+        return
+    msg = pause_scheduler()
+    await update.message.reply_text(msg)
+
+
+async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Resume all scheduled jobs."""
+    if not _is_authorized(update):
+        return
+    msg = resume_scheduler()
+    await update.message.reply_text(msg)
+
+
+async def cmd_cron(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show scheduler/cron job status."""
+    if not _is_authorized(update):
+        return
+    msg = get_scheduler_status()
+    await update.message.reply_text(msg)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
