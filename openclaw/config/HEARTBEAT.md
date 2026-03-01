@@ -1,19 +1,4 @@
-<!-- config-version: 2026.02.23-single-daily-top5-v1 -->
-
-# Heartbeat Configuration
-
-## Schedule
-- Interval: every 90 minutes (cost-optimized)
-- Active hours: 07:00 - 23:00 COT (UTC-5)
-- Silent hours: 23:00 - 07:00 (no proactive messages)
-
-## Heartbeat Tasks (minimal)
-1. Runtime health check only (keep system responsive).
-2. Do not auto-run briefs, reviews, recaps, or provider probes.
-3. All non-health workflows are on-demand, except the 3 scheduled cron jobs (AI Brief 07:10 COT, ENB 07:00 + 18:00 COT).
-
-## Rules
-- Heartbeat should complete in <20 seconds
-- If nothing actionable, stay silent
-- No automatic content generation outside the single daily cron run
-- Max 3 tool calls per heartbeat cycle
+# Heartbeat
+- Interval: every 90 minutes (cost-optimized). Active hours: 07:00–23:00 COT.
+- Task: runtime health check ONLY. No briefs, reviews, recaps, or provider probes.
+- Complete in <20s. Max 3 tool calls. If nothing actionable, stay silent.

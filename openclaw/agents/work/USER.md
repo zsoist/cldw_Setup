@@ -4,7 +4,7 @@
 
 ## Professional
 - Name: Daniel
-- Role: Senior Associate at a TMT consulting firm (Technology, Media & Telecommunications)
+- Role: Senior Associate, a TMT consulting firm (Technology, Media & Telecommunications)
 - Location: Bogota, Colombia
 - Previous: Forensics Investigations at Kroll, Operations at Normacol S.A.S., Research at UniAndes
 

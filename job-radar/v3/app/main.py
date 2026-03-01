@@ -3,7 +3,7 @@ import logging
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from app.config import cfg
+from app.config import cfg, load_dynamic_config
 from app.database import init_pool, close_pool
 from app.api.health import router as health_router
 from app.api.routes import router as api_router
@@ -31,6 +31,9 @@ async def lifespan(app: FastAPI):
     # 1. Database
     await init_pool()
     logger.info("Database pool ready")
+
+    # 1b. Dynamic config (user-tweakable settings from DB)
+    await load_dynamic_config()
 
     # 2. Scheduler
     _scheduler = setup_scheduler()

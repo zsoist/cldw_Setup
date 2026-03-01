@@ -30,7 +30,7 @@ async def fetch_brave_jobs() -> list[dict]:
                 resp = await client.get(
                     "https://api.search.brave.com/res/v1/web/search",
                     headers={"X-Subscription-Token": cfg.BRAVE_API_KEY, "Accept": "application/json"},
-                    params={"q": query, "count": cfg.BRAVE_RESULTS_PER_QUERY, "freshness": "pw"},
+                    params={"q": query, "count": cfg.BRAVE_RESULTS_PER_QUERY, "freshness": "pm"},
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -62,19 +62,19 @@ def _extract_company_from_url(url: str) -> str:
     """Try to extract company name from ATS URL patterns."""
     import re
     # boards.greenhouse.io/companyname
-    m = re.search(r'greenhouse\.io/(\w+)', url)
+    m = re.search(r'greenhouse\.io/([\w-]+)', url)
     if m:
         return m.group(1).replace('-', ' ').title()
     # jobs.lever.co/companyname
-    m = re.search(r'lever\.co/(\w+)', url)
+    m = re.search(r'lever\.co/([\w-]+)', url)
     if m:
         return m.group(1).replace('-', ' ').title()
     # jobs.ashbyhq.com/companyname
-    m = re.search(r'ashbyhq\.com/(\w+)', url)
+    m = re.search(r'ashbyhq\.com/([\w-]+)', url)
     if m:
         return m.group(1).replace('-', ' ').title()
     # apply.workable.com/companyname
-    m = re.search(r'workable\.com/(\w+)', url)
+    m = re.search(r'workable\.com/([\w-]+)', url)
     if m:
         return m.group(1).replace('-', ' ').title()
     return ""

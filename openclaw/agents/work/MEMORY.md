@@ -3,7 +3,7 @@
 # Memory — Work Agent
 
 ## Active Projects
-- TMT consulting engagements (details kept confidential)
+- Consulting firm TMT consulting engagements (details kept confidential)
 - AI job search — tracking applications and leads
 
 ## Job Search Tracker

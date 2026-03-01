@@ -37,9 +37,12 @@ def format_job_card(job: dict, index: int = 0) -> str:
     remote_display = {
         'worldwide': 'Remote worldwide',
         'americas': 'Remote Americas',
+        'colombia': 'Remote Colombia',
         'latam': 'Remote LATAM',
         'us_only': 'US only',
         'hybrid': 'Hybrid',
+        'remote_unspecified': 'Remote (region unclear)',
+        'unknown': 'Unknown location',
     }.get(job.get('remote_policy', ''), 'Remote')
 
     # Hidden junior badge
@@ -58,7 +61,7 @@ def format_job_card(job: dict, index: int = 0) -> str:
         lines.append(f"   🎓 {yoe_str}")
     if hidden:
         lines.append(hidden)
-    lines.append(f"   📋 Apply: {job.get('apply_notes', 'See posting')}")
+    lines.append(f"   📋 Apply: {job.get('apply_notes') or 'See posting'}")
     lines.append(f"   🔗 {job.get('apply_url') or job.get('url', '')}")
 
     return "\n".join(lines)

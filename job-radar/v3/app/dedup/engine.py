@@ -25,17 +25,19 @@ def canonical_url(url: str) -> str:
     return f"{host}{path}{'?' + clean_query if clean_query else ''}"
 
 
-def content_hash(title: str, company: str, description_500: str) -> str:
-    blob = f"{title.lower().strip()}|{company.lower().strip()}|{description_500.lower().strip()}"
+def content_hash(title: str, company: str, description: str) -> str:
+    desc = description[:500]
+    blob = f"{title.lower().strip()}|{company.lower().strip()}|{desc.lower().strip()}"
     blob = re.sub(r'\s+', ' ', blob)
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
 def normalize_for_fuzzy(text: str) -> str:
-    return re.sub(
+    normalized = re.sub(
         r'\b(sr\.?|jr\.?|senior|junior|lead|staff|principal|intern|i+|ii+)\b',
         '', text.lower()
     ).strip()
+    return normalized if normalized else text.lower().strip()
 
 
 def fuzzy_match(title_a: str, company_a: str, title_b: str, company_b: str,
@@ -85,7 +87,7 @@ async def dedup_check(conn, job: dict) -> dict:
     cutoff = datetime.now(timezone.utc) - timedelta(days=cfg.DEDUP_WINDOW_DAYS)
     recent = await conn.fetch(
         "SELECT id, title_normalized, company_normalized FROM dedup_index "
-        "WHERE created_at > $1 LIMIT 500", cutoff
+        "WHERE created_at > $1 ORDER BY created_at DESC LIMIT 500", cutoff
     )
     for r in recent:
         if fuzzy_match(

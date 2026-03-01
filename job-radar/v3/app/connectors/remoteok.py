@@ -1,4 +1,5 @@
 """RemoteOK JSON feed connector."""
+import re
 import logging
 import httpx
 
@@ -37,7 +38,6 @@ async def fetch_remoteok_jobs() -> list[dict]:
 
                     description = entry.get("description", "") or ""
                     # RemoteOK sometimes has HTML in description
-                    import re
                     description = re.sub(r'<[^>]+>', ' ', description)
                     description = re.sub(r'\s+', ' ', description).strip()
 

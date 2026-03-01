@@ -31,7 +31,7 @@
 |------|---------|------------|
 | sentinel.py | Main bot: agentic loop, provider abstraction, token tracking | max_iterations=4, primary: google/gemini-flash, anthropic manual-only (auto-fallback disabled) |
 | telegram_handler.py | Telegram interface, slash commands, auth | Zero-cost /status /openclaw /security /backup /cost |
-| tools.py | 9 tool definitions + whitelist/blocklist security | system_stats, docker_status, docker_restart, docker_logs, run_command, check_security, check_openclaw_health, backup_openclaw, cost_summary |
+| tools.py | 10 tool definitions + whitelist/blocklist security | system_stats, docker_status, docker_restart, docker_logs, run_command, check_security, check_openclaw_health, backup_openclaw, cost_summary, openclaw_cron_status |
 | config.py | Dataclass config with env var parsing | SENTINEL_MAX_TOKENS=768, SENTINEL_PROVIDER=google |
 | cost_tracker.py | Crash-safe JSONL cost logging + JSON summary | Writes /var/log/sentinel/api-usage.jsonl + api-cost-summary.json |
 | requirements.txt | Python deps | google-generativeai, anthropic, python-telegram-bot, psutil |
@@ -56,7 +56,7 @@
 | AGENTS.md | Sub-agent registry + model routing | /root/.openclaw/workspace/AGENTS.md |
 | TOOLS.md | Tool policy + permissions | /root/.openclaw/workspace/TOOLS.md |
 | USER.md | Daniel's profile + preferences | /root/.openclaw/workspace/USER.md |
-| HEARTBEAT.md | Proactive schedule (90m interval, 07:00-23:00 COT) | /root/.openclaw/workspace/HEARTBEAT.md |
+| HEARTBEAT.md | Proactive schedule (180m interval, 07:00-23:00 COT) | /root/.openclaw/workspace/HEARTBEAT.md |
 | MEMORY.md | Persistent memory system | /root/.openclaw/workspace/MEMORY.md |
 | IDENTITY.md | Persona tone + style | /root/.openclaw/workspace/IDENTITY.md |
 | CHANNELS.md | Channel security policy + allowlists | /root/.openclaw/workspace/CHANNELS.md |
@@ -180,11 +180,11 @@
 | Default model | google/gemini-2.5-flash | openclaw.json agents.defaults.model.primary |
 | Fallbacks | [] (none) | openclaw.json agents.defaults.model.fallbacks |
 | imageModel | google/gemini-2.5-flash | openclaw.json agents.defaults.imageModel.primary |
-| contextTokens | 65536 | openclaw.json agents.defaults.contextTokens |
+| contextTokens | 32768 | openclaw.json agents.defaults.contextTokens |
 | contextPruning mode | cache-ttl | openclaw.json agents.defaults.contextPruning.mode |
-| contextPruning TTL | 30m | openclaw.json agents.defaults.contextPruning.ttl |
+| contextPruning TTL | 3m | openclaw.json agents.defaults.contextPruning.ttl |
 | Compaction | safeguard | openclaw.json agents.defaults.compaction.mode |
-| Heartbeat | every 90m | openclaw.json agents.defaults.heartbeat.every |
+| Heartbeat | every 180m | openclaw.json agents.defaults.heartbeat.every |
 | Active hours | 07:00-23:00 COT | openclaw.json agents.defaults.heartbeat.activeHours |
 | Session timeout | 300s | openclaw.json agents.defaults.timeoutSeconds |
 | Sub-agent model | Flash | openclaw.json agents.defaults.subagents.model |

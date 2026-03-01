@@ -26,16 +26,16 @@
         "to": "-1003826801947"
       },
       "state": {
-        "nextRunAtMs": 1772280600000,
-        "lastRunAtMs": 1772253242735,
+        "nextRunAtMs": 1772453400000,
+        "lastRunAtMs": 1772367000004,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 13480,
+        "lastDurationMs": 17493,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
       },
-      "updatedAtMs": 1772253256215
+      "updatedAtMs": 1772367017497
     },
     {
       "id": "news-brief-enb",
@@ -62,16 +62,16 @@
         "to": "-1003826801947"
       },
       "state": {
-        "nextRunAtMs": 1772280000000,
-        "lastRunAtMs": 1772253273936,
+        "nextRunAtMs": 1772452800000,
+        "lastRunAtMs": 1772366400005,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 13213,
+        "lastDurationMs": 16744,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
       },
-      "updatedAtMs": 1772253287149
+      "updatedAtMs": 1772366416749
     }
   ]
 }

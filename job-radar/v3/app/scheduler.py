@@ -14,10 +14,10 @@ def setup_scheduler() -> AsyncIOScheduler:
     global _scheduler
     scheduler = AsyncIOScheduler()
 
-    # Discovery sync — 4x daily
+    # Discovery sync — 2x daily (was 4x; job boards refresh 1-2x/day max)
     scheduler.add_job(
         run_discovery_sync,
-        CronTrigger(hour='5,11,17,23', timezone='UTC'),
+        CronTrigger(hour='5,17', timezone='UTC'),
         id='discovery_sync',
         max_instances=1,
         coalesce=True,
@@ -44,10 +44,10 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=300,
     )
 
-    # Watchlist sync — every 12h
+    # Watchlist sync — 1x daily (was 2x; companies don't post every 12h)
     scheduler.add_job(
         run_watchlist_sync,
-        CronTrigger(hour='7,19', timezone='UTC'),
+        CronTrigger(hour='7', timezone='UTC'),
         id='watchlist_sync',
         max_instances=1,
         coalesce=True,

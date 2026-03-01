@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from telegram import Bot
 from app.database import get_conn
-from app.config import cfg
+from app.config import cfg, dyn
 from app.telegram.formatters import format_digest
 from app.telegram.callbacks import build_job_buttons
 
@@ -73,7 +73,7 @@ async def _send_digest(digest_type: str):
             "interviewing": await conn.fetchval("SELECT COUNT(*) FROM jobs WHERE status = 'interviewing'"),
         }
 
-        # Fetch top jobs
+        # Fetch top jobs (using dynamic config for thresholds)
         rows = await conn.fetch("""
             SELECT j.*, c.name as company_name, c.ats_platform
             FROM jobs j JOIN companies c ON j.company_id = c.id
@@ -83,7 +83,7 @@ async def _send_digest(digest_type: str):
               AND c.auto_suppress = false
             ORDER BY j.score_composite DESC
             LIMIT $2
-        """, cfg.DIGEST_MIN_COMPOSITE, cfg.DIGEST_MAX_JOBS)
+        """, dyn('digest_min_composite'), dyn('digest_max_jobs'))
 
     if not rows:
         logger.info("No jobs above threshold for %s digest", digest_type)
@@ -91,9 +91,10 @@ async def _send_digest(digest_type: str):
 
     jobs = [dict(r) for r in rows]
 
-    # Idempotency: hash job IDs
+    # Idempotency: hash job IDs + date (so same jobs still get sent daily)
     job_ids = sorted(str(j['id']) for j in jobs)
-    digest_hash = hashlib.sha256(f"{digest_type}:{','.join(job_ids)}".encode()).hexdigest()
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    digest_hash = hashlib.sha256(f"{digest_type}:{date_str}:{','.join(job_ids)}".encode()).hexdigest()
 
     async with get_conn() as conn:
         existing = await conn.fetchval(

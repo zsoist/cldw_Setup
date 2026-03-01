@@ -83,13 +83,13 @@ class _Pricing:
     output_per_million: float
 
 
-# List prices in USD per 1M tokens. Updated: 2026-02-27.
+# List prices in USD per 1M tokens. Updated: 2026-03-01.
 # Sources: ai.google.dev/gemini-api/docs/pricing
 #          platform.claude.com/docs/en/about-claude/pricing
-# Policy: Haiku is NEVER used (auto-redirected to Sonnet). Haiku entry
-# retained only for backward-compatible cost lookups on historical data.
+# Note: Flash uses standard (non-thinking) pricing since we set temperature=0.2
+# and do NOT request thinking mode. Previous $0.30/$2.50 was thinking-tier (2x too high).
 _MODEL_PRICING: dict[str, _Pricing] = {
-    "google/gemini-2.5-flash": _Pricing(input_per_million=0.30, output_per_million=2.50),
+    "google/gemini-2.5-flash": _Pricing(input_per_million=0.15, output_per_million=0.60),
     "google/gemini-2.5-pro": _Pricing(input_per_million=1.25, output_per_million=10.00),
     "anthropic/claude-haiku-4-5": _Pricing(input_per_million=1.00, output_per_million=5.00),
     "anthropic/claude-sonnet-4-6": _Pricing(input_per_million=3.00, output_per_million=15.00),
@@ -97,9 +97,8 @@ _MODEL_PRICING: dict[str, _Pricing] = {
 }
 
 # Provider defaults match the *primary* model used by each provider.
-# Anthropic primary = Sonnet 4.6 (Haiku is banned from production use).
 _PROVIDER_DEFAULT_PRICING: dict[str, _Pricing] = {
-    "google": _Pricing(input_per_million=0.30, output_per_million=2.50),
+    "google": _Pricing(input_per_million=0.15, output_per_million=0.60),
     "anthropic": _Pricing(input_per_million=3.00, output_per_million=15.00),
 }
 
@@ -262,7 +261,7 @@ class APICostTracker:
     @staticmethod
     def _new_summary() -> dict[str, Any]:
         return {
-            "version": "2026-02-27-v2",
+            "version": "2026-03-01-v3",
             "currency": "USD",
             "generated_by": "sentinel",
             "updated_at": _utc_iso(),

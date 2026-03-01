@@ -9,7 +9,8 @@ services:
       args:
         OPENCLAW_REF: ${OPENCLAW_REF:-v2026.2.22}
     container_name: openclaw-openclaw-gateway-1
-    restart: unless-stopped
+    restart: on-failure:5
+    stop_grace_period: 30s
     ports:
       - "127.0.0.1:18789:18789"  # Loopback only — SSH tunnel for access
     environment:
@@ -72,6 +73,22 @@ services:
             || echo "[entrypoint] WARN: deleteWebhook call failed (continuing)"
         else
           echo "[entrypoint] WARN: No Telegram token detected after 30s; skipping webhook cleanup"
+        fi
+        echo "[entrypoint] Pre-flight config validation..."
+        node -e "
+          const fs=require('fs');
+          try {
+            const c=JSON.parse(fs.readFileSync('/home/node/.openclaw/openclaw.json','utf8'));
+            const g=(c.models&&c.models.providers&&c.models.providers.google)||{};
+            if(!g.baseUrl){console.error('[preflight] FATAL: models.providers.google.baseUrl missing');process.exit(1);}
+            if(!g.models||!g.models.length){console.error('[preflight] FATAL: models.providers.google.models empty');process.exit(1);}
+            for(const m of g.models){if(!m.name||!m.id){console.error('[preflight] FATAL: model missing name/id:',JSON.stringify(m));process.exit(1);}}
+            console.log('[preflight] Config OK: Google provider with',g.models.length,'models');
+          } catch(e){console.error('[preflight] FATAL: Cannot parse openclaw.json:',e.message);process.exit(1);}
+        " 2>&1
+        if [ $$? -ne 0 ]; then
+          echo "[entrypoint] Config validation failed. Refusing to start to prevent crash loop."
+          exit 1
         fi
         echo "[entrypoint] Starting OpenClaw gateway..."
         exec node openclaw.mjs gateway --allow-unconfigured

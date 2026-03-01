@@ -3,6 +3,16 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
+# Pre-compiled word-boundary patterns for tech stack matching (avoids substring false positives)
+_TECH_PATTERNS: dict[str, re.Pattern] = {}
+
+
+def _tech_match(term: str, text_lower: str) -> bool:
+    """Word-boundary-aware tech stack matching. Avoids 'go' in 'good', 'rag' in 'pragmatic'."""
+    if term not in _TECH_PATTERNS:
+        _TECH_PATTERNS[term] = re.compile(r'\b' + re.escape(term) + r'\b')
+    return bool(_TECH_PATTERNS[term].search(text_lower))
+
 
 @dataclass
 class ScoreResult:
@@ -50,7 +60,9 @@ SENIOR_SIGNALS = re.compile(
     r'manager|10\+|8\+|7\+|6\+)\b', re.IGNORECASE
 )
 JUNIOR_SIGNALS = re.compile(
-    r'\b(junior|jr\.?|entry.level|associate|intern|new grad|recent graduate|'
+    r'\b(junior|jr\.?|entry[- ]level|'
+    r'associate(?!\s+(?:director|vice|partner|principal|general))|'
+    r'intern|new grad|recent graduate|'
     r'early career|0-[12]|1-[23]|bootcamp|self-taught welcome)\b', re.IGNORECASE
 )
 MID_YOE = re.compile(r'\b([3-5])\+?\s*(?:years?|yrs?|YoE)\b', re.IGNORECASE)
@@ -68,16 +80,30 @@ REMOTE_COLOMBIA = re.compile(
     r'\b(colombia|bogot[aá]|medell[ií]n|cali|barranquilla|COL)\b', re.IGNORECASE
 )
 GEO_BLOCK = re.compile(
-    r'\b(us only|usa only|u\.s\. only|us citizens|us.based only|'
-    r'eu only|uk only|must be located in (?:us|uk|eu|canada|australia)|'
-    r'security clearance|us work authorization|right to work in (?:the )?(?:us|uk))\b',
+    r'\b(us only|usa only|u\.s\. only|us citizens|us[- ]based only|'
+    r'based in (?:the )?(?:us|usa|u\.s\.|united states)|'
+    r'eu only|uk only|must be located in (?:the )?(?:us|uk|eu|canada|australia)|'
+    r'security clearance|us work authorization|right to work in (?:the )?(?:us|uk)|'
+    r'authorized to work in the (?:us|united states)|'
+    r'W-2 only|w2 only|'
+    r'must reside in (?:the )?(?:us|usa|u\.s\.|united states|uk|eu|canada|australia))\b',
     re.IGNORECASE
+)
+GEO_BLOCK_TITLE = re.compile(
+    r'(?:remote\s*\((?:us|usa|u\.s\.|ny|nyc|sf|la)\)|'
+    r'\b(?:new york|san francisco|seattle|austin|boston|chicago|los angeles|'
+    r'washington dc|denver|atlanta|portland|miami)\s*(?:/\s*remote|,\s*(?:us|usa))\b)',
+    re.IGNORECASE
+)
+HYBRID_SIGNALS = re.compile(
+    r'\b(hybrid|on.?site|in.?office|office.?based|in.?person|'
+    r'days?.?(?:in|at).?(?:the)?.?office|return to office|RTO)\b', re.IGNORECASE
 )
 TIMEZONE_FLEXIBLE = re.compile(
     r'\b(flexible hours|async|asynchronous|any timezone|no timezone)\b', re.IGNORECASE
 )
 CONTRACTOR_OK = re.compile(
-    r'\b(contractor|freelance|contract.to.hire|1099|B2B|EOR|'
+    r'\b(contractor|freelance|contract[- ]to[- ]hire|1099|B2B\s+contract|EOR|'
     r'deel|remote\.com|oyster|papaya global|letsdeel)\b', re.IGNORECASE
 )
 SALARY_PATTERN = re.compile(
@@ -85,7 +111,7 @@ SALARY_PATTERN = re.compile(
 )
 COMP_COMPETITIVE = re.compile(r'\bcompetitive\s+(?:salary|compensation|pay)\b', re.IGNORECASE)
 FUNDED_SIGNALS = re.compile(
-    r'\b(series [A-F]|raised \$|funded|YC |Y Combinator|backed by|unicorn|'
+    r'\b(series [A-F]|raised \$|funded|YC\b|Y Combinator|backed by|unicorn|'
     r'IPO|publicly traded|Fortune \d+|Forbes)\b', re.IGNORECASE
 )
 GROWTH_SIGNALS = re.compile(
@@ -93,7 +119,21 @@ GROWTH_SIGNALS = re.compile(
     r'training|onboarding|pair programming|code review culture)\b', re.IGNORECASE
 )
 RED_FLAGS = re.compile(
-    r'\b(crypto|web3|blockchain|NFT|token|unpaid|equity.only|defi)\b', re.IGNORECASE
+    r'\b(crypto|web3|blockchain|NFT|unpaid|equity[- ]only|defi)\b', re.IGNORECASE
+)
+NON_TECH_ROLES = re.compile(
+    r'\b(customer experience|customer support|customer service|account manager|'
+    r'sales rep|sales manager|business development|copywriter|copy editor|'
+    r'(?:deputy |managing |content |senior )editor|editorial director|'
+    r'content writer|social media|marketing manager|'
+    r'operations manager|operations intern|office manager|recruiter|'
+    r'talent acquisition|hr manager|hr coordinator|people ops|'
+    r'it support|helpdesk|help desk|desktop support|'
+    r'executive assistant|'
+    r'client partner|account executive|relationship manager|'
+    r'market insights|booking specialist|travel specialist|'
+    r'crypto analyst|crypto trader|insurance.+associate|'
+    r'data center.+technician)\b', re.IGNORECASE
 )
 
 
@@ -101,8 +141,8 @@ RED_FLAGS = re.compile(
 
 def extract_tech_stack(text: str) -> tuple[set, set]:
     text_lower = text.lower()
-    ai = {t for t in AI_ML_STACK if t in text_lower}
-    adj = {t for t in ADJACENT_STACK if t in text_lower}
+    ai = {t for t in AI_ML_STACK if _tech_match(t, text_lower)}
+    adj = {t for t in ADJACENT_STACK if _tech_match(t, text_lower)}
     return ai, adj
 
 
@@ -156,19 +196,27 @@ def detect_seniority(title: str, description: str) -> str:
     return 'unknown'
 
 
-def detect_remote_policy(text: str) -> str:
-    if GEO_BLOCK.search(text):
+def detect_remote_policy(text: str, title: str = "") -> str:
+    combined = f"{title} {text}"
+    # Positive worldwide/LATAM signals override geo-block when both present
+    # (e.g., "US-based company, hiring worldwide")
+    has_worldwide = bool(REMOTE_WORLDWIDE.search(combined))
+    has_americas = bool(REMOTE_AMERICAS.search(combined))
+    has_colombia = bool(REMOTE_COLOMBIA.search(combined))
+    has_geo_block = bool(GEO_BLOCK.search(combined)) or bool(GEO_BLOCK_TITLE.search(title))
+
+    if has_geo_block and not (has_worldwide or has_americas or has_colombia):
         return 'us_only'
-    if REMOTE_COLOMBIA.search(text):
-        return 'latam'
-    if REMOTE_AMERICAS.search(text):
-        return 'americas'
-    if REMOTE_WORLDWIDE.search(text):
-        return 'worldwide'
-    if re.search(r'\b(hybrid|on.?site)\b', text, re.IGNORECASE):
+    if HYBRID_SIGNALS.search(combined) and not (has_worldwide or has_americas or has_colombia):
         return 'hybrid'
-    if re.search(r'\bremote\b', text, re.IGNORECASE):
+    if has_colombia:
+        return 'colombia'
+    if has_americas:
+        return 'americas'
+    if has_worldwide:
         return 'worldwide'
+    if re.search(r'\bremote\b', combined, re.IGNORECASE):
+        return 'remote_unspecified'
     return 'unknown'
 
 
@@ -211,6 +259,11 @@ def score_opportunity(title: str, description: str, company_name: str) -> tuple[
     combined = f"{title} {description}"
     ai_stack, adj_stack = extract_tech_stack(combined)
 
+    # Non-tech role penalty (applied to title only for precision)
+    if NON_TECH_ROLES.search(title):
+        score -= 30
+        signals += 1
+
     if len(ai_stack) >= 3:
         score += 18
         signals += 1
@@ -251,13 +304,16 @@ def score_opportunity(title: str, description: str, company_name: str) -> tuple[
 def score_junior(title: str, description: str) -> tuple[int, int]:
     score = 50
     signals = 0
-    combined = f"{title} {description}"
 
-    if JUNIOR_SIGNALS.search(combined):
+    # Check title first (stronger signal) — senior title overrides junior body
+    if JUNIOR_SIGNALS.search(title):
         score += 30
         signals += 1
     elif SENIOR_SIGNALS.search(title):
         score -= 35
+        signals += 1
+    elif JUNIOR_SIGNALS.search(description):
+        score += 20  # Weaker than title signal
         signals += 1
     elif SENIOR_SIGNALS.search(description):
         score -= 20
@@ -292,28 +348,43 @@ def score_junior(title: str, description: str) -> tuple[int, int]:
     return max(0, min(100, score)), signals
 
 
-def score_colombia(description: str) -> tuple[int, int]:
-    score = 45
+def score_colombia(description: str, title: str = "") -> tuple[int, int]:
+    score = 30  # Lower base — must earn remote accessibility
     signals = 0
+    combined = f"{title} {description}"
 
-    if GEO_BLOCK.search(description):
-        return 0, 2
+    has_worldwide = bool(REMOTE_WORLDWIDE.search(combined))
+    has_americas = bool(REMOTE_AMERICAS.search(combined))
+    has_colombia = bool(REMOTE_COLOMBIA.search(combined))
 
-    if REMOTE_COLOMBIA.search(description):
+    # Hard block: US-only (but worldwide/LATAM override)
+    if GEO_BLOCK.search(combined) or GEO_BLOCK_TITLE.search(title):
+        if not (has_worldwide or has_americas or has_colombia):
+            return 0, 2
+
+    # Hybrid/onsite penalty (but worldwide/LATAM override)
+    if HYBRID_SIGNALS.search(combined):
+        if not (has_worldwide or has_americas or has_colombia):
+            return 10, 2
+
+    if has_colombia:
+        score += 50
+        signals += 1
+    elif has_americas:
         score += 40
         signals += 1
-    elif REMOTE_AMERICAS.search(description):
-        score += 30
+    elif has_worldwide:
+        score += 50  # Worldwide ≥ Colombia (includes Colombia by definition)
         signals += 1
-    elif REMOTE_WORLDWIDE.search(description):
-        score += 35
+    elif re.search(r'\bremote\b', combined, re.IGNORECASE):
+        score += 15  # Bare "remote" — unclear if worldwide
         signals += 1
 
-    if TIMEZONE_FLEXIBLE.search(description):
+    if TIMEZONE_FLEXIBLE.search(combined):
         score += 15
         signals += 1
 
-    if CONTRACTOR_OK.search(description):
+    if CONTRACTOR_OK.search(combined):
         score += 18
         signals += 1
 
@@ -325,8 +396,10 @@ def score_colombia(description: str) -> tuple[int, int]:
     return max(0, min(100, score)), signals
 
 
-def compute_composite(opp: int, junior: int, colombia: int) -> int:
-    return round(opp * 0.30 + junior * 0.40 + colombia * 0.30)
+def compute_composite(opp: int, junior: int, colombia: int,
+                       weights: tuple[float, float, float] | None = None) -> int:
+    w_opp, w_jr, w_col = weights or (0.30, 0.40, 0.30)
+    return max(0, min(100, round(opp * w_opp + junior * w_jr + colombia * w_col)))
 
 
 def confidence_level(signal_count: int) -> str:
@@ -350,12 +423,16 @@ def is_hidden_junior(title: str, description: str, ja_score: int) -> bool:
     )
 
 
-def score_job(title: str, description: str, company_name: str) -> ScoreResult:
+def score_job(title: str, description: str, company_name: str,
+              weights: tuple[float, float, float] | None = None) -> ScoreResult:
     """Full deterministic scoring pipeline. Zero LLM cost."""
+    title = title or ""
+    description = description or ""
+    company_name = company_name or ""
     opp, opp_signals = score_opportunity(title, description, company_name)
     junior, junior_signals = score_junior(title, description)
-    col, col_signals = score_colombia(description)
-    composite = compute_composite(opp, junior, col)
+    col, col_signals = score_colombia(description, title)
+    composite = compute_composite(opp, junior, col, weights)
     total_signals = opp_signals + junior_signals + col_signals
 
     ai_stack, adj_stack = extract_tech_stack(f"{title} {description}")
@@ -378,7 +455,7 @@ def score_job(title: str, description: str, company_name: str) -> ScoreResult:
         yoe_max=yoe_max,
         salary_min=sal_min,
         salary_max=sal_max,
-        remote_policy=detect_remote_policy(description),
+        remote_policy=detect_remote_policy(description, title),
         timezone_signal=detect_timezone(description),
         contractor_ok=bool(CONTRACTOR_OK.search(description)),
     )

@@ -3,7 +3,7 @@
 # Heartbeat — Work Agent
 
 ## Schedule
-- Interval: 90 minutes (cost-optimized, aligned with main agent)
+- Interval: 55 minutes (cache-aligned with main agent)
 - Active hours: 08:00 - 20:00 COT (work hours only)
 - Silent hours: 20:00 - 08:00 (narrower window than main agent)
 

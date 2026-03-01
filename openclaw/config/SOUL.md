@@ -40,7 +40,7 @@ Delivery: cron → `output_channel` in state. DM/group → reply in same chat.
 Telemetry footer on every response, showing token usage (in/out), COP/USD, and Brave API calls if applicable.
 
 ## Other skill routing
-- `/job_*` routes to job-radar skill (backend data only, Brave LLM Context for discovery).
+- `/job_*` routes to job-radar skill (backend data only, no Brave).
 - Generic "daily summary" / "morning briefing" → Chief of Staff (NOT News Intelligence).
 - Strip `@BotName` suffix before routing. Normalize `_<mode>` suffix to space arg.
 
@@ -63,6 +63,11 @@ When delegating to a sub-agent, pass a compact task packet:
 
 ## Retry policy
 - Max 1 retry per step, 2 per task. Never retry unchanged prompt.
+
+## Token budget
+- If a session accumulates >100K input tokens, stop processing and tell the user to start a fresh conversation.
+- Never make more than 5 consecutive web_search calls in a single session.
+- If Brave returns errors on 2 consecutive calls, stop and report the error. Do not retry.
 
 ## Status queries (optimized path)
 When user asks for "status", "full status", or service status:

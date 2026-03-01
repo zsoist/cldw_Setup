@@ -1,6 +1,6 @@
 """Tool definitions and execution for Sentinel sysadmin bot.
 
-Each tool is a function that can be called by Claude via tool_use.
+Each tool is a function that can be called by the LLM via function calling.
 Tools are restricted to safe operations. Destructive commands require confirmation.
 """
 import os
@@ -9,6 +9,7 @@ import subprocess
 import shlex
 import re
 import ipaddress
+import time
 import unicodedata
 import psutil
 import docker
@@ -16,7 +17,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 
-# --- TOOL DEFINITIONS (sent to Anthropic API) ---
+# --- TOOL DEFINITIONS (sent to LLM provider) ---
 
 TOOLS = [
     {
@@ -124,6 +125,20 @@ TOOLS = [
             },
             "required": []
         }
+    },
+    {
+        "name": "check_api_spirals",
+        "description": "Detect API usage spirals: container restart loops, error rates, Brave search volume, and cost anomalies. Returns severity: OK, WARNING, or CRITICAL.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "hours": {
+                    "type": "integer",
+                    "description": "Lookback window in hours (default 1, max 24)"
+                }
+            },
+            "required": []
+        }
     }
 ]
 
@@ -159,7 +174,7 @@ UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9_.@-]+$")
 FQDN_RE = re.compile(
     r"^(?=.{1,253}$)([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.([A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$"
 )
-ALLOWED_DOCKER_CONTAINERS = {"openclaw-openclaw-gateway-1", "job-radar-api", "job-radar-db"}
+ALLOWED_DOCKER_CONTAINERS = {"openclaw-openclaw-gateway-1", "job-radar-agent", "job-radar-db"}
 
 
 def _is_bounded_int(value: str, min_value: int, max_value: int) -> bool:
@@ -670,41 +685,16 @@ def execute_cost_summary(period: str = "today") -> dict[str, Any]:
     except Exception as e:
         result["services"]["sentinel"] = {"error": str(e)[:200]}
 
-    # --- OpenClaw costs (from gateway usage API) ---
+    # --- OpenClaw costs (from gateway Docker stats — no REST API available) ---
     try:
-        token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
-        if not token:
-            # Try reading from the env file
-            env_path = "/root/openclaw/.env"
-            if os.path.exists(env_path):
-                with open(env_path) as f:
-                    for line in f:
-                        if line.startswith("OPENCLAW_GATEWAY_TOKEN="):
-                            token = line.split("=", 1)[1].strip()
-                            break
-
-        if token:
-            import urllib.request
-            import urllib.error
-
-            url = "http://127.0.0.1:18789/api/sessions.usage.summary"
-            req = urllib.request.Request(
-                url,
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                data=json.dumps({}).encode(),
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                oc_data = json.loads(resp.read())
-                oc_result = oc_data.get("result", {})
-                result["services"]["openclaw"] = {
-                    "usd": round(float(oc_result.get("totalCost", 0)), 6),
-                    "input_tokens": int(oc_result.get("totalInputTokens", 0)),
-                    "output_tokens": int(oc_result.get("totalOutputTokens", 0)),
-                    "sessions": int(oc_result.get("totalSessions", 0)),
-                }
-        else:
-            result["services"]["openclaw"] = {"error": "No gateway token available"}
+        client = docker.from_env()
+        oc_container = client.containers.get("openclaw-openclaw-gateway-1")
+        oc_state = oc_container.attrs.get("State", {})
+        result["services"]["openclaw"] = {
+            "status": oc_container.status,
+            "started_at": str(oc_state.get("StartedAt", ""))[:19],
+            "note": "Gateway uses WebSocket — no REST usage API. Check gateway logs for cost data.",
+        }
     except Exception as e:
         result["services"]["openclaw"] = {"error": str(e)[:200]}
 
@@ -730,6 +720,135 @@ def execute_cost_summary(period: str = "today") -> dict[str, Any]:
     return result
 
 
+def execute_check_api_spirals(hours: int = 1) -> dict[str, Any]:
+    """Detect API usage spirals across the VPS."""
+    hours = max(1, min(hours, 24))
+    alerts: list[str] = []
+    metrics: dict[str, Any] = {"lookback_hours": hours}
+    severity = "OK"
+
+    # 1. Gateway container restart count
+    try:
+        client = docker.from_env()
+        container = client.containers.get("openclaw-openclaw-gateway-1")
+        restart_count = container.attrs.get("RestartCount", 0)
+        state = container.attrs.get("State", {})
+        started_at = state.get("StartedAt", "")
+        metrics["gateway"] = {
+            "status": container.status,
+            "restart_count": restart_count,
+            "started_at": started_at[:19],
+        }
+        if restart_count > 3:
+            alerts.append(f"CRITICAL: Gateway restarted {restart_count} times (total)")
+            severity = "CRITICAL"
+        elif restart_count > 1:
+            alerts.append(f"WARNING: Gateway restarted {restart_count} times (total)")
+            if severity != "CRITICAL":
+                severity = "WARNING"
+    except docker.errors.NotFound:
+        metrics["gateway"] = {"status": "not_found"}
+        alerts.append("CRITICAL: Gateway container not found")
+        severity = "CRITICAL"
+    except docker.errors.DockerException as e:
+        metrics["gateway"] = {"error": str(e)[:200]}
+
+    # 2. Scan gateway logs for errors and Brave usage
+    try:
+        container = client.containers.get("openclaw-openclaw-gateway-1")
+        log_lines = container.logs(
+            since=int(time.time()) - (hours * 3600),
+            tail=2000,
+        ).decode("utf-8", errors="replace").splitlines()
+
+        error_count = 0
+        brave_count = 0
+        overflow_count = 0
+        for line in log_lines:
+            lower = line.lower()
+            if any(kw in lower for kw in ["error", "fatal", "400", "bad_request", "invalid"]):
+                error_count += 1
+            if any(kw in lower for kw in ["brave", "web_search"]):
+                brave_count += 1
+            if any(kw in lower for kw in ["overflow", "low context window", "context exceeded"]):
+                overflow_count += 1
+
+        metrics["gateway_logs"] = {
+            "lines_scanned": len(log_lines),
+            "error_lines": error_count,
+            "brave_mentions": brave_count,
+            "context_overflow_warnings": overflow_count,
+        }
+
+        if error_count > 50:
+            alerts.append(f"CRITICAL: {error_count} error lines in gateway logs ({hours}h)")
+            severity = "CRITICAL"
+        elif error_count > 20:
+            alerts.append(f"WARNING: {error_count} error lines in gateway logs ({hours}h)")
+            if severity != "CRITICAL":
+                severity = "WARNING"
+
+        if brave_count > 30:
+            alerts.append(f"WARNING: {brave_count} Brave/search mentions in {hours}h (possible spiral)")
+            if severity != "CRITICAL":
+                severity = "WARNING"
+
+        if overflow_count > 0:
+            alerts.append(f"WARNING: {overflow_count} context overflow warnings in {hours}h")
+            if severity != "CRITICAL":
+                severity = "WARNING"
+
+    except Exception as e:
+        metrics["gateway_logs"] = {"error": str(e)[:200]}
+
+    # 3. Check Sentinel cost for anomalies
+    try:
+        summary_path = "/var/log/sentinel/api-cost-summary.json"
+        if os.path.exists(summary_path):
+            with open(summary_path) as f:
+                summary = json.load(f)
+            import datetime as _dt
+            today_key = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+            daily = summary.get("totals", {}).get("daily", {}).get(today_key, {})
+            today_usd = float(daily.get("usd", 0))
+            today_calls = int(daily.get("calls", 0))
+            today_errors = int(daily.get("error_calls", 0))
+            metrics["sentinel_today"] = {
+                "usd": round(today_usd, 6),
+                "calls": today_calls,
+                "errors": today_errors,
+            }
+            if today_usd > 1.0:
+                alerts.append(f"WARNING: Sentinel daily spend ${today_usd:.4f} exceeds $1.00")
+                if severity != "CRITICAL":
+                    severity = "WARNING"
+            if today_errors > 10:
+                alerts.append(f"WARNING: Sentinel {today_errors} API errors today")
+                if severity != "CRITICAL":
+                    severity = "WARNING"
+        else:
+            metrics["sentinel_today"] = {"status": "no cost data file"}
+    except Exception as e:
+        metrics["sentinel_today"] = {"error": str(e)[:200]}
+
+    # 4. Check OpenClaw gateway health (no REST usage API — WebSocket only)
+    try:
+        oc_container = client.containers.get("openclaw-openclaw-gateway-1")
+        oc_health = oc_container.attrs.get("State", {}).get("Health", {}).get("Status", "unknown")
+        metrics["openclaw_health"] = {
+            "status": oc_container.status,
+            "docker_health": oc_health,
+        }
+    except Exception as e:
+        metrics["openclaw_health"] = {"error": str(e)[:200]}
+
+    return {
+        "severity": severity,
+        "alerts": alerts if alerts else ["All metrics within normal bounds."],
+        "metrics": metrics,
+    }
+
+
 # --- TOOL DISPATCHER ---
 
 def execute_tool(tool_name: str, tool_input: dict) -> Any:
@@ -744,6 +863,7 @@ def execute_tool(tool_name: str, tool_input: dict) -> Any:
         "check_openclaw_health": lambda _: execute_check_openclaw_health(),
         "backup_openclaw": lambda _: execute_backup_openclaw(),
         "cost_summary": lambda inp: execute_cost_summary(inp.get("period", "today")),
+        "check_api_spirals": lambda inp: execute_check_api_spirals(inp.get("hours", 1)),
     }
 
     executor = executors.get(tool_name)

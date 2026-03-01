@@ -24,10 +24,10 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 **Use:** Gemini Flash
 - Summaries, formatting, reminders, task tracking, lightweight file ops
 
-### 3. Research, AI Brief, and Multi-step Work
-**Use:** Gemini Pro
+### 3. Research and Multi-step Work
+**Use:** Gemini Flash (default), escalate to Pro only for complex research
 - Multi-source synthesis
-- AI Daily Brief ranking and drafting
+- AI Daily Brief ranking and drafting (Flash -- all modes)
 - Code generation and structured technical analysis
 
 ### 4. Production-grade / "Think harder"
@@ -71,7 +71,7 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 
 ## Cost Controls
 1. Keep heartbeat and routine commands on Flash.
-2. Use Pro only for research/brief/code-heavy steps.
+2. Use Pro only for complex research/code-heavy steps (AI Brief uses Flash).
 3. Reserve Sonnet for quality-critical steps.
 4. Use Opus only on explicit command.
 5. Daily budget target: `<$5`.

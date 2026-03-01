@@ -24,6 +24,8 @@ async def close_pool():
 
 @asynccontextmanager
 async def get_conn():
+    if not _pool:
+        raise RuntimeError("Database pool not initialized. Call init_pool() first.")
     async with _pool.acquire() as conn:
         yield conn
 

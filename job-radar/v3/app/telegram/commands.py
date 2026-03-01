@@ -6,6 +6,7 @@ from app.database import get_conn
 from app.telegram.formatters import format_job_card, format_stats, format_job_detail
 from app.telegram.callbacks import build_job_buttons
 from app.config import cfg
+from app.telegram.conversation import process_message
 
 logger = logging.getLogger(__name__)
 
@@ -109,14 +110,20 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /search <query>\nExample: /search pytorch startup")
         return
 
+    from app.telegram.conversation import _extract_search_terms
+    like_patterns, tech_terms = _extract_search_terms(query)
+
     async with get_conn() as conn:
         rows = await conn.fetch("""
             SELECT j.*, c.name as company_name, c.ats_platform
             FROM jobs j JOIN companies c ON j.company_id = c.id
-            WHERE (j.title ILIKE $1 OR c.name ILIKE $1 OR $2 = ANY(j.tech_stack))
+            WHERE (j.title ILIKE ANY($1::text[])
+                   OR c.name ILIKE ANY($1::text[])
+                   OR j.tech_stack && $2::text[]
+                   OR j.description_snippet ILIKE ANY($1::text[]))
               AND j.status NOT IN ('expired', 'closed')
             ORDER BY j.score_composite DESC LIMIT 10
-        """, f"%{query}%", query.lower())
+        """, like_patterns, tech_terms)
 
     if not rows:
         await update.message.reply_text(f"No jobs found for '{query}'.")
@@ -148,9 +155,14 @@ async def cmd_saved(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "💾 Saved Jobs\n" + "━" * 30 + "\n"
     for i, row in enumerate(rows, 1):
         job = dict(row)
-        text += f"\n{i}. {job['title']} @ {job['company_name']}\n   📊 {job['score_composite']} | 🔗 {job.get('apply_url') or job['url']}\n"
+        line = f"\n{i}. {job['title']} @ {job['company_name']}\n   📊 {job['score_composite']} | 🔗 {job.get('apply_url') or job['url']}\n"
+        if len(text) + len(line) > 4000:
+            await update.message.reply_text(text, disable_web_page_preview=True)
+            text = ""
+        text += line
 
-    await update.message.reply_text(text, disable_web_page_preview=True)
+    if text.strip():
+        await update.message.reply_text(text, disable_web_page_preview=True)
 
 
 async def cmd_applied(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -173,9 +185,14 @@ async def cmd_applied(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, row in enumerate(rows, 1):
         job = dict(row)
         emoji = {"applied": "📤", "interviewing": "🗣", "offered": "🎉"}.get(job['status'], "📋")
-        text += f"\n{emoji} {job['title']} @ {job['company_name']}\n   Status: {job['status']} | 🔗 {job.get('apply_url') or job['url']}\n"
+        line = f"\n{emoji} {job['title']} @ {job['company_name']}\n   Status: {job['status']} | 🔗 {job.get('apply_url') or job['url']}\n"
+        if len(text) + len(line) > 4000:
+            await update.message.reply_text(text, disable_web_page_preview=True)
+            text = ""
+        text += line
 
-    await update.message.reply_text(text, disable_web_page_preview=True)
+    if text.strip():
+        await update.message.reply_text(text, disable_web_page_preview=True)
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,3 +276,35 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Fetched: {stats['fetched']} | New: {stats['stored']} | "
         f"Dupes: {stats['deduped']} | Errors: {stats['errors']}"
     )
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle plain text messages via NL conversation (Gemini-powered)."""
+    if not update.message:
+        return
+    if not _is_authorized(update):
+        return
+
+    text = update.message.text
+    if not text or not text.strip():
+        return
+
+    # Show typing indicator while Gemini processes
+    await update.message.chat.send_action("typing")
+
+    result = await process_message(text.strip(), update.effective_chat.id)
+
+    # Send main text response
+    if result.text:
+        await update.message.reply_text(
+            result.text, disable_web_page_preview=True
+        )
+
+    # Send job cards with inline buttons (if search/explain returned jobs)
+    if result.jobs:
+        for i, job in enumerate(result.jobs, 1):
+            card = format_job_card(job, i)
+            buttons = build_job_buttons(str(job['id']))
+            await update.message.reply_text(
+                card, reply_markup=buttons, disable_web_page_preview=True
+            )

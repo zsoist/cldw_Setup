@@ -1,10 +1,10 @@
 """Telegram bot setup — long-polling, lives inside the agent container."""
 import logging
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from app.config import cfg
 from app.telegram.commands import (
     cmd_jobs, cmd_search, cmd_saved, cmd_applied, cmd_stats,
-    cmd_health, cmd_sync, cmd_help, cmd_start,
+    cmd_health, cmd_sync, cmd_help, cmd_start, handle_message,
 )
 from app.telegram.callbacks import handle_callback
 
@@ -32,6 +32,9 @@ async def create_bot() -> Application:
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("sync", cmd_sync))
+
+    # Plain text messages (NL conversation via Gemini)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # Inline button callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))

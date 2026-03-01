@@ -1,15 +1,12 @@
 """Hacker News 'Who is Hiring?' connector."""
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import httpx
 
-logger = logging.getLogger(__name__)
+from app.connectors.keywords import AI_KEYWORDS
 
-AI_KEYWORDS = re.compile(
-    r'\b(AI|ML|machine learning|deep learning|NLP|LLM|GPT|computer vision|'
-    r'data scien|pytorch|tensorflow|mlops|GenAI)\b', re.IGNORECASE
-)
+logger = logging.getLogger(__name__)
 REMOTE_KEYWORDS = re.compile(r'\b(remote|worldwide|anywhere|LATAM|Americas)\b', re.IGNORECASE)
 
 HN_SEARCH_URL = "https://hn.algolia.com/api/v1/search"
@@ -17,7 +14,7 @@ HN_SEARCH_URL = "https://hn.algolia.com/api/v1/search"
 
 async def fetch_hn_jobs() -> list[dict]:
     """Fetch current month's Who's Hiring thread and parse AI/remote jobs."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     month_name = now.strftime("%B")
     year = now.year
 
@@ -84,7 +81,43 @@ def _parse_hn_comment(text: str, comment_id: str) -> dict | None:
     parts = re.split(r'\s*[|]\s*', first_line)
 
     company = parts[0].strip() if parts else "Unknown"
-    title = parts[1].strip() if len(parts) > 1 else "Engineering Role"
+
+    # Find the actual role title — skip generic types, locations, URLs
+    generic_skip = re.compile(
+        r'^(full.?time|part.?time|contract|freelance|remote|onsite|hybrid|'
+        r'remote\s*\(.+\)(\s*\+.+)?|http|www|on.?site|relocat|anywhere|worldwide|'
+        r'san francisco|new york|nyc|berlin|london|sf|la|eu|us|usa|'
+        r'\d+k?\s*[-–]\s*\d+k?|salary|compensation|benefits)$',
+        re.IGNORECASE
+    )
+    title = None
+    for i in range(1, len(parts)):
+        candidate = parts[i].strip()
+        if candidate and not generic_skip.match(candidate) and len(candidate) > 3:
+            title = candidate
+            break
+
+    # Fallback: extract role from description body if pipe parts were all generic
+    if not title:
+        role_match = re.search(
+            r'(?:hiring|looking for|seeking|role|position)[:\s]+(?:a\s+)?'
+            r'([A-Z][\w\s/]+(?:Engineer|Developer|Scientist|Analyst|Architect|Designer))',
+            text
+        )
+        if role_match:
+            title = role_match.group(1).strip()
+        else:
+            title = "Engineering Role"
+
+    # Fix: clean company name — remove CLOSED/hiring notices, parenthetical stage info
+    company = re.sub(r'\s*(?:CLOSED|closed|Closed)\s*[-–—]?\s*.*$', '', company).strip()
+    # Truncate company at reasonable length
+    if len(company) > 60:
+        company = company[:60].rsplit(' ', 1)[0]
+
+    # Fix: truncate title at reasonable boundary, remove dangling fragments
+    if len(title) > 80:
+        title = title[:80].rsplit(' ', 1)[0]
 
     # Try to find URL
     url_match = re.search(r'(https?://\S+)', text)

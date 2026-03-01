@@ -47,11 +47,11 @@ Our config: `"compaction": {"mode": "safeguard"}` — auto-compacts when approac
 
 ## 4. Heartbeat-Cache Alignment
 
-Our heartbeat interval is **90 minutes** (cost-optimized). Cache alignment is no longer the primary driver — Gemini Flash is the default model.
+Our heartbeat interval is **180 minutes** (cost-optimized). Cache alignment is no longer the primary driver — Gemini Flash is the default model.
 
 ```
 Cache TTL:     |-------- 60 min --------|-------- 60 min --------|
-Heartbeat:     |------ 55 min ------|------ 55 min ------|------
+Heartbeat:     |---------- 180 min ----------|---------- 180 min ----------|
                      ↑ cache warm         ↑ cache warm
 ```
 
@@ -61,14 +61,14 @@ This ensures the system prompt (SOUL.md + tools + metadata) remains cached acros
 
 ## 5. Heartbeat with Minimal Cron
 
-With a single scheduled job, cron-driven cost is already low.
+With 2 scheduled cron jobs, cron-driven cost is already low.
 
 | Approach | API Calls | Cost |
 |----------|-----------|------|
-| 1 scheduled cron job/day | 1 | Low |
+| 2 scheduled cron jobs/day | 2 | Low |
 | On-demand commands for everything else | Usage-based | Controlled |
 
-Current policy: one daily AI brief at 07:00 COT; everything else is on-demand.
+Current policy: AI brief at 07:10 COT and ENB brief at 07:00 COT; everything else is on-demand.
 
 ## 6. Main vs Isolated Cron
 
@@ -79,7 +79,7 @@ Two execution modes for scheduled jobs:
 | **Main-session** | Adds to next heartbeat, shares context | Inherits session model | Cheap checks, context-dependent tasks |
 | **Isolated** | Full separate turn, clean context | Can use cheaper model | Batch pipelines, independent analysis |
 
-Our single cron job (CRON.md) defaults to main-session mode. Use isolated mode for:
+Our 2 cron jobs (CRON.md) use isolated mode by default. Use isolated mode for:
 - Jobs that don't need prior conversation context
 - Jobs where the default model (Flash) is sufficient regardless of session model
 - Batch processing that should not pollute the main session
@@ -115,9 +115,9 @@ Periodic performance review:
 
 - [ ] SOUL.md under 500 words (`wc -w openclaw/config/SOUL.md`)
 - [ ] Run `/context list` — no single item > 20% of context
-- [ ] Heartbeat interval is 55 min (cache-aligned)
-- [ ] The single cron job uses main-session mode unless isolation is needed
+- [ ] Heartbeat interval is 180m (cost-optimized)
+- [ ] The 2 cron jobs use isolated mode for clean context
 - [ ] No browser automation for tasks achievable with Brave LLM Context
 - [ ] `/compact` run on any session older than 2 hours of active use
-- [ ] Response token caps enforced (2048 OpenClaw, 1024 Sentinel)
+- [ ] Response token caps enforced (2048 OpenClaw, 768 Sentinel)
 - [ ] Silent hours active (23:00-07:00 COT)

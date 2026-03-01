@@ -16,7 +16,7 @@ Production AI system on a Hetzner CPX22 VPS. Gemini-first model stack, targeting
                         |  |    Port 18789 (lo)       |  |   Python + SDK        |   |
                         |  |                          |  |                       |   |
                         |  |  +------+  +----------+  |  |   Flash default       |   |
-                        |  |  | main |  |   work   |  |  |   9 tool functions    |   |
+                        |  |  | main |  |   work   |  |  |   10 tool functions   |   |
   Telegram ----------->|  |  | agent|  |  agent   |  |  |   Strict whitelist    |   |
   (Sentinel Bot)       |  |  |      |  | sandbox  |  |  +-----------------------+   |
                         |  |  +------+  +----------+  |                             |
@@ -163,7 +163,7 @@ Commands: `/job_radar`, `/job_search`, `/job_why`, `/job_trends`, `/job_skills`,
 
 ## Sentinel
 
-Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. 9 tools with whitelist/blocklist security.
+Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. 10 tools with whitelist/blocklist security.
 
 | Tool | Description | Safety |
 |------|-------------|--------|
@@ -186,10 +186,10 @@ Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost` — 
 | Optimization | Detail |
 |-------------|--------|
 | Flash default | All routine work on cheapest model |
-| Heartbeat 90m | Bounded to active hours (07:00-23:00 COT) |
+| Heartbeat 180m | Bounded to active hours (07:00-23:00 COT) |
 | SOUL.md ~800 tokens | Sent with every request, trimmed 63% from original |
 | Compaction: safeguard | Only `"default"` and `"safeguard"` are valid |
-| Context pruning | cache-ttl 3m, keep 1 last assistant, prune tool output >1K chars |
+| Context pruning | cache-ttl 3m, keep 2 last assistants, prune tool output >500 chars |
 | contextTokens 32,768 | Hard-caps context window per session |
 | Sub-agents on Flash | maxConcurrent=1, timeout 90s, archive after 30m |
 | Silent hours | No proactive messages 23:00-07:00 COT |
@@ -209,7 +209,7 @@ Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost` — 
 │   ├── telegram_handler.py                # Telegram interface + auth
 │   ├── config.py                          # Config validation
 │   ├── cost_tracker.py                    # API cost accounting
-│   ├── tools.py                           # 9 tools + security
+│   ├── tools.py                           # 10 tools + security
 │   └── tests/                             # 65+ tests (zero API cost)
 │
 ├── openclaw/                              # OpenClaw Gateway config

@@ -14,7 +14,7 @@
 
 | Model | Input (per 1M tokens) | Output (per 1M tokens) | Role |
 |-------|----------------------|------------------------|------|
-| Gemini 2.5 Flash | $0.30 | $2.50 | Default (everything) |
+| Gemini 2.5 Flash | $0.15 | $0.60 | Default (everything) |
 | Gemini 2.5 Pro | $1.25 | $10.00 | Escalation (complex synthesis) |
 | Claude Sonnet 4.6 | $3.00 | $15.00 | Manual explicit only |
 | Claude Opus 4.6 | $5.00 | $25.00 | Manual explicit only |
@@ -35,7 +35,7 @@ Sources: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-ap
 
 ### 1. Model tiering (biggest impact)
 - **Gemini 2.5 Flash** (default): chat, Q&A, reminders, heartbeat, task tracking, sub-agents, image generation
-- **Gemini 2.5 Pro** (standard): AI Daily Brief cron synthesis, research
+- **Gemini 2.5 Flash** (standard): AI Daily Brief cron synthesis, research
 - **Claude Sonnet 4.6** (premium): "think harder" production-grade analysis (manual only)
 - **Claude Opus 4.6** (manual only): architecture decisions and highest-complexity tasks
 
@@ -47,8 +47,8 @@ Sources: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-ap
 
 ### 3. Compaction + context pruning
 - Compaction: `safeguard` mode compresses long chat history
-- Context pruning: `cache-ttl` mode evicts stale tool results after 5m
-- contextTokens: 65,536 per session (reduced from 131K default and 1M overrides)
+- Context pruning: `cache-ttl` mode evicts stale tool results after 3m
+- contextTokens: 32,768 per session (reduced from 131K default and 1M overrides)
 - Avoid carrying oversized context across model escalations
 
 ### 4. Response limits
@@ -71,9 +71,9 @@ Sources: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-ap
 | Sentinel idle polling | HTTP long-poll to Telegram (no API cost) |
 
 ### 7. Heartbeat alignment
-- Interval: 90 minutes (cache-friendly, reduced from 55m)
+- Interval: 180 minutes (cost-optimized, reduced heartbeat frequency)
 - Active hours: 07:00-23:00 COT only
-- ~11 checks/day instead of ~17
+- ~5 checks/day instead of ~17
 
 ### 8. Operational budgets
 - Soft cap per task: $0.25
@@ -84,21 +84,21 @@ Sources: [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-ap
 
 - [ ] Default model is Gemini Flash (agents.defaults.model.primary)
 - [ ] imageModel is Gemini Flash (not Pro)
-- [ ] contextTokens is 65536 (check gateway + per-session overrides)
-- [ ] contextPruning is cache-ttl with 5m TTL
+- [ ] contextTokens is 32768 (check gateway + per-session overrides)
+- [ ] contextPruning is cache-ttl with 3m TTL
 - [ ] Compaction mode is safeguard
-- [ ] Heartbeat interval is 90m
+- [ ] Heartbeat interval is 180m
 - [ ] thinkingDefault is off
 - [ ] verboseDefault is off
 - [ ] No duplicate workspace files (AGENTS.md, SOUL.md)
 - [ ] Sentinel slash commands bypass LLM
 - [ ] Job Radar health checks are zero-cost
-- [ ] Max concurrent tasks capped at 4
+- [ ] Max concurrent tasks capped at 2
 - [ ] Sub-agents use Flash model
 - [ ] Alias skills (morning/evening/builder) use Flash
-- [ ] AI Brief cron uses Pro (gateway-enforced in payload)
+- [ ] AI Brief cron uses Flash (gateway-enforced in payload)
 - [ ] ENB cron uses Flash (both AM and PM jobs)
-- [ ] ENB Brave queries batched (2-3 calls, not 8 per-competitor)
+- [ ] ENB uses 1 web_search call per brief (not multiple per-competitor)
 
 ## Monitoring
 
@@ -131,7 +131,7 @@ Send `/cost` to the Sentinel bot for zero-cost API usage summary. Accepts: `/cos
 | Simple Q&A | Gemini Flash | ~$0.0005-0.001 |
 | Heartbeat check | Gemini Flash | ~$0.0003-0.0008 |
 | Daily briefing | Gemini Flash | ~$0.001-0.002 |
-| AI Daily Brief (cron) | Gemini Pro | ~$0.01-0.03 |
+| AI Daily Brief (cron) | Gemini Flash | ~$0.003-0.006 |
 | Expert Network Brief (morning) | Gemini Flash | ~$0.005 |
 | Expert Network Brief (evening delta) | Gemini Flash | ~$0.003 |
 | Research deep dive | Gemini Pro | ~$0.01-0.03 |

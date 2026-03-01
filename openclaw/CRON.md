@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.28-news-brief-v4 -->
+<!-- config-version: 2026.03.01-news-brief-v4 -->
 # Cron Jobs
 
 ## 1. AI Top 5 — Daily 07:10 COT (12:10 UTC)

@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.28-news-brief-v4 -->
+<!-- config-version: 2026.03.01-news-brief-v4 -->
 
 # Agent Registry & Model Routing
 
@@ -33,7 +33,7 @@
 
 ## Routing rules
 - `/brief`, `/ai_daily_brief*`, and `/expert_network_brief*` execute directly in-lane via news-brief/SKILL.md — never spawn sub-agents.
-- `/job_*` routes to job-radar skill (backend data only, Brave LLM Context for discovery).
+- `/job_*` routes to job-radar skill (backend data only, no Brave).
 - Generic "daily summary" / "morning briefing" → Chief of Staff (NOT News Intelligence).
 - Strip `@BotName` suffix before routing. Normalize `_<mode>` suffix to space arg.
 

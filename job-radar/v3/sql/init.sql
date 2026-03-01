@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     posted_at TIMESTAMPTZ,
     discovered_at TIMESTAMPTZ DEFAULT now(),
     expires_at TIMESTAMPTZ,
+    enriched_at TIMESTAMPTZ,
     CONSTRAINT uq_job_url_canonical UNIQUE (url_canonical),
     CONSTRAINT uq_job_content_hash UNIQUE (content_hash)
 );
@@ -63,6 +64,8 @@ CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs (source);
 CREATE INDEX IF NOT EXISTS idx_jobs_discovered ON jobs (discovered_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs (company_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_hidden_junior ON jobs (hidden_junior) WHERE hidden_junior = true;
+CREATE INDEX IF NOT EXISTS idx_jobs_remote_policy ON jobs (remote_policy);
+CREATE INDEX IF NOT EXISTS idx_jobs_enriched ON jobs (enriched_at) WHERE enriched_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS job_feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -108,7 +108,7 @@ class SentinelConfig:
         default_factory=lambda: _parse_allowed_user_ids(os.getenv("SENTINEL_ALLOWED_USERS", ""))
     )
 
-    # Anthropic
+    # LLM Provider
     provider: str = field(
         default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_PROVIDER", "google")).lower() or "google"
     )

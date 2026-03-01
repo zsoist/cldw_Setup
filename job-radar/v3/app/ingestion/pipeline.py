@@ -7,17 +7,20 @@ from app.connectors.brave import fetch_brave_jobs
 from app.connectors.hn import fetch_hn_jobs
 from app.connectors.remoteok import fetch_remoteok_jobs
 from app.connectors.watchlist import fetch_watchlist_jobs
+from app.connectors.weworkremotely import fetch_wwr_jobs
+from app.connectors.jobicy import fetch_jobicy_jobs
 from app.dedup.engine import dedup_check, canonical_url, content_hash
 from app.scoring.rules import score_job
 from app.scoring.apply_parser import parse_apply_info
-from app.config import cfg
+from app.enrichment.brave_enrich import enrich_job_description, should_enrich, MAX_ENRICH_PER_CYCLE
+from app.config import cfg, dyn
 
 logger = logging.getLogger(__name__)
 
 
 async def run_discovery_sync(sources: list[str] | None = None):
     """Full discovery pipeline. Returns stats dict."""
-    stats = {"fetched": 0, "deduped": 0, "scored": 0, "stored": 0, "errors": 0}
+    stats = {"fetched": 0, "deduped": 0, "scored": 0, "stored": 0, "filtered": 0, "enriched": 0, "errors": 0}
 
     # 1. Fetch from all connectors
     raw_jobs = []
@@ -25,6 +28,8 @@ async def run_discovery_sync(sources: list[str] | None = None):
         "brave": fetch_brave_jobs,
         "hn": fetch_hn_jobs,
         "remoteok": fetch_remoteok_jobs,
+        "wwr": fetch_wwr_jobs,
+        "jobicy": fetch_jobicy_jobs,
     }
     if sources:
         connectors = {k: v for k, v in connectors.items() if k in sources}
@@ -41,10 +46,22 @@ async def run_discovery_sync(sources: list[str] | None = None):
     stats["fetched"] = len(raw_jobs)
     logger.info("Total fetched: %d raw jobs", len(raw_jobs))
 
+    # Dynamic scoring weights
+    weights = (
+        dyn('weight_opportunity') / 100,
+        dyn('weight_junior') / 100,
+        dyn('weight_colombia') / 100,
+    )
+
     # 2. Process each job: dedup -> score -> store
     async with get_conn() as conn:
         for job in raw_jobs:
             try:
+                url = job.get("url", "")
+                if not url:
+                    stats["errors"] += 1
+                    continue
+
                 # Dedup
                 dup = await dedup_check(conn, job)
                 if dup["is_dup"]:
@@ -55,16 +72,17 @@ async def run_discovery_sync(sources: list[str] | None = None):
                 title = job.get("title", "")
                 desc = job.get("description", "")
                 company = job.get("company", "")
-                scores = score_job(title, desc, company)
+                scores = score_job(title, desc, company, weights=weights)
                 stats["scored"] += 1
 
                 # Skip very low composite
                 if scores.composite < 20:
+                    stats["filtered"] += 1
                     continue
 
                 # Apply info
                 apply_info = parse_apply_info(
-                    job.get("url", ""), desc,
+                    url, desc,
                     job.get("ats_platform", "")
                 )
 
@@ -76,7 +94,7 @@ async def run_discovery_sync(sources: list[str] | None = None):
                 )
 
                 # Store job
-                canon = canonical_url(job["url"])
+                canon = canonical_url(url)
                 chash = content_hash(title, company, desc[:500])
                 title_norm = title.lower().strip()
 
@@ -106,7 +124,7 @@ async def run_discovery_sync(sources: list[str] | None = None):
                     )
                     ON CONFLICT (url_canonical) DO NOTHING
                 """,
-                    company_id, title, title_norm, job["url"], canon,
+                    company_id, title, title_norm, url, canon,
                     job.get("source", "unknown"), desc[:2000],
                     scores.tech_stack, scores.seniority_signal,
                     scores.yoe_min, scores.yoe_max, scores.salary_min, scores.salary_max,
@@ -126,8 +144,84 @@ async def run_discovery_sync(sources: list[str] | None = None):
                 logger.error("Failed to process job '%s': %s", job.get("title", "?"), e)
                 stats["errors"] += 1
 
+    # 3. Enrichment pass — skip when no new jobs stored (saves Brave API calls)
+    if stats["stored"] > 0:
+        enrich_stats = await _run_enrichment(weights)
+        stats["enriched"] = enrich_stats
+    else:
+        logger.info("Skipping enrichment: 0 new jobs stored this cycle")
+
     logger.info("Pipeline complete: %s", stats)
     return stats
+
+
+async def _run_enrichment(weights):
+    """Enrich stored jobs that have unclear remote policy using Brave Search."""
+    if not cfg.BRAVE_API_KEY:
+        return 0
+
+    enriched = 0
+    async with get_conn() as conn:
+        # Find candidates: unclear remote, decent score, not yet enriched
+        candidates = await conn.fetch("""
+            SELECT j.id, j.title, j.description_snippet, j.score_composite,
+                   j.remote_policy, c.name as company_name, j.url
+            FROM jobs j JOIN companies c ON j.company_id = c.id
+            WHERE j.status = 'new'
+              AND j.remote_policy IN ('remote_unspecified', 'unknown')
+              AND j.score_composite >= 35
+              AND j.enriched_at IS NULL
+            ORDER BY j.score_composite DESC
+            LIMIT $1
+        """, MAX_ENRICH_PER_CYCLE)
+
+        for row in candidates:
+            job_dict = {
+                "url": row["url"],
+                "title": row["title"],
+                "company": row["company_name"],
+                "description": row["description_snippet"] or "",
+            }
+
+            new_desc = await enrich_job_description(job_dict)
+            if not new_desc:
+                continue
+
+            # Rescore with enriched description
+            result = score_job(row["title"], new_desc, row["company_name"], weights)
+
+            # Always update when enrichment found new text — the description
+            # content is different even if truncated to same length
+            old_policy = row["remote_policy"]
+            old_composite = row["score_composite"]
+            await conn.execute("""
+                UPDATE jobs SET
+                    description_snippet = $1,
+                    score_opportunity = $2, score_junior = $3,
+                    score_colombia = $4, score_composite = $5,
+                    remote_policy = $6, hidden_junior = $7,
+                    tech_stack = $8, timezone_signal = $9,
+                    contractor_ok = $10, confidence = $11,
+                    enriched_at = now()
+                WHERE id = $12
+            """,
+                new_desc, result.opportunity, result.junior,
+                result.colombia, result.composite,
+                result.remote_policy, result.hidden_junior,
+                result.tech_stack, result.timezone_signal,
+                result.contractor_ok, result.confidence,
+                row["id"],
+            )
+            enriched += 1
+            logger.info(
+                "Enriched: '%s' — remote %s→%s, composite %d→%d",
+                row["title"][:40], old_policy, result.remote_policy,
+                old_composite, result.composite,
+            )
+
+    if enriched:
+        logger.info("Enrichment: %d/%d jobs improved", enriched, len(candidates))
+    return enriched
 
 
 async def run_watchlist_sync():
@@ -141,6 +235,13 @@ async def run_watchlist_sync():
         logger.error("Watchlist fetch failed: %s", e)
         return stats
 
+    # Dynamic scoring weights
+    weights = (
+        dyn('weight_opportunity') / 100,
+        dyn('weight_junior') / 100,
+        dyn('weight_colombia') / 100,
+    )
+
     async with get_conn() as conn:
         for job in raw_jobs:
             try:
@@ -152,7 +253,7 @@ async def run_watchlist_sync():
                 title = job.get("title", "")
                 desc = job.get("description", "")
                 company = job.get("company", "")
-                scores = score_job(title, desc, company)
+                scores = score_job(title, desc, company, weights=weights)
                 stats["scored"] += 1
 
                 if scores.composite < 20:
