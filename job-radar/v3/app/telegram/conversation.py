@@ -1,14 +1,14 @@
 """Natural language conversation engine — Gemini Flash intent routing.
 
-Cost-optimized Gemini best practices:
-- System instruction via dedicated field (elevated priority)
-- 6 compact few-shot examples (short replies only — no verbose examples)
-- Thinking budget = 0 (classification task, no reasoning needed)
-- Structured JSON output via responseMimeType
-- Conversation history capped at 3 pairs, 200 chars each
-- Temperature 0.2, maxOutputTokens 400
-- Robust JSON parser with truncation detection
-- NEVER leaks raw JSON to the user
+Deep COT-optimized NL engine v2 (2026-03-01):
+- Pre-Gemini fast-path: greetings, thanks, help, ack → zero LLM cost
+- 24 few-shot examples: typos, multilingual, multi-turn refs, edge cases
+- responseSchema enforcement: Gemini returns guaranteed-valid JSON structure
+- Temperature 0.0: deterministic classification (no creativity needed)
+- Regex fallback classifier: handles Gemini failures gracefully
+- History: 5 pairs, 300 chars each (better multi-turn context)
+- Confirmation gate: destructive NL actions require explicit confirm
+- Robust JSON parser: no repeated imports, handles truncation
 """
 import json
 import logging
@@ -25,8 +25,11 @@ logger = logging.getLogger(__name__)
 
 # In-memory conversation history per chat
 _history: dict[int, list[dict]] = {}
-_MAX_HISTORY_PAIRS = 3
-_MAX_HISTORY_CHARS = 200
+_MAX_HISTORY_PAIRS = 5
+_MAX_HISTORY_CHARS = 300
+
+# Pending confirmations for destructive actions
+_pending_confirm: dict[int, dict] = {}
 
 
 @dataclass
@@ -35,7 +38,234 @@ class NLResponse:
     jobs: list[dict] = field(default_factory=list)
 
 
-# ── System Instruction (token-efficient: ~350 tokens) ────────────
+# ── Pre-Gemini Fast Paths (zero LLM cost) ────────────────────────
+
+_GREETING_RE = re.compile(
+    r'^(h[eai]y?|hi+|hello|hola|buenas?|buenos?\s*d[ií]as?|que\s*tal|'
+    r'sup|yo|what\'?s?\s*up|howdy|hallo|oi|hey\s*there|good\s*(morning|evening|afternoon))[\s!?.]*$',
+    re.IGNORECASE
+)
+
+_THANKS_RE = re.compile(
+    r'^(thanks?|thank\s*you|thx|ty|gracias|muchas\s*gracias|'
+    r'great|awesome|perfect|cool|nice|ok[ay]*|got\s*it|understood|'
+    r'cheers|ta|merci|danke|arigato)[\s!?.]*$',
+    re.IGNORECASE
+)
+
+_HELP_RE = re.compile(
+    r'^(help|ayuda|commands?|que\s*puedo\s*hacer|what\s*can\s*you\s*do|'
+    r'how\s*does?\s*(this|it)\s*work|features?|options?|menu|'
+    r'what\s*are\s*(the|your)\s*commands?)[\s?!.]*$',
+    re.IGNORECASE
+)
+
+_IDENTITY_RE = re.compile(
+    r'^(who\s*are\s*you|what\s*are\s*you|que\s*eres|qui[ée]n\s*eres)[\s?!.]*$',
+    re.IGNORECASE
+)
+
+
+def _check_fast_path(text: str) -> NLResponse | None:
+    """Check if message matches a fast-path pattern. Returns None if no match."""
+    stripped = text.strip()
+
+    if _GREETING_RE.match(stripped):
+        return NLResponse(
+            text="👋 Hey! I'm your job search assistant. "
+                 "Ask me anything — search for jobs, check scores, tweak settings, or just chat.\n"
+                 "Try: \"show me ML jobs\" or \"how's the pipeline?\""
+        )
+
+    if _THANKS_RE.match(stripped):
+        return NLResponse(text="👍 Anytime! Let me know if you need anything else.")
+
+    if _HELP_RE.match(stripped):
+        return NLResponse(
+            text="🔍 Here's what I can do:\n\n"
+                 "💬 Natural language:\n"
+                 "  • \"show me ML jobs\" — search by keyword\n"
+                 "  • \"best jobs\" / \"hot leads\" — top-scoring\n"
+                 "  • \"why did X score low?\" — explain scores\n"
+                 "  • \"how many jobs this week?\" — pipeline stats\n"
+                 "  • \"set opportunity weight to 40\" — tweak config\n"
+                 "  • \"how does scoring work?\" — system info\n"
+                 "  • \"dismiss all\" / \"pause cron\" — management\n\n"
+                 "⌨️ Commands: /jobs /search /saved /applied /stats /health /sync /cron /pause /resume /dismiss_all /help"
+        )
+
+    if _IDENTITY_RE.match(stripped):
+        return NLResponse(
+            text="🤖 I'm Job Radar — your AI job search assistant.\n"
+                 "I scout remote AI/ML roles, score them for fit, and surface the best leads.\n"
+                 "Ask me anything or use /help for commands."
+        )
+
+    return None
+
+
+# ── Regex Fallback Classifier (when Gemini fails) ─────────────────
+
+_SEARCH_PATTERNS = re.compile(
+    r'((?:show|find|search|buscar|look\s*for|get|list)\s+(?!cron|scheduler|sched)(?:\w)|'
+    r'jobs?\s*(for|about|with|in)\b|'
+    r'roles?\s*(for|about|with|in)\b|'
+    r'(?:ml|ai|python|pytorch|rag|llm|nlp|data|remote)\s*(?:jobs?|roles?|positions?))',
+    re.IGNORECASE
+)
+
+_HOT_PATTERNS = re.compile(
+    r'(best|top|hot|highest|mejores|buenos|good)\s*(jobs?|leads?|roles?|ones?)?',
+    re.IGNORECASE
+)
+
+_HIDDEN_PATTERNS = re.compile(
+    r'(hidden|junior|entry|beginner|sin\s*experiencia)',
+    re.IGNORECASE
+)
+
+_EXPLAIN_PATTERNS = re.compile(
+    r'(why\s*(did|does|is|was)|explain|score\s*(so|low|high|break)|'
+    r'como|por\s*qu[ée]|what\s*about|tell\s*me\s*about|details?\s*(on|for|about))',
+    re.IGNORECASE
+)
+
+_STATS_PATTERNS = re.compile(
+    r'(stats?|statistics?|pipeline\s*health|how\s*many\s*(jobs?|roles?|leads?)|'
+    r'count\s*(of\s*)?(jobs?|roles?)|summary|report|overview|dashboard|'
+    r'estad[ií]sticas?|cuant[oa]s?\s*(jobs?|trabajos?))',
+    re.IGNORECASE
+)
+
+_TWEAK_PATTERNS = re.compile(
+    r'(set|change|adjust|tweak|modify|update|increase|decrease|lower|raise|'
+    r'weight|threshold|cambiar|ajustar)\s.*(weight|threshold|composite|digest|age|opportunity|junior|colombia)',
+    re.IGNORECASE
+)
+
+_MANAGE_PATTERNS = re.compile(
+    r'(dismiss\s*all|cancel\s*all|clear\s*(all|jobs)|start\s*fresh|clean|'
+    r'pause|stop\s*(cron|sync|scheduler)|resume|unpause|'
+    r'cron\s*(status|jobs?)|scheduled?\s*(jobs?|tasks?)|show\s*cron)',
+    re.IGNORECASE
+)
+
+_SYSTEM_PATTERNS = re.compile(
+    r'(how\s*does?|what\s*is|explain\s*(the|how)|tell\s*me\s*about)\s*'
+    r'(scor|dedup|connect|source|watchlist|digest|pipeline|system|enrichment|sync)',
+    re.IGNORECASE
+)
+
+_SAVED_PATTERNS = re.compile(
+    r'(saved|guardados?|bookmarked?|my\s*saved|show\s*saved)',
+    re.IGNORECASE
+)
+
+_APPLIED_PATTERNS = re.compile(
+    r'(appl(ied|ication|y\s*to)|my\s*applications?|'
+    r'(what|where)\s*(did|have)\s*i\s*appl|'
+    r'(did|have)\s*i\s*appl|aplicaciones)',
+    re.IGNORECASE
+)
+
+_RECENT_PATTERNS = re.compile(
+    r'(new|recent|latest|newest|fresh|today|yesterday|last\s*\d+|'
+    r'nuevos?|recientes?|[uú]ltimos?)\s*(jobs?|roles?|leads?)?',
+    re.IGNORECASE
+)
+
+
+def _regex_classify(text: str) -> dict | None:
+    """Fallback classifier using regex patterns. Returns intent dict or None."""
+    stripped = text.strip()
+
+    # Manage intent (check first — "cancel all" is unambiguous)
+    if _MANAGE_PATTERNS.search(stripped):
+        action = "cron_status"
+        lower = stripped.lower()
+        if any(w in lower for w in ("dismiss", "cancel all", "clear", "start fresh", "clean")):
+            action = "dismiss_all"
+        elif any(w in lower for w in ("pause", "stop cron", "stop sync", "stop scheduler")):
+            action = "pause"
+        elif any(w in lower for w in ("resume", "unpause", "start cron", "start sync")):
+            action = "resume"
+        return {"intent": "manage", "params": {"action": action}, "reply": ""}
+
+    # Tweak intent
+    if _TWEAK_PATTERNS.search(stripped):
+        return {"intent": "tweak", "params": {}, "reply": "What would you like to change?"}
+
+    # Stats intent
+    if _STATS_PATTERNS.search(stripped) and not _SEARCH_PATTERNS.search(stripped):
+        days = 7
+        m = re.search(r'(\d+)\s*d', stripped)
+        if m:
+            days = min(int(m.group(1)), 90)
+        return {"intent": "stats", "params": {"days": days}, "reply": f"Pipeline health ({days}d):"}
+
+    # Explain intent
+    if _EXPLAIN_PATTERNS.search(stripped):
+        # Extract the subject (company/title name)
+        query = re.sub(
+            r'(why|explain|score|how|como|por\s*qu[ée]|what\s*about|tell\s*me\s*about|'
+            r'details?\s*(on|for|about)|did|does|is|the|that|this|so|low|high|have|got|it|one|rated|poorly)',
+            '', stripped, flags=re.IGNORECASE
+        ).strip(' ?!.,')
+        if query:
+            return {"intent": "explain", "params": {"query": query}, "reply": f"Checking scores for {query}."}
+        else:
+            # Multi-turn reference — "why did that score low" (no explicit subject)
+            return {"intent": "explain", "params": {"query": "last result"}, "reply": "Looking at those scores:"}
+
+    # Saved / applied shortcuts
+    if _SAVED_PATTERNS.search(stripped):
+        return {"intent": "search", "params": {"filter": "saved", "limit": 10}, "reply": "Your saved jobs:"}
+    if _APPLIED_PATTERNS.search(stripped):
+        return {"intent": "search", "params": {"filter": "applied", "limit": 10}, "reply": "Application pipeline:"}
+
+    # Recent/new jobs
+    if _RECENT_PATTERNS.search(stripped):
+        return {"intent": "search", "params": {"filter": "all", "limit": 10}, "reply": "Most recent jobs:"}
+
+    # Hot leads
+    if _HOT_PATTERNS.search(stripped):
+        return {"intent": "search", "params": {"filter": "hot", "limit": 5}, "reply": "Top-scoring leads:"}
+
+    # Hidden junior
+    if _HIDDEN_PATTERNS.search(stripped) and not _EXPLAIN_PATTERNS.search(stripped):
+        return {"intent": "search", "params": {"filter": "hidden", "limit": 10}, "reply": "Hidden junior opportunities:"}
+
+    # System info
+    if _SYSTEM_PATTERNS.search(stripped):
+        topic = "scoring"
+        lower = stripped.lower()
+        if "dedup" in lower:
+            topic = "dedup"
+        elif any(w in lower for w in ("connect", "source")):
+            topic = "connectors"
+        elif "watchlist" in lower:
+            topic = "watchlist"
+        elif "digest" in lower:
+            topic = "digest"
+        return {"intent": "system", "params": {"topic": topic}, "reply": ""}
+
+    # General search (broadest — check last)
+    if _SEARCH_PATTERNS.search(stripped):
+        # Extract meaningful search terms
+        query = re.sub(
+            r'(show|find|search|buscar|look\s*for|any|get|list|me|for|please|por\s*favor)',
+            '', stripped, flags=re.IGNORECASE
+        ).strip(' ?!.,')
+        return {
+            "intent": "search",
+            "params": {"query": query, "limit": 10},
+            "reply": f"Searching for {query}:" if query else "Here are the top jobs:"
+        }
+
+    return None
+
+
+# ── System Instruction (expanded intent coverage) ─────────────────
 
 SYSTEM_INSTRUCTION = """\
 You are Job Radar, a Telegram job search assistant.
@@ -60,9 +290,7 @@ Sync 2x/day (05:00, 17:00 UTC) | AM digest 08:00 COT | PM 18:00 COT
 weight_opportunity/junior/colombia: 0-100 (must sum 100)
 digest_min_composite: 0-100 | digest_max_jobs: 1-30 | job_max_age_days: 7-90
 
-# Response: ALWAYS valid JSON
-{{"intent":"search|explain|stats|tweak|system|manage|chat","params":{{}},"reply":"short text"}}
-
+# Response: ALWAYS valid JSON matching the schema
 Params by intent:
 - search: {{"query":"text","filter":"hot|hidden|saved|applied|all","limit":5}}
 - explain: {{"query":"company or title"}}
@@ -73,64 +301,150 @@ Params by intent:
 - chat: {{}}
 
 CRITICAL RULES:
-- For search/stats/explain: keep "reply" to ONE short intro sentence. The system appends real data.
-- For system/chat: put full answer in "reply" (max 3 short paragraphs).
-- For tweak: confirm change in "reply".
-- For manage: map user intent to action:
-  "cancel all"/"dismiss all"/"clear jobs"/"start fresh" → dismiss_all
-  "pause cron"/"stop syncs"/"cancel cron"/"pause scheduler" → pause
-  "resume cron"/"start syncs"/"resume" → resume
-  "cron status"/"show cron"/"scheduled jobs" → cron_status
-- Match user's language. Never fabricate data. Be concise.
+1. For search/stats/explain: keep "reply" to ONE short intro sentence. The system appends real data.
+2. For system/chat: put full answer in "reply" (max 3 short paragraphs).
+3. For tweak: confirm change in "reply".
+4. For manage: map user intent to action:
+   "cancel all"/"dismiss all"/"clear jobs"/"start fresh" → dismiss_all
+   "pause cron"/"stop syncs"/"cancel cron"/"pause scheduler" → pause
+   "resume cron"/"start syncs"/"resume" → resume
+   "cron status"/"show cron"/"scheduled jobs" → cron_status
+5. Handle typos generously: "pythn" → python, "machne lerning" → machine learning
+6. Multi-turn references: "that one" / "the first one" / "save it" / "more" / "explain it" → use context from history
+7. Match user's language (Spanish ↔ English). Never fabricate data. Be concise.
 """
 
-# ── Few-Shot (6 compact examples, ~150 tokens total) ─────────────
+# ── Few-Shot (24 examples: search, explain, stats, tweak, system, manage, chat) ──
 
 FEW_SHOT = [
+    # --- Search intent ---
     ("show me the best jobs",
      '{"intent":"search","params":{"filter":"hot","limit":5},"reply":"Top-scoring active jobs:"}'),
 
+    ("buscar trabajos de ML",
+     '{"intent":"search","params":{"query":"ml","limit":10},"reply":"Buscando roles de ML:"}'),
+
+    ("any pytorch roles?",
+     '{"intent":"search","params":{"query":"pytorch","limit":10},"reply":"PyTorch roles:"}'),
+
+    ("python machine lerning jobs",  # typo: lerning
+     '{"intent":"search","params":{"query":"python machine learning","limit":10},"reply":"Python/ML jobs:"}'),
+
+    ("trabajos remotos para colombia",
+     '{"intent":"search","params":{"filter":"all","limit":10},"reply":"Trabajos remotos accesibles desde Colombia:"}'),
+
+    ("show more",
+     '{"intent":"search","params":{"filter":"all","limit":15},"reply":"More jobs:"}'),
+
+    ("hidden opportunities",
+     '{"intent":"search","params":{"filter":"hidden","limit":10},"reply":"Hidden junior opportunities:"}'),
+
+    ("my saved jobs",
+     '{"intent":"search","params":{"filter":"saved","limit":10},"reply":"Your saved jobs:"}'),
+
+    ("what did I apply to?",
+     '{"intent":"search","params":{"filter":"applied","limit":10},"reply":"Your applications:"}'),
+
+    ("new jobs today",
+     '{"intent":"search","params":{"filter":"all","limit":10},"reply":"Latest jobs:"}'),
+
+    # --- Explain intent ---
     ("why did that Anthropic job score so low?",
      '{"intent":"explain","params":{"query":"Anthropic"},"reply":"Checking the Anthropic job scores."}'),
 
+    ("tell me about the first one",
+     '{"intent":"explain","params":{"query":"first result"},"reply":"Looking at that job:"}'),
+
+    ("explain the cohere position",
+     '{"intent":"explain","params":{"query":"cohere"},"reply":"Score breakdown for Cohere:"}'),
+
+    # --- Stats intent ---
     ("how many jobs this week?",
      '{"intent":"stats","params":{"days":7},"reply":"Pipeline health (7d):"}'),
 
+    ("full status report",
+     '{"intent":"stats","params":{"days":7},"reply":"Full pipeline status:"}'),
+
+    ("estadísticas del último mes",
+     '{"intent":"stats","params":{"days":30},"reply":"Estadísticas (30d):"}'),
+
+    # --- Tweak intent ---
     ("give more weight to opportunity, set it to 40",
      '{"intent":"tweak","params":{"key":"weight_opportunity","value":40},"reply":"Opportunity weight set to 40%. Adjust junior/Colombia so weights sum to 100."}'),
 
+    ("lower the digest threshold to 30",
+     '{"intent":"tweak","params":{"key":"digest_min_composite","value":30},"reply":"Digest threshold set to 30."}'),
+
+    # --- System intent ---
     ("how does scoring work?",
      '{"intent":"system","params":{"topic":"scoring"},"reply":"Deterministic engine, zero LLM cost. Three dimensions: Opportunity (AI/ML tech matches, funded signals), Junior (YoE, seniority, requirement count), Colombia (remote policy, timezone, contractor OK). Composite = weighted average. 70+ = hot lead."}'),
 
-    ("hola, buscar trabajos de RAG",
-     '{"intent":"search","params":{"query":"rag","limit":10},"reply":"Buscando roles de RAG:"}'),
+    ("what sources do you use?",
+     '{"intent":"system","params":{"topic":"connectors"},"reply":"6 connectors: Brave Search, HN Who\'s Hiring, RemoteOK, WeWorkRemotely, Jobicy, and a watchlist of 27 AI startups. Sync runs 2x/day."}'),
 
-    ("buscar trabajos remotos para Colombia",
-     '{"intent":"search","params":{"filter":"all","limit":10},"reply":"Trabajos remotos accesibles desde Colombia:"}'),
-
-    ("full status report",
-     '{"intent":"stats","params":{"days":7},"reply":"Full pipeline status report:"}'),
-
-    ("search python machine learning",
-     '{"intent":"search","params":{"query":"python machine learning","limit":10},"reply":"Python/ML jobs:"}'),
-
+    # --- Manage intent ---
     ("cancel all",
      '{"intent":"manage","params":{"action":"dismiss_all"},"reply":"Dismissing all active jobs."}'),
 
-    ("cancel all cron jobs",
+    ("pause the cron jobs",
      '{"intent":"manage","params":{"action":"pause"},"reply":"Pausing all scheduled jobs."}'),
 
-    ("resume cron",
+    ("resume syncs",
      '{"intent":"manage","params":{"action":"resume"},"reply":"Resuming all scheduled jobs."}'),
 
-    ("show cron jobs",
-     '{"intent":"manage","params":{"action":"cron_status"},"reply":"Current scheduler status:"}'),
+    # --- Chat intent ---
+    ("you're doing great",
+     '{"intent":"chat","params":{},"reply":"Thanks! Let me know if you need anything else. 🚀"}'),
 ]
+
+# ── Gemini Response Schema (enforced at API level) ────────────────
+
+RESPONSE_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "intent": {
+            "type": "STRING",
+            "enum": ["search", "explain", "stats", "tweak", "system", "manage", "chat"],
+        },
+        "params": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {"type": "STRING"},
+                "filter": {"type": "STRING"},
+                "limit": {"type": "INTEGER"},
+                "days": {"type": "INTEGER"},
+                "key": {"type": "STRING"},
+                "value": {"type": "INTEGER"},
+                "topic": {"type": "STRING"},
+                "action": {"type": "STRING"},
+            },
+        },
+        "reply": {"type": "STRING"},
+    },
+    "required": ["intent", "params", "reply"],
+}
 
 
 async def process_message(text: str, chat_id: int) -> NLResponse:
     """Process a plain-text message and return a structured response."""
+
+    # 1. Fast-path: greetings, thanks, help, identity (zero LLM cost)
+    fast = _check_fast_path(text)
+    if fast:
+        _add_history(chat_id, "user", text)
+        _add_history(chat_id, "model", fast.text[:80])
+        return fast
+
+    # 2. Check for pending confirmation (destructive action safety gate)
+    confirm_result = await _check_pending_confirm(text, chat_id)
+    if confirm_result is not None:
+        return confirm_result
+
     if not cfg.GEMINI_API_KEY:
+        # 3. No Gemini key: try regex fallback
+        fallback = _regex_classify(text)
+        if fallback:
+            return await _route_intent(fallback, chat_id, text)
         return NLResponse(text="Gemini API key not configured. Use /help for commands.")
 
     try:
@@ -138,52 +452,115 @@ async def process_message(text: str, chat_id: int) -> NLResponse:
         result = await _call_gemini(system, text, chat_id)
 
         if not result:
-            # Remove the failed user message from history to avoid pollution
+            # Gemini failed — try regex fallback
+            fallback = _regex_classify(text)
+            if fallback:
+                logger.info("Gemini failed, regex fallback classified as: %s", fallback.get("intent"))
+                return await _route_intent(fallback, chat_id, text)
+
+            # Both failed — clean up history
             if chat_id in _history and _history[chat_id]:
                 _history[chat_id] = [m for m in _history[chat_id] if m["text"] != text[:_MAX_HISTORY_CHARS]]
             return NLResponse(text="I couldn't process that. Try rephrasing, or use /help.")
 
-        intent = result.get("intent", "chat")
-        params = result.get("params", {})
-        reply = result.get("reply", "")
-
-        if intent == "search":
-            return await _handle_search(params, reply, chat_id)
-        elif intent == "explain":
-            return await _handle_explain(params, reply, chat_id)
-        elif intent == "stats":
-            return await _handle_stats(params, reply)
-        elif intent == "tweak":
-            resp = await _handle_tweak(params, reply)
-            _add_history(chat_id, "model", resp.text[:80])
-            return resp
-        elif intent == "manage":
-            resp = await _handle_manage(params, reply)
-            _add_history(chat_id, "model", resp.text[:80])
-            return resp
-        else:
-            _add_history(chat_id, "model", reply)
-            return NLResponse(text=reply)
+        return await _route_intent(result, chat_id, text)
 
     except Exception as e:
         logger.error("Conversation error: %s", e, exc_info=True)
+        # Last resort: regex fallback
+        fallback = _regex_classify(text)
+        if fallback:
+            try:
+                return await _route_intent(fallback, chat_id, text)
+            except Exception:
+                pass
         return NLResponse(text="Something went wrong. Try /help for commands.")
 
 
-# ── Search Term Extraction ───────────────────────────────────────
+async def _route_intent(result: dict, chat_id: int, user_text: str) -> NLResponse:
+    """Route a classified intent to the appropriate handler."""
+    intent = result.get("intent", "chat")
+    params = result.get("params", {})
+    reply = result.get("reply", "")
+
+    if intent == "search":
+        return await _handle_search(params, reply, chat_id)
+    elif intent == "explain":
+        return await _handle_explain(params, reply, chat_id)
+    elif intent == "stats":
+        return await _handle_stats(params, reply)
+    elif intent == "tweak":
+        resp = await _handle_tweak(params, reply)
+        _add_history(chat_id, "model", resp.text[:80])
+        return resp
+    elif intent == "manage":
+        resp = await _handle_manage(params, reply, chat_id)
+        _add_history(chat_id, "model", resp.text[:80])
+        return resp
+    else:
+        _add_history(chat_id, "model", reply)
+        return NLResponse(text=reply or "I'm not sure what you mean. Try /help for available commands.")
+
+
+# ── Confirmation Gate (destructive actions) ───────────────────────
+
+async def _check_pending_confirm(text: str, chat_id: int) -> NLResponse | None:
+    """Check if user is responding to a pending confirmation prompt."""
+    if chat_id not in _pending_confirm:
+        return None
+
+    pending = _pending_confirm[chat_id]
+    stripped = text.strip().lower()
+
+    # Check for explicit yes/confirm
+    if stripped in ("yes", "y", "confirm", "sí", "si", "dale", "ok", "do it", "proceed", "go ahead"):
+        del _pending_confirm[chat_id]
+        action = pending.get("action")
+        _add_history(chat_id, "user", text)
+
+        if action == "dismiss_all":
+            async with get_conn() as conn:
+                result = await conn.execute(
+                    "UPDATE jobs SET status = 'dismissed' "
+                    "WHERE status NOT IN ('dismissed', 'expired', 'closed')"
+                )
+            dismissed = int(result.split()[-1])
+            logger.info("NL bulk-dismissed %d jobs (confirmed)", dismissed)
+            resp = NLResponse(
+                text=f"✅ Dismissed {dismissed} jobs. Pipeline is clean.\nUse /sync to fetch fresh leads."
+            )
+            _add_history(chat_id, "model", resp.text[:80])
+            return resp
+
+        return NLResponse(text="Action completed.")
+
+    elif stripped in ("no", "n", "cancel", "cancelar", "nah", "nope", "never mind", "abort"):
+        del _pending_confirm[chat_id]
+        _add_history(chat_id, "user", text)
+        _add_history(chat_id, "model", "Cancelled.")
+        return NLResponse(text="👍 Cancelled. Nothing was changed.")
+
+    # If there's a pending confirm but user said something else, clear it and process normally
+    del _pending_confirm[chat_id]
+    return None
+
+
+# ── Search Term Extraction ────────────────────────────────────────
 
 # Multi-word tech terms to keep as phrases (not split into words)
 _MULTI_WORD_TECH = [
     'machine learning', 'deep learning', 'computer vision', 'reinforcement learning',
     'vector database', 'distributed training', 'model serving', 'vertex ai', 'azure ml',
     'github actions', 'fine tuning', 'fine-tuning', 'data science', 'data scientist',
-    'data engineering', 'scikit-learn',
+    'data engineering', 'scikit-learn', 'natural language', 'large language',
+    'prompt engineering', 'generative ai', 'gen ai',
 ]
 
 _SEARCH_NOISE = {
     'jobs', 'job', 'roles', 'role', 'positions', 'position', 'for', 'the', 'a', 'an',
     'remote', 'trabajo', 'trabajos', 'de', 'para', 'en', 'openings', 'opportunities',
     'with', 'and', 'or', 'in', 'at', 'buscar', 'search', 'find', 'show', 'me',
+    'any', 'some', 'get', 'list', 'please', 'por', 'favor',
 }
 
 
@@ -218,7 +595,7 @@ def _extract_search_terms(query: str) -> tuple[list[str], list[str]]:
     return like_patterns, tech_terms
 
 
-# ── Intent Handlers ──────────────────────────────────────────────
+# ── Intent Handlers ───────────────────────────────────────────────
 
 _LOCATION_ONLY = re.compile(
     r'^(remote|remoto|colombia|latam|worldwide|anywhere|para colombia|'
@@ -321,6 +698,19 @@ async def _handle_explain(params: dict, reply: str, chat_id: int) -> NLResponse:
     query = params.get("query", "")
     if not query:
         return NLResponse(text="Which job? Give me a company name or job title.")
+
+    # Handle multi-turn references like "first result", "that one", "the second"
+    if query.lower() in ("first result", "that one", "it", "the first", "the last", "that"):
+        # Try to get from recent history
+        history = _history.get(chat_id, [])
+        for msg in reversed(history):
+            if msg["role"] == "model" and "Showed:" in msg["text"]:
+                # Extract first job reference from history
+                shown = msg["text"].replace("Showed: ", "")
+                first_job = shown.split(",")[0].strip()
+                if "@" in first_job:
+                    query = first_job.split("(")[0].strip()  # Remove score suffix
+                    break
 
     async with get_conn() as conn:
         row = None
@@ -427,27 +817,26 @@ async def _handle_stats(params: dict, reply: str) -> NLResponse:
     return NLResponse(text="\n".join(lines))
 
 
-async def _handle_manage(params: dict, reply: str) -> NLResponse:
+async def _handle_manage(params: dict, reply: str, chat_id: int) -> NLResponse:
     """Handle management actions: dismiss_all, pause, resume, cron_status."""
     from app.scheduler import pause_scheduler, resume_scheduler, get_scheduler_status
 
     action = params.get("action", "")
 
     if action == "dismiss_all":
+        # Confirmation gate for destructive action
         async with get_conn() as conn:
             count = await conn.fetchval(
                 "SELECT COUNT(*) FROM jobs WHERE status NOT IN ('dismissed', 'expired', 'closed')"
             )
-            if count == 0:
-                return NLResponse(text="No active jobs to dismiss. Pipeline is already clean.")
-            result = await conn.execute(
-                "UPDATE jobs SET status = 'dismissed' "
-                "WHERE status NOT IN ('dismissed', 'expired', 'closed')"
-            )
-        dismissed = int(result.split()[-1])
-        logger.info("NL bulk-dismissed %d jobs", dismissed)
+        if count == 0:
+            return NLResponse(text="No active jobs to dismiss. Pipeline is already clean.")
+
+        # Store pending confirmation
+        _pending_confirm[chat_id] = {"action": "dismiss_all", "count": count}
         return NLResponse(
-            text=f"✅ Dismissed {dismissed} jobs. Pipeline is clean.\nUse /sync to fetch fresh leads."
+            text=f"⚠️ This will dismiss **{count}** active jobs. This cannot be undone.\n\n"
+                 f"Reply **yes** to confirm or **no** to cancel."
         )
 
     elif action == "pause":
@@ -525,18 +914,18 @@ async def _handle_tweak(params: dict, reply: str) -> NLResponse:
     return NLResponse(text=reply or f"Done! {key} = {value}.")
 
 
-# ── Gemini API (cost-optimized) ──────────────────────────────────
+# ── Gemini API (cost-optimized) ───────────────────────────────────
 
 async def _call_gemini(system: str, user_text: str, chat_id: int) -> dict | None:
     """Call Gemini Flash for intent classification. Token-optimized."""
     contents = []
 
-    # Few-shot examples (6 compact pairs)
+    # Few-shot examples
     for user_ex, model_ex in FEW_SHOT:
         contents.append({"role": "user", "parts": [{"text": user_ex}]})
         contents.append({"role": "model", "parts": [{"text": model_ex}]})
 
-    # Conversation history (3 pairs, 200 char cap)
+    # Conversation history (5 pairs, 300 char cap)
     history = _history.get(chat_id, [])
     for msg in history:
         role = "user" if msg["role"] == "user" else "model"
@@ -560,8 +949,9 @@ async def _call_gemini(system: str, user_text: str, chat_id: int) -> dict | None
                     "contents": contents,
                     "generationConfig": {
                         "maxOutputTokens": 400,
-                        "temperature": 0.2,
+                        "temperature": 0.0,
                         "responseMimeType": "application/json",
+                        "responseSchema": RESPONSE_SCHEMA,
                     },
                 },
             )
@@ -588,7 +978,6 @@ async def _call_gemini(system: str, user_text: str, chat_id: int) -> dict | None
 
             if finish == "MAX_TOKENS":
                 logger.warning("Gemini output truncated (MAX_TOKENS)")
-                # Try to salvage the truncated JSON
                 result = _parse_truncated_json(text)
             else:
                 result = _parse_json_response(text)
@@ -670,7 +1059,7 @@ def _fallback_explanation(job: dict) -> str:
     return "\n".join(lines)
 
 
-# ── JSON Parsing (robust, never leaks raw JSON) ─────────────────
+# ── JSON Parsing (robust, never leaks raw JSON) ──────────────────
 
 def _parse_json_response(text: str) -> dict:
     """Parse JSON from Gemini response. Never returns raw JSON as reply."""
@@ -703,39 +1092,37 @@ def _parse_truncated_json(text: str) -> dict:
         except json.JSONDecodeError:
             continue
 
-    # Try to extract at least the intent
-    intent_match = '"intent"' in text
-    if intent_match:
-        for intent in ("search", "explain", "stats", "tweak", "system", "chat"):
+    # Try to extract at least the intent and params via regex
+    if '"intent"' in text:
+        for intent in ("search", "explain", "stats", "tweak", "system", "manage", "chat"):
             if f'"{intent}"' in text:
                 logger.info("Salvaged truncated intent: %s", intent)
-                # Extract params if possible
                 params = {}
-                if '"days"' in text:
-                    import re
-                    m = re.search(r'"days"\s*:\s*(\d+)', text)
+
+                # Extract all known params in one pass
+                param_patterns = {
+                    "days": r'"days"\s*:\s*(\d+)',
+                    "query": r'"query"\s*:\s*"([^"]*)"?',
+                    "filter": r'"filter"\s*:\s*"([^"]*)"?',
+                    "key": r'"key"\s*:\s*"([^"]*)"?',
+                    "action": r'"action"\s*:\s*"([^"]*)"?',
+                    "topic": r'"topic"\s*:\s*"([^"]*)"?',
+                }
+                for param_name, pattern in param_patterns.items():
+                    m = re.search(pattern, text)
                     if m:
-                        params["days"] = int(m.group(1))
-                if '"query"' in text:
-                    import re
-                    m = re.search(r'"query"\s*:\s*"([^"]*)"?', text)
-                    if m:
-                        params["query"] = m.group(1)
-                if '"filter"' in text:
-                    import re
-                    m = re.search(r'"filter"\s*:\s*"([^"]*)"?', text)
-                    if m:
-                        params["filter"] = m.group(1)
-                if '"key"' in text:
-                    import re
-                    m = re.search(r'"key"\s*:\s*"([^"]*)"?', text)
-                    if m:
-                        params["key"] = m.group(1)
-                if '"value"' in text:
-                    import re
-                    m = re.search(r'"value"\s*:\s*(\d+)', text)
-                    if m:
-                        params["value"] = int(m.group(1))
+                        params[param_name] = m.group(1)
+
+                # Integer params
+                value_m = re.search(r'"value"\s*:\s*(\d+)', text)
+                if value_m:
+                    params["value"] = int(value_m.group(1))
+                limit_m = re.search(r'"limit"\s*:\s*(\d+)', text)
+                if limit_m:
+                    params["limit"] = int(limit_m.group(1))
+                if "days" in params:
+                    params["days"] = int(params["days"])
+
                 return {"intent": intent, "params": params, "reply": ""}
 
     logger.warning("Could not salvage truncated JSON")
@@ -751,7 +1138,7 @@ def _clean_for_display(text: str) -> str:
     return stripped[:800]
 
 
-# ── System Instruction Builder ───────────────────────────────────
+# ── System Instruction Builder ────────────────────────────────────
 
 def _build_system_instruction() -> str:
     """Build system instruction with current dynamic config."""
@@ -774,7 +1161,7 @@ def _build_system_instruction() -> str:
     )
 
 
-# ── History Management ───────────────────────────────────────────
+# ── History Management ────────────────────────────────────────────
 
 def _add_history(chat_id: int, role: str, text: str):
     """Add to conversation history (tight caps to control token cost)."""
