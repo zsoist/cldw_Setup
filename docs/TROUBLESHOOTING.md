@@ -1,8 +1,40 @@
 # Troubleshooting Guide
 
-> Last updated: 2026-03-01 (Codex-first migration). For codebase navigation, see `ARCHITECTURE.md`.
+> Last updated: 2026-03-02 (full audit + bug fixes). For codebase navigation, see `ARCHITECTURE.md`.
 
-> **Model note:** As of 2026-03-01, OpenClaw uses `openai-codex/gpt-5.3-codex` (subscription-covered, OAuth) as default for all tasks. Flash references below are historical or Sentinel-specific. Sentinel still uses `google/gemini-2.5-flash`.
+> **Model note:** OpenClaw uses `openai-codex/gpt-5.3-codex` (subscription-covered, OAuth) as default. Flash references below are historical or Sentinel-specific. Sentinel uses `google/gemini-2.5-flash`.
+
+---
+
+## Sentinel Issues (2026-03-02)
+
+### `/cost today` shows "Permission denied" on api-cost-summary.json
+
+**Symptom:** `/cost today` returns `Errno 13 Permission denied: '/var/log/sentinel/api-cost-summary.json'` but the file is owned by sentinel:sentinel with correct 640 permissions.
+
+**Root cause:** The Edit tool (Claude Code) resets file ownership to `root:root`. When `/opt/sentinel/tools.py` or any `.py` file becomes root-owned with 640 permissions, the sentinel process (uid=999) can't read it. Python's import system raises `PermissionError` which gets caught by the cost_summary exception handler, producing a misleading error message pointing to the JSON file.
+
+**Fix (deployed 2026-03-02):**
+1. Immediate: `chown sentinel:sentinel /opt/sentinel/*.py /opt/sentinel/__pycache__/*.pyc`
+2. Structural: Added `set_cost_tracker()` module-level pattern -- cost reads now use `APICostTracker.get_summary()` (thread-safe, in-memory) instead of raw `open()` on the JSON file
+
+**Prevention:** Always run `chown sentinel:sentinel /opt/sentinel/*.py /opt/sentinel/__pycache__/*.pyc` after editing ANY Sentinel source file.
+
+### HTTP health probe always returns 000
+
+**Symptom:** `/openclaw` shows `HTTP: 000` even though the gateway is healthy.
+
+**Root cause:** The probe used `subprocess.run(["curl", ...])` from the host to `http://127.0.0.1:18789/`. Despite port mapping being active (docker-proxy listening), the gateway resets all host HTTP connections. Gateway likely requires WebSocket upgrade or internal auth.
+
+**Fix (deployed 2026-03-02):** Changed to `container.exec_run(["curl", "-sf", ...])` which runs curl INSIDE the container, matching Docker's own health check. Now returns 200.
+
+### .pyc files owned by root cause silent import failures
+
+**Symptom:** Sentinel starts but some features silently fail. No obvious error in logs.
+
+**Root cause:** Python `.pyc` files in `__pycache__/` get created by whoever runs the Python process. If you run `python3 -c "import tools"` as root, the `.pyc` is created as `root:root 640`. When sentinel (uid=999) tries to import, it can't read the `.pyc`, falls back to source, but can't write a new `.pyc` over the root-owned one.
+
+**Fix:** `chown sentinel:sentinel /opt/sentinel/__pycache__/*.pyc`
 
 ---
 

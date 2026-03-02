@@ -16,7 +16,7 @@ Production AI system on a Hetzner CPX22 VPS. Codex-first model stack, targeting 
                         |  |    Port 18789 (lo)       |  |   Python + SDK        |   |
                         |  |                          |  |                       |   |
                         |  |  +------+  +----------+  |  |   Flash (Gemini)      |   |
-                        |  |  | main |  |   work   |  |  |   10 tool functions   |   |
+                        |  |  | main |  |   work   |  |  |   12 tool functions   |   |
   Telegram ----------->|  |  | agent|  |  agent   |  |  |   Strict whitelist    |   |
   (Sentinel Bot)       |  |  |      |  | sandbox  |  |  +-----------------------+   |
                         |  |  +------+  +----------+  |                             |
@@ -28,7 +28,7 @@ Production AI system on a Hetzner CPX22 VPS. Codex-first model stack, targeting 
   Telegram <-----------|  |   Brave + HN + RemoteOK  |  |   db: jobradar        |   |
   (Digest Channel)     |  +-------------------------+  +-----------------------+   |
                         |                                                           |
-  SSH Tunnel --------->|  UFW (SSH only) + fail2ban + key-only auth               |
+  SSH Tunnel --------->|  UFW (SSH only) + key-only auth                          |
   (Mac Client)        +-----------------------------------------------------------+
 ```
 
@@ -37,7 +37,7 @@ Production AI system on a Hetzner CPX22 VPS. Codex-first model stack, targeting 
 | Component | Role | Runtime | Model |
 |-----------|------|---------|-------|
 | **OpenClaw** | User-facing AI: news briefs, research, job search, scheduling | Docker container | GPT-5.3 Codex (subscription-covered) |
-| **Sentinel** | Infrastructure sysadmin: Docker, monitoring, security, backups, costs | systemd service | Gemini 2.5 Flash |
+| **Sentinel** | Infrastructure sysadmin: Docker, monitoring, security, backups, costs, cron mgmt | systemd service | Gemini 2.5 Flash |
 | **Job Radar** | Automated job discovery + digests | Docker containers (API + PostgreSQL) | None (Brave API only) |
 
 ### Model Routing (Codex-first)
@@ -49,6 +49,57 @@ Production AI system on a Hetzner CPX22 VPS. Codex-first model stack, targeting 
 | Manual | Gemini 2.5 Pro | Research, complex analysis (manual only) |
 
 Auto-fallback to Anthropic: DISABLED. Haiku: NEVER used. API-key models (gpt-4o-mini, gpt-4o): configured but NOT used.
+
+---
+
+## Sentinel
+
+Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. Google/Gemini 2.5 Flash, max_tokens 1500, 12 tools.
+
+### Tools
+
+| Tool | Description | Safety |
+|------|-------------|--------|
+| `system_stats` | CPU, RAM, disk, uptime | Read-only |
+| `docker_status` | List all containers with CPU/RAM | Read-only |
+| `docker_restart` | Restart a container | Allowed containers only |
+| `docker_logs` | Tail container logs | Read-only, truncated |
+| `run_command` | Shell command | Whitelist-only |
+| `check_security` | UFW, ports, failed SSH | Read-only |
+| `check_openclaw_health` | Container health + exec-based HTTP probe | Read-only |
+| `backup_openclaw` | Tar config + workspace | Safe location only |
+| `cost_summary` | VPS-wide cost tracking (Sentinel exact + Docker estimated) | Read-only |
+| `check_api_spirals` | Restart count, error rate, Brave volume, loop detection | Read-only |
+| `list_scheduled_tasks` | All cron jobs across VPS, OpenClaw, Job Radar, systemd | Read-only |
+| `manage_cron` | Enable/disable cron jobs (openclaw, jobradar, system) | Per-job control |
+
+### Zero-Cost Commands
+
+These bypass the LLM entirely — zero token cost:
+
+| Command | Action |
+|---------|--------|
+| `/status` | System stats + container health |
+| `/openclaw` | OpenClaw gateway health |
+| `/security` | UFW, ports, failed SSH |
+| `/backup` | Create tar backup |
+| `/cost [today\|week\|month\|all]` | VPS cost dashboard |
+| `/tasks` | All scheduled tasks across VPS |
+
+Plus static responses for: `hi`, `thanks`, `ok`, `help`, `ping`, `what can you do`, `model`, `codex`, `capabilities`.
+
+### Config
+
+| Setting | Value |
+|---------|-------|
+| Provider | google / gemini-2.5-flash |
+| Fallback | anthropic / claude-haiku-4-5 (only on Google failure) |
+| max_tokens | 1500 |
+| max_tool_iterations | 4 |
+| conversation_ttl | 900s |
+| rate_limit | 15 requests / 300s |
+| usd_to_cop_rate | 4000 |
+| cost_tracking | Exact via JSONL + atomic JSON summary |
 
 ---
 
@@ -80,37 +131,16 @@ brief me on crypto last year         -> any topic, any timeframe
 /brief ai deep                       -> detailed mode
 ```
 
-**Backward-compatible aliases** (all still work):
-```
-/ai_daily_brief                      -> /brief ai top5
-/ai_daily_brief_top5                 -> /brief ai top5
-/ai_daily_brief_status               -> /brief status
-/ai_daily_brief_builder              -> /brief ai deep
-/expert_network_brief                -> /brief expert-networks top5
-/enb                                 -> /brief expert-networks top5
-```
-
-### Architecture
-
-```
-Files:  2 total (down from 14 in V1)
-  skills/news-brief/SKILL.md           <- The one skill (~410 lines)
-  workspace/logs/news-brief-state.json <- Runtime state
-
-Search:  Brave LLM Context API via gateway web_search tool
-Model:   GPT-5.3 Codex (subscription-covered, temperature 0)
-NL:      20 few-shot parsing examples, 14 anti-patterns
-Output:  top5 <=200 words, deep <=500 words
-```
-
 ### Cron Schedule
 
-| Job | UTC | COT | Model | Timeout |
-|-----|-----|-----|-------|---------|
-| AI Top 5 | `10 12 * * *` | 07:10 | Codex | 120s |
-| ENB Top 5 | `0 12 * * *` | 07:00 | Codex | 120s |
+| Job | UTC | COT | Model | Timeout | Status |
+|-----|-----|-----|-------|---------|--------|
+| AI Top 5 | `10 12 * * *` | 07:10 | Codex | 120s | **DISABLED** |
+| ENB Top 5 | `0 12 * * *` | 07:00 | Codex | 120s | **DISABLED** |
 
 Delivery: Telegram channel `-1003826801947`. Session: isolated.
+
+> **Note:** Cron jobs are currently disabled pending Discord migration. Can be re-enabled by setting `enabled: true` in `jobs.json` and reloading config.
 
 ### Error Codes
 
@@ -136,31 +166,11 @@ Automated job discovery. Separate Docker containers, sends digests directly via 
 | Channel | `-1003826801947` |
 | Dedup | Content-based hash |
 | Enrichment | Brave API (no LLM) |
+| Status | **All 6 scheduler jobs PAUSED** |
+
+> **Note:** Job Radar scheduler is paused pending Discord migration. Resume via `POST http://localhost:8080/api/v1/scheduler/resume`.
 
 Commands: `/job_radar`, `/job_search`, `/job_why`, `/job_trends`, `/job_skills`, `/job_hidden`, `/job_save`, `/job_dismiss`, `/job_health`
-
----
-
-## Sentinel
-
-Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. Google/Gemini 2.5 Flash, max_tokens 1500, 10 tools + `check_api_spirals`.
-
-| Tool | Description | Safety |
-|------|-------------|--------|
-| `system_stats` | CPU, RAM, disk, uptime | Read-only |
-| `docker_status` | List all containers | Read-only |
-| `docker_restart` | Restart a container | Confirmation required |
-| `docker_logs` | Tail container logs | Read-only, truncated |
-| `run_command` | Shell command | Whitelist-only |
-| `check_security` | UFW, fail2ban, ports | Read-only |
-| `check_openclaw_health` | Container health | Read-only |
-| `backup_openclaw` | Tar.gz config | Safe location only |
-| `cost_summary` | API cost tracking | Read-only |
-| `check_api_spirals` | Restart count, error rate, Brave volume, cost anomalies | Read-only |
-
-Zero-cost commands: `/status`, `/openclaw`, `/security`, `/backup`, `/cost` -- bypass LLM entirely.
-
-Config: max_tool_iterations=4, conversation_ttl=900s. VPS-wide cost tracking with persistent cache.
 
 ---
 
@@ -195,10 +205,10 @@ Config: max_tool_iterations=4, conversation_ttl=900s. VPS-wide cost tracking wit
 │   ├── telegram_handler.py                # Telegram interface + auth
 │   ├── config.py                          # Config validation
 │   ├── cost_tracker.py                    # API cost accounting
-│   ├── tools.py                           # 10 tools + security
+│   ├── tools.py                           # 12 tools + security
 │   ├── sentinel.service
 │   ├── requirements.txt
-│   └── tests/
+│   └── tests/                             # 104 tests (mocked, zero API cost)
 │
 ├── openclaw/                              # OpenClaw Gateway config
 │   ├── openclaw-config.json               # Config template (secrets placeholder)
@@ -231,7 +241,7 @@ Config: max_tool_iterations=4, conversation_ttl=900s. VPS-wide cost tracking wit
 
 ## Security
 
-- **Network:** UFW deny-all except SSH, gateway on loopback only, fail2ban, key-only SSH
+- **Network:** UFW deny-all except SSH, gateway on loopback only, key-only SSH
 - **Application:** Sentinel whitelist/blocklist, Telegram user allowlist, Docker isolation (uid=999)
 - **Agent isolation:** main/work agents separated, work agent sandboxed
 - **Secrets:** `.env` files in `.gitignore`, never committed. No real keys in repo.
@@ -269,14 +279,27 @@ systemctl status sentinel --no-pager
 cat /root/.openclaw/workspace/logs/news-brief-state.json | python3 -m json.tool
 ```
 
-### Telegram Smoke Tests
+### Telegram Smoke Tests — Sentinel
+```
+/status                    -> System stats + all 3 containers
+/openclaw                  -> Gateway health, HTTP: 200
+/security                  -> UFW, ports, failed SSH
+/cost today                -> VPS cost dashboard with model breakdown
+/tasks                     -> All cron jobs across VPS
+/backup                    -> Create config backup
+hi                         -> Static response (zero cost)
+check for api spirals      -> Gateway log analysis
+restart the openclaw gateway -> Container restart
+pause all cron jobs on job radar -> Scheduler pause
+```
+
+### Telegram Smoke Tests — OpenClaw
 ```
 /brief status              -> system health
 /brief help                -> usage guide
 /brief ai top5             -> 5 ranked AI stories
 top ai news yesterday      -> natural language test
 /brief expert-networks     -> ENB industry brief
-/ai_daily_brief            -> backward compat test
 ```
 
 ---
@@ -286,7 +309,7 @@ top ai news yesterday      -> natural language test
 | Issue | Detail |
 |-------|--------|
 | SIGUSR1 reload | Can trigger exit-0. `on-failure:5` won't auto-restart. Use `docker compose down && up -d` instead |
-| File ownership | Edit/Write resets to `root:root`. Always `chown sentinel:systemd-journal` for `/root/.openclaw/*`, `sentinel:sentinel` for `/opt/sentinel/*` |
+| File ownership | Edit/Write resets to `root:root`. Always `chown sentinel:systemd-journal` for `/root/.openclaw/*`, `sentinel:sentinel` for `/opt/sentinel/*.py` AND `__pycache__/*.pyc` |
 | Compaction modes | Only `"default"` and `"safeguard"` valid. `"aggressive"` silently rejected |
 | `heartbeatModel` | NOT valid. Use `agents.defaults.heartbeat.model` |
 | SKILL.md `model:` | Prompt hint only, NOT gateway-enforced. Cron `model` IS enforced |
@@ -294,6 +317,8 @@ top ai news yesterday      -> natural language test
 | thinkingDefault | Must be `"off"` for Codex (model reasons internally regardless) |
 | Codex behavior | Tuned for "bias to action" -- no clarification questions, no preamble messages |
 | Telegram long-poll | 10s interval is HTTP to Telegram, NOT an LLM call. Zero cost at idle |
+| HTTP health probe | Runs `curl` inside container via `exec_run()`. Host HTTP never reaches gateway (connection reset). |
+| `.pyc` ownership | Python bytecache in `__pycache__/` must be `sentinel:sentinel`. Root-owned `.pyc` causes silent import failures. |
 
 ---
 

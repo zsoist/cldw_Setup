@@ -84,22 +84,25 @@ class _Pricing:
 
 
 # List prices in USD per 1M tokens. Updated: 2026-03-01.
-# Sources: ai.google.dev/gemini-api/docs/pricing
+# Sources: ai.google.dev/gemini-api/docs/pricing (verified 2026-02-26)
 #          platform.claude.com/docs/en/about-claude/pricing
-# Note: Flash uses standard (non-thinking) pricing since we set temperature=0.2
-# and do NOT request thinking mode. Previous $0.30/$2.50 was thinking-tier (2x too high).
+# Note: Flash $0.30/$2.50 is the standard API tier (includes thinking tokens).
+# There is NO separate non-thinking rate — Google charges a single output rate.
 _MODEL_PRICING: dict[str, _Pricing] = {
-    "google/gemini-2.5-flash": _Pricing(input_per_million=0.15, output_per_million=0.60),
+    "google/gemini-2.5-flash": _Pricing(input_per_million=0.30, output_per_million=2.50),
     "google/gemini-2.5-pro": _Pricing(input_per_million=1.25, output_per_million=10.00),
     "anthropic/claude-haiku-4-5": _Pricing(input_per_million=1.00, output_per_million=5.00),
     "anthropic/claude-sonnet-4-6": _Pricing(input_per_million=3.00, output_per_million=15.00),
     "anthropic/claude-opus-4-6": _Pricing(input_per_million=5.00, output_per_million=25.00),
+    # Codex: subscription-covered via OAuth, $0 per-token cost.
+    "openai-codex/gpt-5.3-codex": _Pricing(input_per_million=0.0, output_per_million=0.0),
 }
 
 # Provider defaults match the *primary* model used by each provider.
 _PROVIDER_DEFAULT_PRICING: dict[str, _Pricing] = {
-    "google": _Pricing(input_per_million=0.15, output_per_million=0.60),
+    "google": _Pricing(input_per_million=0.30, output_per_million=2.50),
     "anthropic": _Pricing(input_per_million=3.00, output_per_million=15.00),
+    "openai-codex": _Pricing(input_per_million=0.0, output_per_million=0.0),
 }
 
 
@@ -113,9 +116,9 @@ def _normalize_model(provider: str, model: str) -> str:
         return f"{provider}/unknown"
     if "/" in normalized:
         left, right = normalized.split("/", 1)
-        if left in {"google", "anthropic"}:
+        if left in {"google", "anthropic", "openai-codex"}:
             normalized = f"{left}/{right}"
-    elif provider in {"google", "anthropic"}:
+    elif provider in {"google", "anthropic", "openai-codex"}:
         normalized = f"{provider}/{normalized}"
 
     # Alias normalization.
@@ -127,6 +130,8 @@ def _normalize_model(provider: str, model: str) -> str:
         "anthropic/claude-haiku": "anthropic/claude-haiku-4-5",
         "anthropic/claude-sonnet": "anthropic/claude-sonnet-4-6",
         "anthropic/claude-opus": "anthropic/claude-opus-4-6",
+        "openai-codex/codex": "openai-codex/gpt-5.3-codex",
+        "openai-codex/gpt-5.3": "openai-codex/gpt-5.3-codex",
     }
     return alias_map.get(normalized, normalized)
 
@@ -148,6 +153,8 @@ def _resolve_pricing(provider: str, model: str) -> _Pricing:
         return _MODEL_PRICING["anthropic/claude-sonnet-4-6"]
     if "opus" in model_norm:
         return _MODEL_PRICING["anthropic/claude-opus-4-6"]
+    if "codex" in model_norm or "gpt-5.3" in model_norm:
+        return _MODEL_PRICING["openai-codex/gpt-5.3-codex"]
 
     return _PROVIDER_DEFAULT_PRICING.get(provider_norm, _Pricing(0.0, 0.0))
 

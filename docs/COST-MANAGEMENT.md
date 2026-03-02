@@ -1,6 +1,6 @@
 # Cost Management Guide
 
-> Last updated: 2026-03-01 (Codex-first migration)
+> Last updated: 2026-03-02
 
 ## Monthly budget breakdown
 
@@ -19,10 +19,10 @@ Down from $14-23/month with Flash-only architecture.
 | Model | Cost | Role |
 |-------|------|------|
 | OpenAI Codex (gpt-5.3-codex) | Subscription-covered | OpenClaw default (all tasks) |
-| Gemini 2.5 Flash | $0.15/$0.60 per 1M tokens | Sentinel default, OpenClaw fallback |
+| Gemini 2.5 Flash | $0.30/$2.50 per 1M tokens | Sentinel default, OpenClaw fallback |
 | Gemini 2.5 Pro | $1.25/$10.00 per 1M tokens | Manual research escalation only |
+| Claude Haiku 4.5 | $1.00/$5.00 per 1M tokens | Sentinel fallback only (on Google failure) |
 | gpt-4o-mini, gpt-4o | API-key pricing | Configured but NOT used |
-| Anthropic models | N/A | DISABLED. Auto-fallback off. Haiku: NEVER. |
 
 ## Cost optimization strategies
 

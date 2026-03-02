@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import (
     Application,
@@ -200,15 +200,15 @@ class SentinelTelegramBot:
 
         await update.message.reply_text(
             "*Sentinel Online*\n\n"
-            "I manage your VPS infrastructure. Commands:\n"
-            "- `/status` — System stats + containers\n"
-            "- `/openclaw` — OpenClaw health check\n"
-            "- `/security` — Security audit\n"
-            "- `/backup` — Backup OpenClaw config\n"
-            "- `/cost` — VPS cost dashboard (all services)\n"
-            "- `/tasks` — All scheduled tasks (cron, timers, jobs)\n"
-            "- Or just describe what you need in plain text.\n\n"
-            "Cost tracking covers Sentinel (exact) + OpenClaw & Job Radar (estimated from logs).",
+            "Commands:\n"
+            "- `/status` — System stats + container health\n"
+            "- `/openclaw` — OpenClaw gateway health\n"
+            "- `/security` — Security audit (UFW, fail2ban, ports)\n"
+            "- `/backup` — Backup OpenClaw config + workspace\n"
+            "- `/cost [today|week|month|all]` — VPS cost dashboard\n"
+            "- `/tasks` — Scheduled tasks + cron status\n\n"
+            "Or describe what you need in plain text.\n"
+            "I can also enable/disable cron jobs when asked.",
             parse_mode="Markdown",
         )
 
@@ -245,7 +245,19 @@ class SentinelTelegramBot:
             "*Containers:*",
         ]
         for c in docker.get("containers", []):
-            lines.append(f"• {_escape_md(str(c.get('name', '?')))}: {_escape_md(str(c.get('status', '?')))}")
+            name = _escape_md(str(c.get("name", "?")))
+            status = _escape_md(str(c.get("status", "?")))
+            cpu = c.get("cpu_percent")
+            mem = c.get("memory_mb")
+            mem_limit = c.get("memory_limit_mb")
+            if cpu is not None and mem is not None:
+                lines.append(
+                    f"• {name}: {status} "
+                    f"— CPU {cpu}% "
+                    f"— RAM {mem}/{int(mem_limit)}MB"
+                )
+            else:
+                lines.append(f"• {name}: {status}")
         self._set_zero_cost_stats(user_id)
         return "\n".join(lines)
 
@@ -260,7 +272,7 @@ class SentinelTelegramBot:
             health_badge = "✅" if result.get("gateway_ready") else "⚠️"
             lines.append(f"Health: {health_badge} {_escape_md(str(result.get('docker_health', '?')))}")
             lines.append(f"Uptime: {_escape_md(str(result.get('uptime', '?')))}")
-            lines.append(f"HTTP: {_escape_md(str(result.get('http_fallback_status', '?')))}")
+            lines.append(f"HTTP: {_escape_md(str(result.get('http_probe_status', '?')))}")
             errors = result.get("recent_errors", [])
             if errors:
                 lines.append(f"\n*Recent Errors ({len(errors)}):*")
@@ -435,9 +447,22 @@ class SentinelTelegramBot:
         """Show comprehensive VPS cost dashboard — direct tool execution, zero LLM cost."""
         if not self._is_authorized(update.effective_user.id):
             return
+        logger.info("/cost command from %s, args=%s", update.effective_user.id, context.args)
         try:
             raw_arg = context.args[0] if context.args else "today"
-            period = raw_arg.lower().strip() if raw_arg.lower().strip() in _COST_PERIODS else "today"
+            cleaned = raw_arg.lower().strip()
+            if cleaned not in _COST_PERIODS:
+                period = "today"
+                if context.args:
+                    response = f"Unknown period '{cleaned}'. Use: today, week, month, or all. Showing today."
+                    result = execute_cost_summary(period)
+                    response += "\n\n" + self._format_cost_dashboard(result)
+                    self._set_zero_cost_stats(update.effective_user.id)
+                    response = self._append_usage_footer(update.effective_user.id, response)
+                    await self._reply_text_safe_chunked(update.message, response)
+                    return
+            else:
+                period = cleaned
             result = execute_cost_summary(period)
             response = self._format_cost_dashboard(result)
         except Exception as e:
@@ -446,6 +471,76 @@ class SentinelTelegramBot:
         self._set_zero_cost_stats(update.effective_user.id)
         response = self._append_usage_footer(update.effective_user.id, response)
         await self._reply_text_safe_chunked(update.message, response)
+
+    @staticmethod
+    def _cron_to_human(expr: str, tz: str = "UTC") -> str:
+        """Convert a cron expression to a human-readable schedule with COT time."""
+        parts = expr.split()
+        if len(parts) < 5:
+            return expr
+
+        minute, hour, dom, month, dow = parts[:5]
+        day_names = {
+            "0": "Sun", "1": "Mon", "2": "Tue", "3": "Wed",
+            "4": "Thu", "5": "Fri", "6": "Sat", "7": "Sun",
+            "sun": "Sun", "mon": "Mon", "tue": "Tue", "wed": "Wed",
+            "thu": "Thu", "fri": "Fri", "sat": "Sat",
+        }
+
+        # Build time string
+        def _fmt_time(h: str, m: str, src_tz: str) -> str:
+            """Format time with COT conversion."""
+            if h == "*" or not h.isdigit():
+                return ""
+            utc_h = int(h)
+            mm = int(m) if m.isdigit() else 0
+            if src_tz in ("America/Bogota",):
+                cot_h = utc_h
+                utc_h_conv = (cot_h + 5) % 24
+                return f"{cot_h:02d}:{mm:02d} COT ({utc_h_conv:02d}:{mm:02d} UTC)"
+            else:
+                cot_h = (utc_h - 5) % 24
+                return f"{utc_h:02d}:{mm:02d} UTC ({cot_h:02d}:{mm:02d} COT)"
+
+        # Handle hour=* cases first (these don't have a specific time)
+        if hour == "*":
+            if "/" in minute:
+                return f"Every {minute.split('/')[1]} min"
+            elif minute.isdigit():
+                return f"Hourly at :{minute.zfill(2)}"
+            return expr
+
+        # Handle multi-hour (e.g. "5,17") — format each time with COT
+        if "," in hour:
+            mm = int(minute) if minute.isdigit() else 0
+            time_parts = []
+            for h_part in hour.split(","):
+                h_part = h_part.strip()
+                if h_part.isdigit():
+                    t = _fmt_time(h_part, minute, tz)
+                    if t:
+                        time_parts.append(t)
+            if time_parts:
+                return "Daily " + ", ".join(time_parts)
+
+        time_str = _fmt_time(hour, minute, tz)
+
+        # Build frequency string for specific-hour jobs
+        if dom == "*" and month == "*" and dow == "*":
+            freq = "Daily"
+        elif dom == "*" and month == "*" and dow != "*":
+            day_label = day_names.get(dow, dow)
+            freq = f"Weekly {day_label}"
+        elif dom == "1" and month == "*":
+            freq = "Monthly (1st)"
+        else:
+            freq = ""
+
+        if time_str and freq:
+            return f"{freq} {time_str}"
+        elif time_str:
+            return time_str
+        return expr
 
     async def tasks_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """List all scheduled tasks across the VPS — direct tool execution, zero LLM cost."""
@@ -456,36 +551,101 @@ class SentinelTelegramBot:
             lines = ["Scheduled Tasks"]
             lines.append("=" * 28)
 
-            # System crontab
+            # --- VPS Maintenance ---
             sys_cron = result.get("system_crontab", {})
-            lines.append(f"\nSystem Crontab ({sys_cron.get('count', 0)} jobs)")
-            for job in sys_cron.get("jobs", []):
-                lines.append(f"  {job[:80]}")
-            if not sys_cron.get("jobs"):
-                lines.append(f"  {sys_cron.get('note', 'None')}")
+            _maint_jobs = []
+            for raw in sys_cron.get("jobs", []):
+                clean = raw
+                for prefix in ("[system] ", "[root] ", "[e2scrub_all] ", "[sysstat] "):
+                    if clean.startswith(prefix):
+                        clean = clean[len(prefix):]
+                        break
+                # Check if disabled by Sentinel
+                is_disabled = clean.startswith("#SENTINEL_DISABLED#")
+                if is_disabled:
+                    clean = clean.replace("#SENTINEL_DISABLED#", "", 1).strip()
+                cparts = clean.split(None, 5)
+                if len(cparts) < 5:
+                    continue
+                expr = " ".join(cparts[:5])
+                cmd = cparts[5] if len(cparts) > 5 else ""
+                if "cron.hourly" in cmd:
+                    name, desc = "system-hourly", "Run hourly scripts"
+                elif "cron.daily" in cmd:
+                    name, desc = "system-daily", "Run daily scripts (logrotate, etc)"
+                elif "cron.weekly" in cmd:
+                    name, desc = "system-weekly", "Run weekly scripts"
+                elif "cron.monthly" in cmd:
+                    name, desc = "system-monthly", "Run monthly scripts"
+                elif "docker" in cmd and "prune" in cmd:
+                    name, desc = "docker-prune", "Clean old Docker build cache"
+                elif "backup" in cmd.lower():
+                    name, desc = "openclaw-backup", "Backup OpenClaw config + workspace"
+                elif "bak.*" in cmd and "delete" in cmd:
+                    name, desc = "log-cleanup", "Delete old OpenClaw log backups"
+                elif "e2scrub" in cmd:
+                    name, desc = "disk-scrub", "Filesystem integrity check"
+                elif "debian-sa1" in cmd:
+                    name, desc = "sysstat", "System activity data collection"
+                else:
+                    name, desc = "cron-job", cmd[:50]
+                status = " [OFF]" if is_disabled else " [ON]"
+                sched = self._cron_to_human(expr)
+                _maint_jobs.append((name, sched, desc, status))
 
-            # OpenClaw cron
+            lines.append(f"\nVPS Maintenance ({len(_maint_jobs)} jobs)")
+            for name, sched, desc, status in _maint_jobs:
+                lines.append(f"  {name}{status}: {sched}")
+                lines.append(f"    {desc}")
+
+            # --- OpenClaw Cron ---
             oc_cron = result.get("openclaw_cron", {})
+            oc_jobs = oc_cron.get("jobs", [])
+            # Richer descriptions for known OpenClaw cron jobs
+            _OC_DESCRIPTIONS = {
+                "news-brief-ai": "AI news digest → Telegram channel",
+                "news-brief-enb": "Expert networks digest → Telegram channel",
+            }
             lines.append(f"\nOpenClaw Cron ({oc_cron.get('count', 0)} jobs)")
-            for job in oc_cron.get("jobs", []):
-                lines.append(f"  {job.get('id', '?')}: {job.get('schedule', '?')}")
-            if not oc_cron.get("jobs"):
+            for job in oc_jobs:
+                name = job.get("name", "?")
+                sched = job.get("schedule", "?")
+                tz = job.get("tz", "UTC")
+                enabled = job.get("enabled", True)
+                desc = _OC_DESCRIPTIONS.get(name, job.get("description", ""))
+                model = job.get("model", "")
+                cmd = job.get("command", "")
+                status = " [OFF]" if not enabled else " [ON]"
+                human_sched = self._cron_to_human(sched, tz)
+                lines.append(f"  {name}{status}: {human_sched}")
+                if desc:
+                    lines.append(f"    {desc}")
+                if cmd:
+                    model_short = model.split("/")[-1] if "/" in model else model
+                    lines.append(f"    cmd: {cmd} — model: {model_short}")
+            if not oc_jobs:
                 lines.append(f"  {oc_cron.get('note', 'None')}")
 
-            # Job Radar
+            # --- Job Radar ---
             jr = result.get("job_radar_scheduler", {})
+            jr_jobs = jr.get("jobs", [])
             lines.append(f"\nJob Radar ({jr.get('count', 0)} jobs)")
-            for job in jr.get("jobs", []):
-                lines.append(f"  {job.get('id', '?')}: {job.get('schedule', '?')}")
+            for job in jr_jobs:
+                job_id = job.get("id", "?")
+                sched_raw = job.get("schedule", "?")
+                paused = job.get("paused", False)
                 desc = job.get("desc", "")
+                status = " [PAUSED]" if paused else " [ON]"
+                # schedule is now a cron expr — use _cron_to_human
+                human_sched = self._cron_to_human(sched_raw)
+                lines.append(f"  {job_id}{status}: {human_sched}")
                 if desc:
                     lines.append(f"    {desc}")
 
-            # Systemd timers
+            # --- Systemd Timers (summary only) ---
             timers = result.get("systemd_timers", {})
-            lines.append(f"\nSystemd Timers ({timers.get('count', 0)})")
-            for t in timers.get("timers", [])[:8]:
-                lines.append(f"  {t[:80]}")
+            timer_count = timers.get("count", 0)
+            lines.append(f"\nSystemd Timers: {timer_count} active (system managed)")
 
             response = "\n".join(lines)
         except Exception as e:
@@ -539,7 +699,20 @@ class SentinelTelegramBot:
 
     def run(self) -> None:
         """Start the Telegram bot."""
-        app = Application.builder().token(self.config.telegram_token).build()
+        async def _post_init(application: Application) -> None:
+            """Register slash commands with Telegram after bot starts."""
+            await application.bot.set_my_commands([
+                BotCommand("status", "System stats + container health"),
+                BotCommand("openclaw", "OpenClaw gateway health"),
+                BotCommand("security", "Security audit (UFW, fail2ban, ports)"),
+                BotCommand("backup", "Backup OpenClaw config + workspace"),
+                BotCommand("cost", "VPS cost dashboard (today/week/month/all)"),
+                BotCommand("tasks", "Scheduled tasks + cron status"),
+                BotCommand("start", "Show help"),
+            ])
+            logger.info("Telegram bot commands registered")
+
+        app = Application.builder().token(self.config.telegram_token).post_init(_post_init).build()
 
         app.add_handler(CommandHandler("start", self.start_command))
         app.add_handler(CommandHandler("status", self.status_command))

@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - dependency may be unavailable in local
 
 from config import SentinelConfig
 from cost_tracker import APICostTracker
-from tools import GOOGLE_TOOLS, TOOLS, execute_tool
+from tools import GOOGLE_TOOLS, TOOLS, execute_tool, set_cost_tracker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,45 +32,37 @@ logger = logging.getLogger("sentinel")
 
 SYSTEM_PROMPT = """\
 <role>
-You are Sentinel — the infrastructure landlord of a Hetzner CPX22 VPS (Ubuntu 24.04).
-You are NOT the user-facing AI assistant. That role belongs to OpenClaw, which runs
-inside a Docker container that you monitor and manage. Your job is strictly sysadmin:
-keep the host healthy, Docker containers running, and report costs.
+Sentinel — sysadmin of Hetzner CPX22 VPS (Ubuntu 24.04).
+You manage infrastructure. OpenClaw (Docker, Codex model) handles AI tasks.
+You run on Gemini Flash — cheapest viable model ($0.30/$2.50 per 1M tokens).
 </role>
 
-<responsibilities>
-- Monitor system health: CPU, RAM, disk, swap, uptime
-- Manage Docker containers: OpenClaw gateway, Job Radar API, Job Radar DB
-- Run security audits (UFW, fail2ban, open ports, SSH attempts)
-- Create backups of OpenClaw configuration
-- Diagnose and fix infrastructure issues
-- Report API cost summaries across all services
-</responsibilities>
-
 <rules>
-- Use ONLY the provided tools — never suggest manual SSH commands.
-- Keep responses concise with bullet points — this is Telegram.
-- Confirm before executing restarts or destructive actions.
-- If a tool call fails, retry once with adjusted parameters before reporting failure.
-- When multiple tools are needed, call them in logical sequence; do not speculate.
-- Never expose secrets, tokens, or API keys in responses.
-- You do NOT handle AI research, daily briefs, job search, or image generation — that is OpenClaw's domain.
+- NEVER ask clarification questions. Execute with reasonable defaults.
+- Execute restarts immediately when requested. Only confirm data deletion.
+- Maximum 8 bullet points per response. No prose paragraphs.
+- Never list your capabilities unless user explicitly asks "what can you do".
+- If gateway is down, report it and offer to restart — don't just report status.
+- Use ONLY provided tools. Never suggest manual SSH commands.
+- Never expose secrets, tokens, or API keys.
+- If a tool fails, retry once before reporting failure.
 </rules>
 
 <environment>
-- OS: Ubuntu 24.04 LTS
-- Containers: OpenClaw gateway (openclaw-openclaw-gateway-1), Job Radar API (job-radar-agent), Job Radar DB (job-radar-db)
-- Firewall: UFW (SSH only inbound)
-- Intrusion prevention: fail2ban for SSH
-- This bot: systemd service (sentinel.service)
-- Cost tracking: Sentinel exact (JSONL log), OpenClaw & Job Radar estimated from Docker logs
-- Scheduled tasks: system crontab, OpenClaw cron, Job Radar APScheduler, systemd timers
+- Containers: openclaw-openclaw-gateway-1, job-radar-agent, job-radar-db
+- Channels: Telegram (Sentinel + cron delivery), Discord (OpenClaw ACP threads)
+- OpenClaw: Codex model (subscription), Flash fallback. Hooks: session-memory, command-logger
+- Cron: AI brief 07:10 COT, ENB brief 07:00 COT (isolated, announce to Telegram)
+- Heartbeat: 180m interval, 07:00-23:00 COT, target=last
+- Anti-spiral: loopDetection (warn@10/critical@20/breaker@30), on-failure:5, SOUL.md budgets
+- Session: daily reset 04:00, enforce maintenance, Gemini embeddings memory search
+- Firewall: UFW (SSH only), fail2ban
+- Cost: exact JSONL (Sentinel), estimated Docker logs (OpenClaw/JR). Codex=$0.
 </environment>
 
 <output_format>
-- Bullet points for status reports.
-- Code blocks for command output or logs.
-- One-line summary at end for multi-step results.
+- Bullet points for status. Code blocks for logs.
+- One summary line at end for multi-step results.
 </output_format>
 """
 
@@ -135,6 +127,7 @@ class SentinelAgent:
                     summary_file=self.config.api_cost_summary_file,
                     retention_days=self.config.cost_retention_days,
                 )
+                set_cost_tracker(self._cost_tracker)
             except Exception:
                 logger.exception("Failed to initialize API cost tracker; continuing without cost tracking")
 
@@ -326,13 +319,24 @@ class SentinelAgent:
         if normalized in {"hi", "hello", "hey", "hola", "buenas"}:
             return "Hello. How can I help?"
         if normalized in {"thanks", "thank you", "thx", "gracias", "ty"}:
-            return "You're welcome."
+            return "Standing by."
         if normalized in {"ok", "okay", "got it", "understood", "k"}:
             return "Standing by."
         if normalized in {"help", "?"}:
-            return "Commands: /status, /openclaw, /security, /backup, /cost, or describe what you need."
+            return (
+                "Commands: /status, /openclaw, /security, /backup, "
+                "/cost [today|week|month|all], /tasks — or describe what you need."
+            )
         if normalized == "ping":
             return "Pong."
+        if normalized in {"status", "system status", "check status", "server status"}:
+            return "Use /status for system stats + container health."
+        if normalized in {"tasks", "cron", "cron jobs", "scheduled tasks", "jobs"}:
+            return "Use /tasks to see all scheduled tasks and their status."
+        if normalized in {"cost", "costs", "how much", "spending", "budget"}:
+            return "Use /cost [today|week|month|all] for the VPS cost dashboard."
+        if normalized in {"backup", "backups"}:
+            return "Use /backup to backup OpenClaw config + workspace."
         if any(
             token in normalized
             for token in (
@@ -345,6 +349,44 @@ class SentinelAgent:
             )
         ):
             return f"Primary model: {model} (provider: {provider})."
+        # Architecture / Codex queries
+        if any(
+            token in normalized
+            for token in (
+                "not codex",
+                "why not codex",
+                "use codex",
+                "why gemini",
+                "why flash",
+                "why not openai",
+                "switch to codex",
+                "codex sdk",
+            )
+        ):
+            return (
+                f"Sentinel uses {model} — cheapest viable model "
+                f"($0.30/$2.50 per 1M tokens). "
+                f"OpenClaw uses Codex (subscription-covered, $0). "
+                f"Different tools, different models."
+            )
+        # Capability queries (keyword-based)
+        if any(
+            token in normalized
+            for token in (
+                "what can you do",
+                "capabilities",
+                "your tools",
+                "what tools",
+                "list tools",
+                "your functions",
+            )
+        ):
+            return (
+                "I can: monitor system health, manage Docker containers, "
+                "check security, create backups, track costs, detect API spirals, "
+                "list scheduled tasks, and manage cron jobs (enable/disable). "
+                "Commands: /status /openclaw /security /backup /cost /tasks"
+            )
         return None
 
     def _enforce_rate_limit(self, user_id: int) -> tuple[bool, int]:

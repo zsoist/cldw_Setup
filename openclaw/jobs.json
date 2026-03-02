@@ -5,17 +5,17 @@
       "id": "790e93e1-3aba-481f-b770-9035ba460217",
       "name": "news-brief-ai",
       "description": "Daily AI Top 5 brief at 07:10 COT",
-      "enabled": true,
+      "enabled": false,
       "createdAtMs": 1772399592259,
       "updatedAtMs": 1772399592259,
       "schedule": {
         "kind": "cron",
-        "expr": "10 12 * * *",
+        "expr": "10 7 * * *",
         "tz": "America/Bogota",
         "staggerMs": 0
       },
       "sessionTarget": "isolated",
-      "wakeMode": "now",
+      "wakeMode": "next-heartbeat",
       "payload": {
         "kind": "agentTurn",
         "message": "/brief ai top5",
@@ -28,25 +28,23 @@
         "channel": "telegram",
         "to": "-1003826801947"
       },
-      "state": {
-        "nextRunAtMs": 1772471400000
-      }
+      "state": {}
     },
     {
       "id": "b1734fbf-cca7-4bb2-8057-4a3b56cf7b5f",
       "name": "news-brief-enb",
       "description": "Daily Expert Networks Top 5 brief at 07:00 COT",
-      "enabled": true,
+      "enabled": false,
       "createdAtMs": 1772399600325,
       "updatedAtMs": 1772399600325,
       "schedule": {
         "kind": "cron",
-        "expr": "0 12 * * *",
+        "expr": "0 7 * * *",
         "tz": "America/Bogota",
         "staggerMs": 0
       },
       "sessionTarget": "isolated",
-      "wakeMode": "now",
+      "wakeMode": "next-heartbeat",
       "payload": {
         "kind": "agentTurn",
         "message": "/brief expert-networks top5",
@@ -59,9 +57,7 @@
         "channel": "telegram",
         "to": "-1003826801947"
       },
-      "state": {
-        "nextRunAtMs": 1772470800000
-      }
+      "state": {}
     }
   ]
 }

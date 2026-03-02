@@ -16,6 +16,17 @@ import docker
 from typing import Any
 from urllib.parse import urlsplit
 
+logger = __import__("logging").getLogger("sentinel")
+
+# Module-level cost tracker reference — set via set_cost_tracker() from sentinel.py.
+_cost_tracker_ref: Any = None
+
+
+def set_cost_tracker(tracker: Any) -> None:
+    """Register the APICostTracker instance for use by execute_cost_summary."""
+    global _cost_tracker_ref
+    _cost_tracker_ref = tracker
+
 
 # --- TOOL DEFINITIONS (sent to LLM provider) ---
 
@@ -31,7 +42,7 @@ TOOLS = [
     },
     {
         "name": "docker_status",
-        "description": "List Docker containers with status and resource usage.",
+        "description": "List Docker containers with status, CPU%, and memory usage.",
         "input_schema": {
             "type": "object",
             "properties": {},
@@ -147,6 +158,30 @@ TOOLS = [
             "type": "object",
             "properties": {},
             "required": []
+        }
+    },
+    {
+        "name": "manage_cron",
+        "description": "Enable, disable, or check status of cron jobs. Services: openclaw (per-job), jobradar (global pause/resume), system (per-job via crontab).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "service": {
+                    "type": "string",
+                    "enum": ["openclaw", "jobradar", "system"],
+                    "description": "Which cron system to manage"
+                },
+                "job_name": {
+                    "type": "string",
+                    "description": "Job name (e.g. news-brief-ai, docker-prune). Not needed for jobradar status."
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["enable", "disable", "status"],
+                    "description": "Action to perform"
+                }
+            },
+            "required": ["service", "action"]
         }
     }
 ]
@@ -446,21 +481,47 @@ def execute_system_stats() -> dict[str, Any]:
 
 
 def execute_docker_status() -> dict[str, Any]:
-    """List explicitly allowed Docker containers."""
+    """List explicitly allowed Docker containers with resource stats."""
     try:
         client = docker.from_env()
         containers = []
         for name in sorted(ALLOWED_DOCKER_CONTAINERS):
             try:
                 c = client.containers.get(name)
-                containers.append(
-                    {
-                        "name": c.name,
-                        "status": c.status,
-                        "image": c.image.tags[0] if c.image.tags else "unknown",
-                        "created": str(c.attrs["Created"])[:19],
-                    }
-                )
+                info: dict[str, Any] = {
+                    "name": c.name,
+                    "status": c.status,
+                    "image": c.image.tags[0] if c.image.tags else "unknown",
+                    "created": str(c.attrs["Created"])[:19],
+                }
+                if c.status == "running":
+                    try:
+                        stats = c.stats(stream=False)
+                        cpu = stats.get("cpu_stats", {})
+                        precpu = stats.get("precpu_stats", {})
+                        cpu_delta = (
+                            cpu.get("cpu_usage", {}).get("total_usage", 0)
+                            - precpu.get("cpu_usage", {}).get("total_usage", 0)
+                        )
+                        sys_delta = (
+                            cpu.get("system_cpu_usage", 0)
+                            - precpu.get("system_cpu_usage", 0)
+                        )
+                        n_cpus = cpu.get("online_cpus", 1)
+                        if sys_delta > 0:
+                            info["cpu_percent"] = round(
+                                (cpu_delta / sys_delta) * n_cpus * 100, 1
+                            )
+                        mem = stats.get("memory_stats", {})
+                        usage = mem.get("usage", 0)
+                        limit = mem.get("limit", 0)
+                        if usage:
+                            info["memory_mb"] = round(usage / (1024**2), 1)
+                        if limit:
+                            info["memory_limit_mb"] = round(limit / (1024**2), 0)
+                    except Exception:
+                        pass  # Stats unavailable — just skip
+                containers.append(info)
             except docker.errors.NotFound:
                 containers.append({"name": name, "status": "not_found"})
         return {"containers": containers}
@@ -601,14 +662,16 @@ def execute_check_openclaw_health() -> dict[str, Any]:
         error_lines = [line for line in logs.split("\n") if "error" in line.lower() or "fatal" in line.lower()]
         health["recent_errors"] = error_lines[-5:] if error_lines else []
 
-        # HTTP fallback endpoint (useful when Telegram channel is degraded)
-        probe = subprocess.run(
-            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:18789/__openclaw__/canvas/"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        health["http_fallback_status"] = probe.stdout.strip() or "000"
+        # HTTP health probe — exec inside container (host can't reach gateway port)
+        try:
+            probe_result = container.exec_run(
+                ["curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:18789/"],
+                demux=True,
+            )
+            stdout = (probe_result.output[0] or b"").decode("utf-8", errors="replace").strip()
+            health["http_probe_status"] = stdout or "000"
+        except Exception:
+            health["http_probe_status"] = "exec_failed"
 
     except docker.errors.NotFound:
         health["status"] = "container not found"
@@ -647,6 +710,70 @@ def execute_backup_openclaw() -> dict[str, str]:
         return {"status": "failed", "error": str(e)}
 
 
+def _read_gateway_internal_log(
+    container, since_hours: int = 24
+) -> list[dict[str, str]]:
+    """Read OpenClaw gateway's internal JSON log from inside the container.
+
+    The gateway writes detailed session data (run starts/ends, durations,
+    errors, tool calls) to /tmp/openclaw/openclaw-{date}.log.
+    Docker stdout only has startup messages and Telegram send confirmations.
+
+    Returns list of dicts: {"msg": str, "time": str, "level": str}.
+    Time-windowed: only entries within the last ``since_hours`` are returned.
+    Reads yesterday's log too when the lookback window crosses midnight.
+    """
+    import datetime as _dt
+
+    entries: list[dict[str, str]] = []
+    now = _dt.datetime.now(_dt.timezone.utc)
+    cutoff_str = (now - _dt.timedelta(hours=since_hours)).strftime(
+        "%Y-%m-%dT%H:%M:%S"
+    )
+
+    # Determine which daily log files to read
+    dates = [now.strftime("%Y-%m-%d")]
+    if since_hours > (now.hour + now.minute / 60 + 1):
+        yesterday = (now - _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+        dates.insert(0, yesterday)
+
+    for date_str in dates:
+        try:
+            result = container.exec_run(
+                ["cat", f"/tmp/openclaw/openclaw-{date_str}.log"],
+                demux=True,
+            )
+            if result.exit_code != 0 or not result.output[0]:
+                continue
+            for raw_line in result.output[0].decode(
+                "utf-8", errors="replace"
+            ).splitlines():
+                try:
+                    obj = json.loads(raw_line.strip())
+                    ts = str(obj.get("time", ""))
+                    # Time-window filter (compare first 19 chars: YYYY-MM-DDTHH:MM:SS)
+                    if ts and ts[:19] < cutoff_str:
+                        continue
+                    entries.append({
+                        "msg": str(obj.get("1", "")),
+                        "time": ts,
+                        "level": (
+                            obj.get("_meta", {}).get("logLevelName", "")
+                        ),
+                    })
+                except (json.JSONDecodeError, AttributeError):
+                    continue
+        except Exception:
+            continue
+
+    return entries
+
+
+# Brave Search API cost per query (USD).
+# Source: brave.com/search/api — $5 per 1,000 queries ($0.005/query), 1,000 free/month.
+_BRAVE_COST_PER_QUERY = 0.005
+
+
 def _parse_docker_logs_costs(container_name: str, since_hours: int = 24) -> dict[str, Any]:
     """Parse Docker container logs to extract API call counts and estimate costs.
 
@@ -669,43 +796,22 @@ def _parse_docker_logs_costs(container_name: str, since_hours: int = 24) -> dict
         result["log_lines_scanned"] = len(lines)
 
         if container_name == "openclaw-openclaw-gateway-1":
-            # Parse internal JSON log file (primary source — has detailed run data).
-            # Docker stdout does NOT contain embedded run entries for OpenClaw.
-            try:
-                today_str = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
-                internal_log = container.exec_run(
-                    ["cat", f"/tmp/openclaw/openclaw-{today_str}.log"],
-                    demux=True,
-                )
-                if internal_log.exit_code == 0 and internal_log.output[0]:
-                    for log_line in internal_log.output[0].decode("utf-8", errors="replace").splitlines():
-                        try:
-                            obj = json.loads(log_line.strip())
-                            msg = str(obj.get("1", ""))
-                        except (json.JSONDecodeError, AttributeError):
-                            continue
-                        if "embedded run start" in msg:
-                            result["runs"] += 1
-                            for part in msg.split():
-                                if part.startswith("model="):
-                                    model = part.split("=", 1)[1]
-                                    result["models"][model] = result["models"].get(model, 0) + 1
-                        elif "isError=true" in msg:
-                            result["errors"] += 1
-                        elif "brave" in msg.lower() or "web_search" in msg.lower():
-                            result["brave_calls"] += 1
-            except Exception:
-                # Fallback: scan Docker stdout if internal log unavailable
-                for line in lines:
-                    lower = line.lower()
-                    if "embedded run start" in lower:
-                        result["runs"] += 1
-                        for part in line.split():
-                            if part.startswith("model="):
-                                model = part.split("=", 1)[1]
-                                result["models"][model] = result["models"].get(model, 0) + 1
-                    elif "iserror=true" in lower:
-                        result["errors"] += 1
+            # Use shared helper to read internal JSON log (has all run data).
+            # Docker stdout only has startup messages and Telegram send confirmations.
+            entries = _read_gateway_internal_log(container, since_hours=since_hours)
+            result["log_lines_scanned"] = len(entries)
+            for entry in entries:
+                msg = entry["msg"]
+                if "embedded run start" in msg:
+                    result["runs"] += 1
+                    for part in msg.split():
+                        if part.startswith("model="):
+                            model = part.split("=", 1)[1]
+                            result["models"][model] = result["models"].get(model, 0) + 1
+                elif "isError=true" in msg:
+                    result["errors"] += 1
+                elif "brave" in msg.lower() or "web_search" in msg.lower():
+                    result["brave_calls"] += 1
 
         elif container_name == "job-radar-agent":
             # Parse Job Radar httpx Gemini API calls
@@ -737,11 +843,44 @@ def _parse_docker_logs_costs(container_name: str, since_hours: int = 24) -> dict
 _AVG_TOKENS_PER_RUN = {
     "gemini-2.5-flash": {"input": 2000, "output": 500},
     "gemini-2.5-pro": {"input": 3000, "output": 800},
+    "claude-sonnet-4-6": {"input": 2500, "output": 600},
+    "claude-haiku-4-5": {"input": 1500, "output": 400},
+    # Codex: subscription-covered via OAuth — $0 per-token cost.
+    "gpt-5.3-codex": {"input": 2000, "output": 500},
 }
-# Pricing per 1M tokens (USD), matching cost_tracker.py
+# Pricing per 1M tokens (USD). Updated 2026-03-02 (verified against official APIs).
 _MODEL_COST_PER_M = {
-    "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
+    "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    # Codex: $0 — subscription-covered, not pay-per-token.
+    "gpt-5.3-codex": {"input": 0.0, "output": 0.0},
+}
+
+# Job Radar descriptions and static fallback (used when API is unreachable).
+_JR_DESCRIPTIONS = {
+    "discovery_sync": "Scrape job boards for new listings",
+    "digest_am": "Morning job matches → Telegram",
+    "digest_pm": "Evening job matches → Telegram",
+    "watchlist_sync": "Check watchlist companies for new posts",
+    "cleanup": "Remove expired listings (>21 days)",
+    "weekly_report": "Weekly stats summary → Telegram",
+}
+_JR_FALLBACK = [
+    {"id": "discovery_sync", "schedule": "0 5,17 * * *", "paused": False},
+    {"id": "digest_am", "schedule": "0 13 * * *", "paused": False},
+    {"id": "digest_pm", "schedule": "0 23 * * *", "paused": False},
+    {"id": "watchlist_sync", "schedule": "0 7 * * *", "paused": False},
+    {"id": "cleanup", "schedule": "0 4 * * *", "paused": False},
+    {"id": "weekly_report", "schedule": "0 23 * * 6", "paused": False},
+]
+
+# System crontab job patterns for manage_cron tool.
+_SYSTEM_JOB_PATTERNS = {
+    "docker-prune": "docker builder prune",
+    "openclaw-backup": "backup",
+    "log-cleanup": ".bak",
 }
 
 
@@ -754,7 +893,7 @@ def _estimate_docker_service_cost(parsed: dict[str, Any]) -> dict[str, Any]:
 
     for model, count in parsed.get("models", {}).items():
         avg = _AVG_TOKENS_PER_RUN.get(model, {"input": 2000, "output": 500})
-        pricing = _MODEL_COST_PER_M.get(model, {"input": 0.15, "output": 0.60})
+        pricing = _MODEL_COST_PER_M.get(model, {"input": 0.30, "output": 2.50})
         in_tokens = avg["input"] * count
         out_tokens = avg["output"] * count
         cost = (in_tokens * pricing["input"] + out_tokens * pricing["output"]) / 1_000_000
@@ -768,13 +907,19 @@ def _estimate_docker_service_cost(parsed: dict[str, Any]) -> dict[str, Any]:
             "est_usd": round(cost, 6),
         }
 
+    # Add Brave API cost ($0.005/query)
+    brave_calls = parsed.get("brave_calls", 0)
+    brave_usd = round(brave_calls * _BRAVE_COST_PER_QUERY, 6)
+    total_usd += brave_usd
+
     return {
         "est_usd": round(total_usd, 6),
         "est_input_tokens": est_input,
         "est_output_tokens": est_output,
         "runs": parsed.get("runs", 0),
         "errors": parsed.get("errors", 0),
-        "brave_calls": parsed.get("brave_calls", 0),
+        "brave_calls": brave_calls,
+        "brave_est_usd": brave_usd,
         "status": parsed.get("status", "unknown"),
         "started_at": parsed.get("started_at", ""),
         "by_model": model_details,
@@ -883,12 +1028,16 @@ def _get_cached_costs(
     return aggregated
 
 
-def execute_cost_summary(period: str = "today") -> dict[str, Any]:
+def execute_cost_summary(period: str = "today", cost_tracker: Any = None) -> dict[str, Any]:
     """Get comprehensive VPS cost dashboard: Sentinel + OpenClaw + Job Radar.
 
     Sentinel costs are exact (from JSONL event log).
     OpenClaw and Job Radar costs are estimated from Docker log API call counts.
     Historical data is persisted in a cache file so it survives container restarts.
+
+    Args:
+        period: "today", "week", "month", or "all".
+        cost_tracker: Optional APICostTracker instance for locked reads.
     """
     import datetime as _dt
 
@@ -906,62 +1055,81 @@ def execute_cost_summary(period: str = "today") -> dict[str, Any]:
     else:
         since_hours = 720  # ~30 days for "all" (Docker logs don't persist forever)
 
-    # --- Sentinel costs (EXACT — from cost summary JSON) ---
-    sentinel_summary_path = "/var/log/sentinel/api-cost-summary.json"
+    # --- Sentinel costs (EXACT — from cost tracker or summary JSON) ---
+    tracker = cost_tracker or _cost_tracker_ref
     try:
-        with open(sentinel_summary_path) as f:
-            summary = json.load(f)
-
-        totals = summary.get("totals", {})
-        today_key = now.strftime("%Y-%m-%d")
-        week_key = now.strftime("%G-W%V")
-        month_key = now.strftime("%Y-%m")
-
-        if period == "today":
-            bucket = totals.get("daily", {}).get(today_key, {})
-        elif period == "week":
-            bucket = totals.get("weekly", {}).get(week_key, {})
-        elif period == "month":
-            bucket = totals.get("monthly", {}).get(month_key, {})
+        if tracker is not None and hasattr(tracker, "get_summary"):
+            # Preferred: use the tracker's thread-safe get_summary() — avoids raw file open
+            tracker_data = tracker.get_summary(period)
+            sentinel_data: dict[str, Any] = {
+                "usd": round(float(tracker_data.get("usd", 0)), 6),
+                "input_tokens": int(tracker_data.get("input_tokens", 0)),
+                "output_tokens": int(tracker_data.get("output_tokens", 0)),
+                "calls": int(tracker_data.get("calls", 0)),
+                "errors": int(tracker_data.get("errors", 0)),
+                "is_estimate": False,
+            }
+            by_model = tracker_data.get("by_model")
+            if by_model:
+                sentinel_data["by_model"] = by_model
+            result["services"]["sentinel"] = sentinel_data
         else:
-            bucket = totals.get("all_time", {})
+            # Fallback: read the summary JSON directly
+            sentinel_summary_path = "/var/log/sentinel/api-cost-summary.json"
+            with open(sentinel_summary_path) as f:
+                summary = json.load(f)
 
-        sentinel_data: dict[str, Any] = {
-            "usd": round(float(bucket.get("usd", 0)), 6),
-            "input_tokens": int(bucket.get("input_tokens", 0)),
-            "output_tokens": int(bucket.get("output_tokens", 0)),
-            "calls": int(bucket.get("calls", 0)),
-            "errors": int(bucket.get("error_calls", 0)),
-            "is_estimate": False,
-        }
+            totals = summary.get("totals", {})
+            today_key = now.strftime("%Y-%m-%d")
+            week_key = now.strftime("%G-W%V")
+            month_key = now.strftime("%Y-%m")
 
-        # Model breakdown
-        models = summary.get("models", {})
-        model_breakdown = {}
-        for model_name, model_data in models.items():
             if period == "today":
-                mbucket = model_data.get("daily", {}).get(today_key, {})
+                bucket = totals.get("daily", {}).get(today_key, {})
             elif period == "week":
-                mbucket = model_data.get("weekly", {}).get(week_key, {})
+                bucket = totals.get("weekly", {}).get(week_key, {})
             elif period == "month":
-                mbucket = model_data.get("monthly", {}).get(month_key, {})
+                bucket = totals.get("monthly", {}).get(month_key, {})
             else:
-                mbucket = model_data.get("all_time", {})
-            if mbucket.get("calls", 0) > 0:
-                model_breakdown[model_name] = {
-                    "usd": round(float(mbucket.get("usd", 0)), 6),
-                    "calls": int(mbucket.get("calls", 0)),
-                    "input_tokens": int(mbucket.get("input_tokens", 0)),
-                    "output_tokens": int(mbucket.get("output_tokens", 0)),
-                }
-        if model_breakdown:
-            sentinel_data["by_model"] = model_breakdown
+                bucket = totals.get("all_time", {})
 
-        result["services"]["sentinel"] = sentinel_data
+            sentinel_data = {
+                "usd": round(float(bucket.get("usd", 0)), 6),
+                "input_tokens": int(bucket.get("input_tokens", 0)),
+                "output_tokens": int(bucket.get("output_tokens", 0)),
+                "calls": int(bucket.get("calls", 0)),
+                "errors": int(bucket.get("error_calls", 0)),
+                "is_estimate": False,
+            }
+
+            # Model breakdown
+            models = summary.get("models", {})
+            model_breakdown = {}
+            for model_name, model_data in models.items():
+                if period == "today":
+                    mbucket = model_data.get("daily", {}).get(today_key, {})
+                elif period == "week":
+                    mbucket = model_data.get("weekly", {}).get(week_key, {})
+                elif period == "month":
+                    mbucket = model_data.get("monthly", {}).get(month_key, {})
+                else:
+                    mbucket = model_data.get("all_time", {})
+                if mbucket.get("calls", 0) > 0:
+                    model_breakdown[model_name] = {
+                        "usd": round(float(mbucket.get("usd", 0)), 6),
+                        "calls": int(mbucket.get("calls", 0)),
+                        "input_tokens": int(mbucket.get("input_tokens", 0)),
+                        "output_tokens": int(mbucket.get("output_tokens", 0)),
+                    }
+            if model_breakdown:
+                sentinel_data["by_model"] = model_breakdown
+
+            result["services"]["sentinel"] = sentinel_data
 
     except FileNotFoundError:
         result["services"]["sentinel"] = {"error": "No cost data yet", "is_estimate": False}
     except Exception as e:
+        logger.error("cost_summary sentinel section failed: %s", e, exc_info=True)
         result["services"]["sentinel"] = {"error": str(e)[:200], "is_estimate": False}
 
     # --- OpenClaw & Job Radar costs (ESTIMATED — from Docker logs + persistent cache) ---
@@ -1065,43 +1233,140 @@ def execute_check_api_spirals(hours: int = 1) -> dict[str, Any]:
     except docker.errors.DockerException as e:
         metrics["gateway"] = {"error": str(e)[:200]}
 
-    # 2. Scan gateway logs for errors and Brave usage
+    # 2. Scan gateway INTERNAL log for errors, Brave usage, and run durations.
+    #    Docker stdout only has startup messages — all run data is in the
+    #    internal JSON log at /tmp/openclaw/openclaw-{date}.log inside the container.
     try:
         container = client.containers.get("openclaw-openclaw-gateway-1")
-        log_lines = container.logs(
-            since=int(time.time()) - (hours * 3600),
-            tail=2000,
-        ).decode("utf-8", errors="replace").splitlines()
+        entries = _read_gateway_internal_log(container, since_hours=hours)
 
         error_count = 0
         brave_count = 0
         overflow_count = 0
-        for line in log_lines:
-            lower = line.lower()
-            if any(kw in lower for kw in ["error", "fatal", "400", "bad_request", "invalid"]):
+        loop_detect_count = 0
+        run_count = 0
+        run_durations: list[int] = []
+        aborted_runs = 0
+        models_seen: dict[str, int] = {}
+
+        for entry in entries:
+            msg = entry["msg"]
+            level = entry["level"]
+            lower = msg.lower()
+
+            # Count errors from log level (most reliable) and message content
+            if level in ("ERROR", "FATAL"):
                 error_count += 1
-            if any(kw in lower for kw in ["brave", "web_search"]):
+            elif "isError=true" in msg:
+                error_count += 1
+
+            # Brave / web_search tool calls
+            if "brave" in lower or "web_search" in lower:
                 brave_count += 1
-            if any(kw in lower for kw in ["overflow", "low context window", "context exceeded"]):
+
+            # Loop detection events (tool-call loop guardrail)
+            if any(kw in lower for kw in [
+                "loop detect", "circuit breaker", "tool loop",
+                "loop warning", "loop critical",
+            ]):
+                loop_detect_count += 1
+
+            # Context overflow detection
+            if any(kw in lower for kw in [
+                "overflow", "low context window", "context exceeded",
+                "token budget", "context pruning",
+            ]):
                 overflow_count += 1
 
+            # Run start: count runs and track models
+            if "embedded run start" in msg:
+                run_count += 1
+                for part in msg.split():
+                    if part.startswith("model="):
+                        model = part.split("=", 1)[1]
+                        models_seen[model] = models_seen.get(model, 0) + 1
+
+            # Run done: extract duration and abort status
+            if "embedded run done" in msg:
+                m = re.search(r"durationMs=(\d+)", msg)
+                if m:
+                    run_durations.append(int(m.group(1)))
+                if "aborted=true" in msg:
+                    aborted_runs += 1
+
         metrics["gateway_logs"] = {
-            "lines_scanned": len(log_lines),
-            "error_lines": error_count,
-            "brave_mentions": brave_count,
+            "entries_scanned": len(entries),
+            "error_count": error_count,
+            "brave_calls": brave_count,
+            "brave_est_usd": round(brave_count * _BRAVE_COST_PER_QUERY, 6),
+            "loop_detection_events": loop_detect_count,
             "context_overflow_warnings": overflow_count,
+            "runs": run_count,
+            "aborted_runs": aborted_runs,
+            "models": models_seen,
         }
 
-        if error_count > 50:
-            alerts.append(f"CRITICAL: {error_count} error lines in gateway logs ({hours}h)")
+        # Run duration analysis
+        if run_durations:
+            max_run = max(run_durations)
+            avg_run = sum(run_durations) / len(run_durations)
+            metrics["gateway_runs"] = {
+                "count": len(run_durations),
+                "avg_ms": round(avg_run),
+                "max_ms": max_run,
+                "min_ms": min(run_durations),
+            }
+            if max_run > 120000:
+                alerts.append(f"CRITICAL: Gateway run exceeded 120s ({max_run}ms)")
+                severity = "CRITICAL"
+            elif max_run > 60000:
+                alerts.append(f"WARNING: Longest gateway run {max_run}ms (possible spiral)")
+                if severity != "CRITICAL":
+                    severity = "WARNING"
+            # Burst detection
+            if len(run_durations) > 50:
+                alerts.append(
+                    f"WARNING: {len(run_durations)} gateway runs in {hours}h (high activity)"
+                )
+                if severity != "CRITICAL":
+                    severity = "WARNING"
+        elif run_count > 0:
+            # Runs detected but no "done" entries — possible stuck runs
+            alerts.append(
+                f"WARNING: {run_count} runs started but 0 completed in {hours}h (possible stuck runs)"
+            )
+            if severity != "CRITICAL":
+                severity = "WARNING"
+
+        # Aborted run detection
+        if aborted_runs > 0:
+            alerts.append(f"WARNING: {aborted_runs} aborted runs in {hours}h")
+            if severity != "CRITICAL":
+                severity = "WARNING"
+
+        # Rate-based error thresholds (per hour)
+        error_rate = error_count / max(hours, 1)
+        if error_rate > 50:
+            alerts.append(f"CRITICAL: {error_rate:.0f} errors/hour in gateway logs")
             severity = "CRITICAL"
-        elif error_count > 20:
-            alerts.append(f"WARNING: {error_count} error lines in gateway logs ({hours}h)")
+        elif error_rate > 10:
+            alerts.append(f"WARNING: {error_rate:.0f} errors/hour in gateway logs")
             if severity != "CRITICAL":
                 severity = "WARNING"
 
         if brave_count > 30:
-            alerts.append(f"WARNING: {brave_count} Brave/search mentions in {hours}h (possible spiral)")
+            alerts.append(
+                f"WARNING: {brave_count} Brave/search calls in {hours}h "
+                f"(~${brave_count * _BRAVE_COST_PER_QUERY:.3f})"
+            )
+            if severity != "CRITICAL":
+                severity = "WARNING"
+
+        if loop_detect_count > 0:
+            alerts.append(
+                f"WARNING: {loop_detect_count} tool-loop detection events in {hours}h "
+                f"(circuit breaker may have killed runs)"
+            )
             if severity != "CRITICAL":
                 severity = "WARNING"
 
@@ -1227,9 +1492,14 @@ def execute_list_scheduled_tasks() -> dict[str, Any]:
                     "count": len(jobs),
                     "jobs": [
                         {
-                            "id": j.get("id", "?"),
-                            "schedule": j.get("schedule", "?"),
-                            "skill": j.get("skill", j.get("command", "?")),
+                            "name": j.get("name", j.get("id", "?")[:12]),
+                            "description": j.get("description", ""),
+                            "enabled": j.get("enabled", True),
+                            "schedule": j.get("schedule", {}).get("expr", str(j.get("schedule", "?"))),
+                            "tz": j.get("schedule", {}).get("tz", "UTC"),
+                            "model": j.get("payload", {}).get("model", "default"),
+                            "command": j.get("payload", {}).get("message", ""),
+                            "delivery": j.get("delivery", {}).get("channel", ""),
                         }
                         for j in jobs[:20]
                     ],
@@ -1258,7 +1528,27 @@ def execute_list_scheduled_tasks() -> dict[str, Any]:
             if oc_cron_entries:
                 existing_jobs = tasks.get("openclaw_cron", {}).get("jobs", [])
                 for entry in oc_cron_entries:
-                    existing_jobs.append({"id": "system-cron", "schedule": entry[:60], "skill": "host crontab"})
+                    # Parse cron expression from the line (first 5 fields)
+                    parts = entry.split(None, 5)
+                    cron_expr = " ".join(parts[:5]) if len(parts) >= 5 else entry[:30]
+                    cmd_part = parts[5] if len(parts) > 5 else ""
+                    # Derive a short name from the command
+                    if "backup" in cmd_part.lower():
+                        sname = "openclaw-backup"
+                    elif "find" in cmd_part.lower() and "delete" in cmd_part.lower():
+                        sname = "log-cleanup"
+                    else:
+                        sname = "system-cron"
+                    existing_jobs.append({
+                        "name": sname,
+                        "description": cmd_part[:80],
+                        "enabled": True,
+                        "schedule": cron_expr,
+                        "tz": "UTC",
+                        "model": "",
+                        "command": "",
+                        "delivery": "host",
+                    })
                 tasks["openclaw_cron"]["count"] = len(existing_jobs)
                 tasks["openclaw_cron"]["jobs"] = existing_jobs
                 # Replace misleading note if host crontab has openclaw entries
@@ -1267,16 +1557,31 @@ def execute_list_scheduled_tasks() -> dict[str, Any]:
     except (OSError, subprocess.TimeoutExpired):
         pass
 
-    # 3. Job Radar APScheduler jobs (from source code / Docker logs)
+    # 3. Job Radar APScheduler jobs — live status from API
+    jr_jobs = None
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://localhost:8080/api/v1/scheduler/status", method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            jr_data = json.loads(resp.read().decode())
+        if jr_data.get("running"):
+            jr_jobs = jr_data.get("jobs", [])
+    except Exception:
+        pass  # API unreachable — use fallback
+
+    if jr_jobs is None:
+        jr_jobs = _JR_FALLBACK
+
     tasks["job_radar_scheduler"] = {
-        "count": 6,
+        "count": len(jr_jobs),
         "jobs": [
-            {"id": "discovery_sync", "schedule": "05:00, 17:00 UTC", "desc": "Job board discovery sync"},
-            {"id": "digest_am", "schedule": "13:00 UTC (08:00 COT)", "desc": "AM job digest"},
-            {"id": "digest_pm", "schedule": "23:00 UTC (18:00 COT)", "desc": "PM job digest"},
-            {"id": "watchlist_sync", "schedule": "07:00 UTC", "desc": "Watchlist company sync"},
-            {"id": "cleanup", "schedule": "04:00 UTC", "desc": "Expired jobs cleanup"},
-            {"id": "weekly_report", "schedule": "Sat 23:00 UTC", "desc": "Weekly summary report"},
+            {
+                "id": j.get("id", "?"),
+                "schedule": j.get("schedule", "?"),
+                "paused": j.get("paused", False),
+                "desc": _JR_DESCRIPTIONS.get(j.get("id", ""), ""),
+            }
+            for j in jr_jobs
         ],
     }
 
@@ -1303,6 +1608,163 @@ def execute_list_scheduled_tasks() -> dict[str, Any]:
     return tasks
 
 
+def execute_manage_cron(service: str, action: str, job_name: str = "") -> dict[str, Any]:
+    """Enable, disable, or check status of cron jobs across VPS services."""
+    import urllib.request
+
+    if service == "openclaw":
+        # --- OpenClaw cron: per-job enable/disable via jobs.json ---
+        cron_path = "/root/.openclaw/cron/jobs.json"
+        try:
+            with open(cron_path) as f:
+                data = json.load(f)
+        except Exception as e:
+            return {"error": f"Cannot read {cron_path}: {e}"}
+
+        jobs = data.get("jobs", [])
+
+        if action == "status":
+            return {
+                "service": "openclaw",
+                "jobs": [
+                    {"name": j.get("name", "?"), "enabled": j.get("enabled", True)}
+                    for j in jobs
+                ],
+            }
+
+        if not job_name:
+            return {"error": "job_name required for openclaw enable/disable"}
+
+        target = None
+        for j in jobs:
+            if j.get("name") == job_name:
+                target = j
+                break
+        if not target:
+            names = [j.get("name", "?") for j in jobs]
+            return {"error": f"Job '{job_name}' not found. Available: {names}"}
+
+        new_state = action == "enable"
+        target["enabled"] = new_state
+
+        try:
+            with open(cron_path, "w") as f:
+                json.dump(data, f, indent=2)
+            # Fix ownership (Edit/write resets to root:root)
+            subprocess.run(
+                ["chown", "sentinel:systemd-journal", cron_path],
+                capture_output=True, timeout=5,
+            )
+            # Reload gateway config
+            client = docker.from_env()
+            client.containers.get("openclaw-openclaw-gateway-1").kill(signal="SIGUSR1")
+        except Exception as e:
+            return {"error": f"Updated file but reload failed: {e}"}
+
+        return {"ok": True, "service": "openclaw", "job": job_name, "enabled": new_state}
+
+    elif service == "jobradar":
+        # --- Job Radar: global pause/resume via REST API ---
+        base = "http://localhost:8080/api/v1/scheduler"
+        try:
+            if action == "status":
+                req = urllib.request.Request(f"{base}/status", method="GET")
+            elif action == "disable":
+                req = urllib.request.Request(f"{base}/pause", method="POST")
+            elif action == "enable":
+                req = urllib.request.Request(f"{base}/resume", method="POST")
+            else:
+                return {"error": f"Invalid action: {action}"}
+
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                result = json.loads(resp.read().decode())
+            return {"ok": True, "service": "jobradar", "action": action, "result": result}
+        except Exception as e:
+            return {"error": f"Job Radar API error: {e}"}
+
+    elif service == "system":
+        # --- System crontab: comment/uncomment lines ---
+        if action == "status":
+            try:
+                result = subprocess.run(
+                    ["sudo", "-n", "crontab", "-l"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if result.returncode != 0:
+                    return {"error": "Cannot read crontab"}
+                jobs = []
+                for line in result.stdout.splitlines():
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("SHELL") or stripped.startswith("PATH") or stripped.startswith("MAILTO"):
+                        continue
+                    is_disabled = stripped.startswith("#SENTINEL_DISABLED#")
+                    clean = stripped.replace("#SENTINEL_DISABLED#", "", 1).strip()
+                    # Try to identify the job
+                    name = "unknown"
+                    for jname, pattern in _SYSTEM_JOB_PATTERNS.items():
+                        if pattern in clean.lower():
+                            name = jname
+                            break
+                    if name == "unknown" and not clean.startswith("#"):
+                        # Generic active cron line
+                        parts = clean.split(None, 5)
+                        name = parts[5][:40] if len(parts) > 5 else clean[:40]
+                    if clean.startswith("#"):
+                        continue  # Skip real comments
+                    jobs.append({"name": name, "enabled": not is_disabled, "line": clean[:60]})
+                return {"service": "system", "jobs": jobs}
+            except Exception as e:
+                return {"error": f"Cannot read crontab: {e}"}
+
+        if not job_name:
+            return {"error": "job_name required for system enable/disable"}
+
+        pattern = _SYSTEM_JOB_PATTERNS.get(job_name)
+        if not pattern:
+            return {"error": f"Unknown system job '{job_name}'. Known: {list(_SYSTEM_JOB_PATTERNS.keys())}"}
+
+        try:
+            result = subprocess.run(
+                ["sudo", "-n", "crontab", "-l"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode != 0:
+                return {"error": "Cannot read crontab"}
+
+            lines = result.stdout.splitlines()
+            found = False
+            new_lines = []
+            for line in lines:
+                if pattern in line.lower():
+                    found = True
+                    clean = line.replace("#SENTINEL_DISABLED#", "", 1).strip()
+                    if action == "disable":
+                        new_lines.append(f"#SENTINEL_DISABLED# {clean}")
+                    else:  # enable
+                        new_lines.append(clean)
+                else:
+                    new_lines.append(line)
+
+            if not found:
+                return {"error": f"No crontab line matches job '{job_name}'"}
+
+            # Write back via sudo crontab -
+            new_crontab = "\n".join(new_lines) + "\n"
+            write_result = subprocess.run(
+                ["sudo", "-n", "crontab", "-"],
+                input=new_crontab, capture_output=True, text=True, timeout=10,
+            )
+            if write_result.returncode != 0:
+                return {"error": f"Failed to write crontab: {write_result.stderr[:200]}"}
+
+            return {"ok": True, "service": "system", "job": job_name, "enabled": action == "enable"}
+        except Exception as e:
+            return {"error": f"Crontab management error: {e}"}
+
+    else:
+        return {"error": f"Unknown service: {service}. Valid: openclaw, jobradar, system"}
+
+
 # --- TOOL DISPATCHER ---
 
 def execute_tool(tool_name: str, tool_input: dict) -> Any:
@@ -1319,6 +1781,7 @@ def execute_tool(tool_name: str, tool_input: dict) -> Any:
         "cost_summary": lambda inp: execute_cost_summary(inp.get("period", "today")),
         "check_api_spirals": lambda inp: execute_check_api_spirals(inp.get("hours", 1)),
         "list_scheduled_tasks": lambda _: execute_list_scheduled_tasks(),
+        "manage_cron": lambda inp: execute_manage_cron(inp["service"], inp["action"], inp.get("job_name", "")),
     }
 
     executor = executors.get(tool_name)

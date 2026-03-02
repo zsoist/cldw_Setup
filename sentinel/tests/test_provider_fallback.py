@@ -80,7 +80,7 @@ def test_no_auto_fallback_on_anthropic_auth_failure(tmp_path):
         mock_google_init.return_value = (MagicMock(), google_model)
 
         agent = SentinelAgent(config)
-        result = agent.process_message(12345, "status")
+        result = agent.process_message(12345, "check disk usage on /var")
 
         assert "temporarily unavailable" in result.lower() or "retry" in result.lower()
         assert anthropic_client.messages.create.call_count >= 1
@@ -104,10 +104,10 @@ def test_repeated_failures_return_error_without_fallback(tmp_path):
         mock_google_init.return_value = (MagicMock(), google_model)
 
         agent = SentinelAgent(config)
-        result1 = agent.process_message(12345, "status one")
+        result1 = agent.process_message(12345, "check disk usage round one")
         assert "temporarily unavailable" in result1.lower() or "retry" in result1.lower()
 
-        result2 = agent.process_message(12345, "status two")
+        result2 = agent.process_message(12345, "check disk usage round two")
         assert "temporarily unavailable" in result2.lower() or "retry" in result2.lower()
 
         # Auto-fallback disabled: Google should NEVER be called
@@ -130,7 +130,7 @@ def test_provider_failure_does_not_persist_orphan_user_turn(tmp_path):
         mock_google_init.return_value = (MagicMock(), google_model)
 
         agent = SentinelAgent(config)
-        result = agent.process_message(12345, "status")
+        result = agent.process_message(12345, "check disk usage on /var")
 
         assert "temporarily unavailable" in result.lower() or "retry" in result.lower()
         assert agent.conversations.get(12345, []) == []
@@ -152,7 +152,7 @@ def test_non_recoverable_primary_error_does_not_fallback(tmp_path):
 
         agent = SentinelAgent(config)
         with pytest.raises(RuntimeError, match="unexpected parser state"):
-            agent.process_message(12345, "status")
+            agent.process_message(12345, "check disk usage on /var")
 
         assert google_model.generate_content.call_count == 0
 
@@ -182,7 +182,7 @@ def test_google_empty_response_does_not_fallback_to_anthropic(tmp_path):
         mock_google_init.return_value = (MagicMock(), google_model)
 
         agent = SentinelAgent(config)
-        result = agent.process_message(12345, "status")
+        result = agent.process_message(12345, "check disk usage on /var")
 
         assert "empty response" in result.lower()
         assert google_model.generate_content.call_count >= 2
@@ -210,7 +210,7 @@ def test_google_empty_response_without_fallback_returns_retry_message(tmp_path):
         mock_google_init.return_value = (MagicMock(), google_model)
 
         agent = SentinelAgent(config)
-        result = agent.process_message(12345, "status")
+        result = agent.process_message(12345, "check disk usage on /var")
 
         assert "empty response" in result.lower()
         assert google_model.generate_content.call_count >= 2

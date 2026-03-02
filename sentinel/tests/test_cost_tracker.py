@@ -79,7 +79,7 @@ def test_sentinel_agent_writes_usage_summary(tmp_path):
         anthropic_client.messages.create.return_value = response
 
         agent = SentinelAgent(config)
-        result = agent.process_message(12345, "status")
+        result = agent.process_message(12345, "check disk usage on /var")
 
     assert result == "ok"
     assert cost_log.exists()
@@ -92,12 +92,12 @@ def test_sentinel_agent_writes_usage_summary(tmp_path):
 
 def test_pricing_table_matches_current_rates():
     """Verify pricing table reflects actual provider rates (Mar 2026)."""
-    # Gemini 2.5 Flash: $0.15 input, $0.60 output per 1M tokens
+    # Gemini 2.5 Flash: $0.30 input, $2.50 output per 1M tokens (standard API tier)
     flash = _MODEL_PRICING["google/gemini-2.5-flash"]
-    assert flash.input_per_million == 0.15
-    assert flash.output_per_million == 0.60
+    assert flash.input_per_million == 0.30
+    assert flash.output_per_million == 2.50
 
-    # Gemini 2.5 Pro: $1.25 input, $10.00 output per 1M tokens
+    # Gemini 2.5 Pro: $1.25 input, $10.00 output per 1M tokens (<=200K input)
     pro = _MODEL_PRICING["google/gemini-2.5-pro"]
     assert pro.input_per_million == 1.25
     assert pro.output_per_million == 10.00
@@ -117,12 +117,19 @@ def test_pricing_table_matches_current_rates():
     assert opus.input_per_million == 5.00
     assert opus.output_per_million == 25.00
 
+    # Codex: subscription-covered, $0
+    codex = _MODEL_PRICING["openai-codex/gpt-5.3-codex"]
+    assert codex.input_per_million == 0.0
+    assert codex.output_per_million == 0.0
+
     # Provider defaults match primary model (Flash for Google)
-    assert _PROVIDER_DEFAULT_PRICING["google"].input_per_million == 0.15
-    assert _PROVIDER_DEFAULT_PRICING["google"].output_per_million == 0.60
+    assert _PROVIDER_DEFAULT_PRICING["google"].input_per_million == 0.30
+    assert _PROVIDER_DEFAULT_PRICING["google"].output_per_million == 2.50
     # Anthropic default = Sonnet 4.6
     assert _PROVIDER_DEFAULT_PRICING["anthropic"].input_per_million == 3.00
     assert _PROVIDER_DEFAULT_PRICING["anthropic"].output_per_million == 15.00
+    # Codex default = $0
+    assert _PROVIDER_DEFAULT_PRICING["openai-codex"].input_per_million == 0.0
 
 
 def test_pruning_throttled_to_interval(tmp_path):
