@@ -1,13 +1,13 @@
 # Architecture Index
 > LLM-optimized codebase map for zsoist/cldw_Setup
-> Last updated: 2026-03-02
+> Last updated: 2026-03-09
 > Read this file FIRST in any new session.
 
 ## System Overview
 
 - VPS: Hetzner CPX22, Ubuntu 24.04, 3 vCPU, 4 GB RAM, 80 GB disk
 - 4 services: OpenClaw (Docker), Sentinel (systemd), Job Radar API (Docker), Job Radar DB (Docker)
-- Repo: `/root/openclaw-project/` -- config templates, scripts, Sentinel source
+- Repo: `/root/openclaw-project/` -- control repo checkout for config templates, scripts, and mirrored service code
 - Live OpenClaw: `/root/.openclaw/` -- runtime config, skills, workspace (NOT in repo)
 - Live Sentinel: `/opt/sentinel/` -- deployed Python files (synced from sentinel/)
 
@@ -24,27 +24,24 @@
 | CLAUDE-CODE-HANDOFF.md | Session handoff state + deployment checklist |
 | .gitignore | .env, venv, __pycache__, backups |
 
-### sentinel/ -- Sysadmin Bot Source (5 files + tests)
+### sentinel/ -- Sysadmin Bot Source (live-mirrored service files)
 
 | File | Purpose | Key Values |
 |------|---------|------------|
-| sentinel.py | Main bot: agentic loop, provider abstraction, token tracking | max_iterations=4, primary: google/gemini-flash, set_cost_tracker() on init |
-| telegram_handler.py | Telegram interface, 7 slash commands, auth | Zero-cost: /status /openclaw /security /backup /cost /tasks + /start |
-| tools.py | 12 tool definitions + whitelist/blocklist security + set_cost_tracker() | system_stats, docker_status, docker_restart, docker_logs, run_command, check_security, check_openclaw_health, backup_openclaw, cost_summary, check_api_spirals, list_scheduled_tasks, manage_cron |
-| config.py | Dataclass config with env var parsing | SENTINEL_MAX_TOKENS=1500, SENTINEL_PROVIDER=google, rate_limit=15/300s |
-| cost_tracker.py | Crash-safe JSONL cost logging + atomic JSON summary | /var/log/sentinel/api-usage.jsonl + api-cost-summary.json + vps-cost-cache.json |
-| requirements.txt | Python deps | google-generativeai, anthropic, python-telegram-bot, psutil, docker |
+| main.py | Service entrypoint used by systemd | `/opt/sentinel/venv/bin/python main.py` |
+| sentinel.py | Main bot: agentic loop, provider abstraction, token tracking | Google provider currently uses `google-generativeai`; venv also carries `google-genai` |
+| telegram_handler.py | Telegram interface + auth flow | Polling bot runtime |
+| discord_handler.py | Discord bot interface | Slash commands synced to live guild |
+| tools.py | Sysadmin tool definitions + policy enforcement | Includes health, backup, cost, cron, and security helpers |
+| config.py | Dataclass config with env var parsing | `SENTINEL_PROVIDER=google`, rate limiting, log paths |
+| cost_tracker.py | Crash-safe JSONL cost logging + atomic JSON summary | `/var/log/sentinel/api-usage.jsonl` + summary files |
+| requirements.txt | Python deps for live service code | anthropic, google-generativeai, google-genai, python-telegram-bot, discord.py, docker |
 
-### sentinel/tests/ -- Pytest Suite (104 tests, mocked, zero API cost)
+### sentinel/tests/ -- Repo-side test residue
 
 | File | Purpose |
 |------|---------|
-| conftest.py | Shared fixtures |
-| test_tools.py | 51 tool execution tests (all 12 tools) |
-| test_telegram.py | Telegram handler tests |
-| test_config.py | Config parsing tests |
-| test_cost_tracker.py | Cost tracking tests |
-| test_provider_fallback.py | Provider fallback tests |
+| test_discord.py | Minimal Discord behavior coverage mirrored from live tree |
 
 ### openclaw/config/ -- Agent Workspace Templates (14 files)
 
@@ -185,7 +182,7 @@
 |--------|-------|
 | API port | 8080 (loopback only) |
 | DB | PostgreSQL 16, db=jobradar |
-| Scheduler | Running, all 6 jobs PAUSED |
+| Scheduler | Running, 3 APScheduler data jobs active (`discovery_sync`, `watchlist_sync`, `cleanup`) |
 
 ---
 

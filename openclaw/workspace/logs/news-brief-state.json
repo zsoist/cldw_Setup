@@ -1,8 +1,48 @@
 {
-  "v": "4.0",
+  "version": "2026-03-09-v1",
   "default_topic": "ai",
   "output_channel": "-1003826801947",
   "tz": "America/Bogota",
+  "config": {
+    "provider": "brave_llm_context",
+    "output_channel": "-1003826801947",
+    "brave_llm_context": {
+      "endpoint": "https://api.search.brave.com/res/v1/llm/context",
+      "request_method": "POST",
+      "count": 14,
+      "maximum_number_of_urls": 14,
+      "maximum_number_of_tokens": 6144,
+      "maximum_number_of_snippets": 30,
+      "maximum_number_of_tokens_per_url": 2048,
+      "maximum_number_of_snippets_per_url": 20,
+      "context_threshold_mode": "balanced",
+      "threshold_by_mode": {
+        "top5": "strict",
+        "full": "balanced",
+        "builder": "balanced",
+        "watchlist": "strict"
+      },
+      "query_constraints": {
+        "max_chars": 400,
+        "max_words": 50
+      },
+      "goggles": null,
+      "enable_local": false,
+      "min_inter_query_delay_seconds": 1
+    },
+    "performance": {
+      "timeout_seconds": 22,
+      "max_retries": 1,
+      "backoff_seconds": [1, 2]
+    }
+  },
+  "providers": {
+    "brave_llm_context": {
+      "status": "unknown",
+      "last_check_at": null,
+      "last_probe_at": null
+    }
+  },
   "last_run": {
     "run_id": null,
     "topic": null,
@@ -11,9 +51,30 @@
     "started_at": null,
     "finished_at": null,
     "stories_found": 0,
-    "brave_calls": 0
+    "brave_calls": 0,
+    "cost_estimate": {
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "model": "",
+      "estimated_usd": 0.0
+    }
+  },
+  "last_successful_run": {
+    "morning": null,
+    "evening": null
   },
   "history": [],
+  "feedback": [],
+  "watchlist": [
+    "openai",
+    "anthropic",
+    "google deepmind",
+    "meta ai",
+    "ai regulation"
+  ],
   "recent_fingerprints": [],
-  "errors": { "consecutive": 0, "last_error": null }
+  "errors": {
+    "consecutive": 0,
+    "last_error": null
+  }
 }

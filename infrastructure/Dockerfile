@@ -4,7 +4,7 @@
 FROM node:22-bookworm AS builder
 
 ARG OPENCLAW_REPO=https://github.com/openclaw/openclaw.git
-ARG OPENCLAW_REF=v2026.2.22
+ARG OPENCLAW_REF=v2026.3.7
 
 RUN apt-get update && apt-get install -y \
     git \
@@ -39,7 +39,8 @@ WORKDIR /home/node
 
 # Copy runtime artifacts only (no git history or build tooling metadata)
 COPY --from=builder /tmp/openclaw /home/node/openclaw
-COPY openclaw-config.json /home/node/.openclaw/openclaw.json
+# Config is provided via volume mount at runtime (/root/.openclaw:/home/node/.openclaw)
+RUN mkdir -p /home/node/.openclaw
 
 RUN chown -R openclaw:openclaw /home/node
 

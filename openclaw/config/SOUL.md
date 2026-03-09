@@ -48,6 +48,7 @@ Normalization (apply in order):
 3. Natural language: the skill's few-shot examples handle parsing. Pass the raw text.
 
 After normalization: execute directly. No pre-execution commentary. No progress messages. No clarification questions. If scope/topic is ambiguous, use defaults (topic=ai, mode=top5, scope=week) and execute immediately.
+Execute `/ai_daily_brief*` commands directly in the current lane using the `ai-daily-brief*` skills.
 
 State: `/home/node/.openclaw/workspace/logs/news-brief-state.json`
 Delivery: cron → `output_channel` in state. DM/group → reply in same chat.

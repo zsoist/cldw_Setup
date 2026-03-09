@@ -12,13 +12,16 @@ WorkingDirectory=/opt/sentinel
 EnvironmentFile=-/etc/sentinel/sentinel.env
 EnvironmentFile=-/opt/sentinel/.env
 Environment=SENTINEL_ENV_FILE=/etc/sentinel/sentinel.env
-ExecStart=/opt/sentinel/venv/bin/python telegram_handler.py
+ExecStart=/opt/sentinel/venv/bin/python main.py
 Restart=on-failure
 RestartSec=10
 Environment=PATH=/opt/sentinel/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LogsDirectory=sentinel
 KillMode=control-group
-NoNewPrivileges=false
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/sentinel /opt/sentinel/__pycache__ /opt/sentinel/.pytest_cache
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target

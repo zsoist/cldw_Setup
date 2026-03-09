@@ -14,7 +14,7 @@ from app.config import cfg
 
 logger = logging.getLogger(__name__)
 
-MAX_ENRICH_PER_CYCLE = 15
+MAX_ENRICH_PER_CYCLE = 25
 
 # Domains where site: queries don't help (aggregators, not the company's own site)
 _AGGREGATOR_DOMAINS = {
@@ -113,7 +113,7 @@ def should_enrich(job_row: dict) -> bool:
     # Enrich if: unclear remote AND decent score
     return (
         remote in ("remote_unspecified", "unknown")
-        and composite >= 35
+        and composite >= 30
     )
 
 

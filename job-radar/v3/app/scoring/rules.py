@@ -70,11 +70,13 @@ HIGH_YOE = re.compile(r'\b([6-9]|[1-9]\d)\+?\s*(?:years?|yrs?|YoE)\b', re.IGNORE
 LOW_YOE = re.compile(r'\b([0-2])\+?\s*(?:years?|yrs?|YoE)\b', re.IGNORECASE)
 
 REMOTE_WORLDWIDE = re.compile(
-    r'\b(worldwide|anywhere|global|fully remote|100% remote|remote.first)\b', re.IGNORECASE
+    r'\b(worldwide|anywhere|global|fully remote|100% remote|remote.first|'
+    r'global\s+team|distributed\s+team|location[- ]agnostic|work\s+from\s+anywhere)\b', re.IGNORECASE
 )
 REMOTE_AMERICAS = re.compile(
     r'\b(americas|latam|latin america|south america|western hemisphere|'
-    r'north america|us/canada|et\.?-\.?pt|eastern\.?-\.?pacific)\b', re.IGNORECASE
+    r'north america|us/canada|et\.?-\.?pt|eastern\.?-\.?pacific|'
+    r'GMT-[345]|UTC-[345]|CT/ET|PT/ET|US\s+time\s?zones?)\b', re.IGNORECASE
 )
 REMOTE_COLOMBIA = re.compile(
     r'\b(colombia|bogot[aá]|medell[ií]n|cali|barranquilla|COL)\b', re.IGNORECASE
@@ -104,7 +106,8 @@ TIMEZONE_FLEXIBLE = re.compile(
 )
 CONTRACTOR_OK = re.compile(
     r'\b(contractor|freelance|contract[- ]to[- ]hire|1099|B2B\s+contract|EOR|'
-    r'deel|remote\.com|oyster|papaya global|letsdeel)\b', re.IGNORECASE
+    r'deel|remote\.com|oyster|papaya global|letsdeel|'
+    r'nearshore|latam\s+talent|talent\s+partner)\b', re.IGNORECASE
 )
 SALARY_PATTERN = re.compile(
     r'\$\s*([\d,]+)\s*(?:k|K)?\s*(?:-|to|–)\s*\$?\s*([\d,]+)\s*(?:k|K)?'
@@ -349,7 +352,7 @@ def score_junior(title: str, description: str) -> tuple[int, int]:
 
 
 def score_colombia(description: str, title: str = "") -> tuple[int, int]:
-    score = 30  # Lower base — must earn remote accessibility
+    score = 35  # Base — most AI/ML remote jobs are accessible from Colombia
     signals = 0
     combined = f"{title} {description}"
 
@@ -368,24 +371,24 @@ def score_colombia(description: str, title: str = "") -> tuple[int, int]:
             return 10, 2
 
     if has_colombia:
-        score += 50
-        signals += 1
-    elif has_americas:
-        score += 40
+        score += 50  # Explicit Colombia mention (rare but strongest)
         signals += 1
     elif has_worldwide:
-        score += 50  # Worldwide ≥ Colombia (includes Colombia by definition)
+        score += 50  # Worldwide includes Colombia by definition
+        signals += 1
+    elif has_americas:
+        score += 48  # LATAM/Americas — the primary Colombia-accessible signal
         signals += 1
     elif re.search(r'\bremote\b', combined, re.IGNORECASE):
-        score += 15  # Bare "remote" — unclear if worldwide
+        score += 30  # Bare "remote" — most remote jobs ARE worldwide
         signals += 1
 
     if TIMEZONE_FLEXIBLE.search(combined):
-        score += 15
+        score += 18
         signals += 1
 
     if CONTRACTOR_OK.search(combined):
-        score += 18
+        score += 20  # Deel/EOR = strong LATAM accessibility signal
         signals += 1
 
     sal_low, _ = parse_salary(description)
@@ -398,7 +401,7 @@ def score_colombia(description: str, title: str = "") -> tuple[int, int]:
 
 def compute_composite(opp: int, junior: int, colombia: int,
                        weights: tuple[float, float, float] | None = None) -> int:
-    w_opp, w_jr, w_col = weights or (0.30, 0.40, 0.30)
+    w_opp, w_jr, w_col = weights or (0.30, 0.30, 0.40)
     return max(0, min(100, round(opp * w_opp + junior * w_jr + colombia * w_col)))
 
 

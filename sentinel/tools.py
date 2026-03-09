@@ -187,17 +187,50 @@ TOOLS = [
 ]
 
 
-def _to_google_function_declaration(tool: dict[str, Any]) -> dict[str, Any]:
-    """Convert Anthropic tool schema to Gemini function declaration format."""
-    return {
-        "name": tool["name"],
-        "description": tool["description"],
-        "parameters": tool["input_schema"],
-    }
+def _build_google_tools() -> list:
+    """Convert Anthropic tool defs to google.genai typed Tool objects.
+
+    Uses lazy import so google.genai is only required when Google provider is active.
+    Falls back to the old dict format if the new SDK is unavailable.
+    """
+    try:
+        from google.genai import types as _gtypes
+    except ImportError:
+        # Fallback for envs without google-genai (e.g. Anthropic-only).
+        return [{"function_declarations": [
+            {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}
+            for t in TOOLS
+        ]}]
+
+    def _schema(obj: dict[str, Any]) -> "_gtypes.Schema":
+        type_map = {"string": "STRING", "integer": "INTEGER", "number": "NUMBER", "boolean": "BOOLEAN", "object": "OBJECT", "array": "ARRAY"}
+        props = {}
+        for k, v in obj.get("properties", {}).items():
+            props[k] = _schema(v) if isinstance(v, dict) else _gtypes.Schema(type="STRING")
+        kwargs: dict[str, Any] = {"type": type_map.get(obj.get("type", ""), "STRING")}
+        if props:
+            kwargs["properties"] = props
+        if obj.get("required"):
+            kwargs["required"] = obj["required"]
+        if "description" in obj:
+            kwargs["description"] = obj["description"]
+        if "enum" in obj:
+            kwargs["enum"] = obj["enum"]
+        return _gtypes.Schema(**kwargs)
+
+    decls = []
+    for tool in TOOLS:
+        schema = tool.get("input_schema", {})
+        has_properties = bool(schema.get("properties"))
+        fd_kwargs: dict[str, Any] = {"name": tool["name"], "description": tool["description"]}
+        if has_properties:
+            fd_kwargs["parameters"] = _schema(schema)
+        decls.append(_gtypes.FunctionDeclaration(**fd_kwargs))
+
+    return [_gtypes.Tool(function_declarations=decls)]
 
 
-GOOGLE_FUNCTION_DECLARATIONS = [_to_google_function_declaration(tool) for tool in TOOLS]
-GOOGLE_TOOLS = [{"function_declarations": GOOGLE_FUNCTION_DECLARATIONS}]
+GOOGLE_TOOLS = _build_google_tools()
 
 
 # --- COMMAND WHITELIST ---
@@ -825,7 +858,9 @@ def _parse_docker_logs_costs(container_name: str, since_hours: int = 24) -> dict
                         result["models"][model] = result["models"].get(model, 0) + 1
                     else:
                         result["models"]["gemini-2.5-flash"] = result["models"].get("gemini-2.5-flash", 0) + 1
-                elif "brave" in line.lower():
+                elif "api.search.brave.com" in line:
+                    # Only count httpx request lines (not connector summary lines)
+                    # to avoid double-counting each Brave API call.
                     result["brave_calls"] += 1
                 elif "error" in line.lower() and "api" in line.lower():
                     result["errors"] += 1
@@ -860,20 +895,14 @@ _MODEL_COST_PER_M = {
 
 # Job Radar descriptions and static fallback (used when API is unreachable).
 _JR_DESCRIPTIONS = {
-    "discovery_sync": "Scrape job boards for new listings",
-    "digest_am": "Morning job matches → Telegram",
-    "digest_pm": "Evening job matches → Telegram",
-    "watchlist_sync": "Check watchlist companies for new posts",
-    "cleanup": "Remove expired listings (>21 days)",
-    "weekly_report": "Weekly stats summary → Telegram",
+    "discovery_sync": "Scrape job boards for new listings (2x/day)",
+    "watchlist_sync": "Check watchlist companies for new posts (1x/day)",
+    "cleanup": "Remove expired listings >21 days (1x/day)",
 }
 _JR_FALLBACK = [
     {"id": "discovery_sync", "schedule": "0 5,17 * * *", "paused": False},
-    {"id": "digest_am", "schedule": "0 13 * * *", "paused": False},
-    {"id": "digest_pm", "schedule": "0 23 * * *", "paused": False},
     {"id": "watchlist_sync", "schedule": "0 7 * * *", "paused": False},
     {"id": "cleanup", "schedule": "0 4 * * *", "paused": False},
-    {"id": "weekly_report", "schedule": "0 23 * * 6", "paused": False},
 ]
 
 # System crontab job patterns for manage_cron tool.
@@ -939,9 +968,23 @@ def _load_vps_cost_cache() -> dict[str, Any]:
         return {}
 
 
+def _prune_vps_cost_cache(cache: dict[str, Any], retention_days: int = 30) -> None:
+    """Remove day entries older than retention_days from the VPS cost cache."""
+    import datetime as _dt
+    cutoff = (_dt.datetime.now(_dt.timezone.utc).date() - _dt.timedelta(days=retention_days)).isoformat()
+    for svc in list(cache.keys()):
+        svc_data = cache[svc]
+        if not isinstance(svc_data, dict):
+            continue
+        stale = [k for k in svc_data if isinstance(k, str) and k < cutoff]
+        for k in stale:
+            del svc_data[k]
+
+
 def _save_vps_cost_cache(cache: dict[str, Any]) -> None:
-    """Atomically save the VPS cost cache."""
+    """Atomically save the VPS cost cache (prunes entries >30 days old)."""
     import tempfile
+    _prune_vps_cost_cache(cache)
     cache_dir = os.path.dirname(_VPS_COST_CACHE_PATH)
     os.makedirs(cache_dir, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(prefix=".vps-cost-cache.", suffix=".json", dir=cache_dir)
@@ -952,7 +995,8 @@ def _save_vps_cost_cache(cache: dict[str, Any]) -> None:
             f.write("\n")
         os.chmod(tmp_path, 0o640)
         os.replace(tmp_path, _VPS_COST_CACHE_PATH)
-    except Exception:
+    except Exception as e:
+        logging.getLogger("sentinel.tools").warning("Failed to write cost cache: %s", e)
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
@@ -1652,12 +1696,15 @@ def execute_manage_cron(service: str, action: str, job_name: str = "") -> dict[s
                 json.dump(data, f, indent=2)
             # Fix ownership (Edit/write resets to root:root)
             subprocess.run(
-                ["chown", "sentinel:systemd-journal", cron_path],
+                ["chown", "-R", "sentinel:systemd-journal",
+                 "/root/.openclaw/cron/", "/root/.openclaw/agents/"],
                 capture_output=True, timeout=5,
             )
-            # Reload gateway config
-            client = docker.from_env()
-            client.containers.get("openclaw-openclaw-gateway-1").kill(signal="SIGUSR1")
+            # Reload gateway config (SIGUSR1 does NOT work — must full restart)
+            subprocess.run(
+                ["/root/.openclaw/reload-config.sh"],
+                capture_output=True, timeout=60,
+            )
         except Exception as e:
             return {"error": f"Updated file but reload failed: {e}"}
 

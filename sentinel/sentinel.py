@@ -28,6 +28,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
+# Keep third-party client logs from leaking tokenized request URLs into journals.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("sentinel")
 
 SYSTEM_PROMPT = """\

@@ -91,11 +91,11 @@ else
   fail "OpenClaw gateway health is ${HS}"
 fi
 
-HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18789/__openclaw__/canvas/ 2>/dev/null || true)"
+HTTP_CODE="$(docker exec openclaw-openclaw-gateway-1 sh -lc "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18789/" 2>/dev/null || true)"
 if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ] || [ "$HTTP_CODE" = "401" ]; then
-  pass "Fallback endpoint reachable (${HTTP_CODE})"
+  pass "Fallback endpoint reachable inside container (${HTTP_CODE})"
 else
-  warn "Fallback endpoint unexpected status (${HTTP_CODE:-000})"
+  warn "Fallback endpoint unexpected status inside container (${HTTP_CODE:-000})"
 fi
 
 if [ -f "$ENV_FILE" ]; then
@@ -572,11 +572,21 @@ print((data.get("result") or {}).get("pending_update_count") or 0)
   if [ -n "$TG_TOKEN" ]; then
     TG_NATIVE_COMMANDS_ENABLED="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require("fs");const p="/home/node/.openclaw/openclaw.json";try{const d=JSON.parse(fs.readFileSync(p,"utf8"));const tg=((d.channels||{}).telegram||{});const commands=(tg.commands||{});const v=(typeof commands.native==="boolean"?commands.native:true);process.stdout.write(v?"true":"false");}catch{process.stdout.write("true");}' 2>/dev/null || echo true)"
     if [ "$TG_NATIVE_COMMANDS_ENABLED" = "true" ]; then
-      CMDS_MISSING="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds={(c.get("command") or "") for c in (d.get("result") or [])}; required=["ai_daily_brief","ai_daily_brief_morning","ai_daily_brief_evening","ai_daily_brief_top5","ai_daily_brief_builder","ai_daily_brief_watchlist","ai_daily_brief_status"]; missing=[c for c in required if c not in cmds]; print(",".join(missing))' 2>/dev/null || true)"
-      if [ -z "$CMDS_MISSING" ]; then
-        pass "Telegram native AI brief commands are registered (/ai_daily_brief + compatibility aliases)"
+      TG_COMMAND_STATUS="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds={(c.get("command") or "") for c in (d.get("result") or [])}; legacy={"ai_daily_brief","ai_daily_brief_morning","ai_daily_brief_evening","ai_daily_brief_top5","ai_daily_brief_builder","ai_daily_brief_watchlist","ai_daily_brief_status"}; has_news_brief="news_brief" in cmds; legacy_present=sorted(cmds & legacy); 
+if has_news_brief:
+    print("OK:news_brief")
+elif legacy_present:
+    print("OK:" + ",".join(legacy_present))
+else:
+    print("MISSING:" + ",".join(sorted(cmds)))' 2>/dev/null || true)"
+      if [[ "$TG_COMMAND_STATUS" == OK:* ]]; then
+        if [ "${TG_COMMAND_STATUS#OK:}" = "news_brief" ]; then
+          pass "Telegram native AI brief skill command is registered as /news_brief (legacy /ai_daily_brief* remains text-routed)"
+        else
+          pass "Telegram native AI brief compatibility commands are registered (${TG_COMMAND_STATUS#OK:})"
+        fi
       else
-        fail "Telegram native AI brief commands missing: ${CMDS_MISSING} (check nativeSkills config + restart)"
+        fail "Telegram native AI brief command missing from menu (expected /news_brief or legacy /ai_daily_brief* aliases; current menu: ${TG_COMMAND_STATUS#MISSING:})"
       fi
     else
       pass "Telegram native commands intentionally disabled (text-command routing mode)"
@@ -588,7 +598,7 @@ import glob
 import os
 import re
 
-skills_root = "/root/openclaw-project/openclaw/skills"
+skills_root = "/root/.openclaw/skills"
 targets = [
     "/ai_daily_brief",
     "/ai_daily_brief_morning",
@@ -687,7 +697,7 @@ PY
       -H 'Accept-Encoding: gzip' \
       -H "X-Subscription-Token: ${BRAVE_API_KEY}" \
       -H 'Content-Type: application/json' \
-      -d '{"q":"latest ai model release updates","count":1,"maximum_number_of_tokens":512,"context_threshold_mode":"strict"}' \
+      -d '{"q":"latest ai model release updates","count":1,"maximum_number_of_tokens":1024,"context_threshold_mode":"strict"}' \
       'https://api.search.brave.com/res/v1/llm/context' \
       2>/tmp/aibrief-brave-context.err || true)"
     if [ "$BRAVE_HTTP_CODE" = "200" ]; then

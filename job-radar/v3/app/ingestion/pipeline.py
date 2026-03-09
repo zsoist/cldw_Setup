@@ -17,6 +17,9 @@ from app.config import cfg, dyn
 
 logger = logging.getLogger(__name__)
 
+# Sources that are remote-only job boards — all listings are inherently remote
+REMOTE_SOURCES = {'remoteok', 'wwr', 'jobicy'}
+
 
 async def run_discovery_sync(sources: list[str] | None = None):
     """Full discovery pipeline. Returns stats dict."""
@@ -61,6 +64,10 @@ async def run_discovery_sync(sources: list[str] | None = None):
                 if not url:
                     stats["errors"] += 1
                     continue
+
+                # Source-level remote hint: remote-only boards are inherently remote
+                if job.get("source") in REMOTE_SOURCES:
+                    job["description"] = "Remote worldwide. " + (job.get("description") or "")
 
                 # Dedup
                 dup = await dedup_check(conn, job)
@@ -245,6 +252,10 @@ async def run_watchlist_sync():
     async with get_conn() as conn:
         for job in raw_jobs:
             try:
+                # Source-level remote hint (watchlist is company-specific, not always remote)
+                if job.get("source") in REMOTE_SOURCES:
+                    job["description"] = "Remote worldwide. " + (job.get("description") or "")
+
                 dup = await dedup_check(conn, job)
                 if dup["is_dup"]:
                     stats["deduped"] += 1

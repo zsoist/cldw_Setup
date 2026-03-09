@@ -1,6 +1,6 @@
 # Claude Code Handoff
 
-> Last updated: 2026-03-02 | Full audit + cost fix + Discord migration prep
+> Last updated: 2026-03-09 | OpenClaw 2026.3.7 rollout + audit cleanup
 >
 > **Start here:** Read `README.md` for architecture, this file for deployment state.
 
@@ -8,7 +8,7 @@
 
 ## Current State
 
-All services healthy. Codex migration complete. Non-essential cron jobs disabled pending Discord migration.
+All services healthy. OpenClaw is on `2026.3.7`. Codex migration is complete. Job Radar APScheduler currently runs three data jobs; AI/news digests are handled outside Job Radar's scheduler.
 
 ### Active Services
 
@@ -16,7 +16,7 @@ All services healthy. Codex migration complete. Non-essential cron jobs disabled
 |---------|--------|-------|
 | OpenClaw Gateway | Running, healthy | Codex-first, 2 sessions max |
 | Sentinel Bot | Running, polling | 12 tools, 104 tests passing |
-| Job Radar API | Running, healthy | Scheduler **paused** (all 6 jobs) |
+| Job Radar API | Running, healthy | Scheduler active (`discovery_sync`, `watchlist_sync`, `cleanup`) |
 | Job Radar DB | Running, healthy | PostgreSQL 16 |
 
 ### Cron Job Status
@@ -25,16 +25,23 @@ All services healthy. Codex migration complete. Non-essential cron jobs disabled
 |-----|--------|-------|
 | news-brief-ai | **DISABLED** | `enabled: false` in jobs.json |
 | news-brief-enb | **DISABLED** | `enabled: false` in jobs.json |
-| JR cleanup | **PAUSED** | Scheduler-level pause |
-| JR discovery_sync | **PAUSED** | Scheduler-level pause |
-| JR watchlist_sync | **PAUSED** | Scheduler-level pause |
-| JR digest_am | **PAUSED** | Scheduler-level pause |
-| JR digest_pm | **PAUSED** | Scheduler-level pause |
-| JR weekly_report | **PAUSED** | Scheduler-level pause |
+| JR cleanup | **ACTIVE** | Daily 04:00 UTC APScheduler job |
+| JR discovery_sync | **ACTIVE** | Daily 05:00 and 17:00 UTC APScheduler job |
+| JR watchlist_sync | **ACTIVE** | Daily 07:00 UTC APScheduler job |
+| JR digests | **EXTERNAL** | Handled by OpenClaw cron/skill flows, not Job Radar APScheduler |
 | System maintenance (11) | **ACTIVE** | Hourly, daily, weekly, monthly, docker-prune, log-cleanup, backup, disk-scrub, sysstat |
 | OpenClaw maintenance (2) | **ACTIVE** | log-cleanup (weekly), backup (daily) |
 
-### Recent Changes (2026-03-02)
+### Recent Changes (2026-03-09)
+
+**OpenClaw 2026.3.7 rollout + VPS audit refresh:**
+- Upgraded gateway from `2026.3.2` to `2026.3.7`
+- Fixed Sentinel runtime dependency drift (`google-generativeai` missing from live venv)
+- Materialized unified API cost rollup at `/root/.openclaw/workspace/logs/api-cost-rollup.json`
+- Updated AI Daily Brief smoke test for OpenClaw `2026.3.7` native Telegram menu behavior (`/news_brief` native skill command; legacy `/ai_daily_brief*` remains text-routed)
+- Live Job Radar scheduler verified active with 3 jobs (`discovery_sync`, `watchlist_sync`, `cleanup`)
+
+### Prior (2026-03-02)
 
 **Full Sentinel audit + bug fixes:**
 - Fixed `/cost today` permission denied -- root cause: Edit tool resets `.py` + `.pyc` ownership to root:root; sentinel process can't read its own source files
@@ -85,7 +92,7 @@ All services healthy. Codex migration complete. Non-essential cron jobs disabled
 | `openclaw/skills/job-radar/SKILL.md` | `/root/.openclaw/skills/job-radar/SKILL.md` |
 | `openclaw/config/*.md` | `/root/.openclaw/workspace/*.md` |
 | `openclaw/jobs.json` | `/root/.openclaw/cron/jobs.json` |
-| `openclaw/openclaw-config.json` | `/root/.openclaw/openclaw.json` (sanitized) |
+| `openclaw/openclaw-config.json` | `/root/.openclaw/openclaw.json` (sanitized live snapshot) |
 
 ---
 

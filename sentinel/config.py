@@ -156,6 +156,23 @@ class SentinelConfig:
         default_factory=lambda: _parse_positive_int("SENTINEL_COST_RETENTION_DAYS", 180, minimum=30, maximum=3650)
     )
 
+    # Discord
+    discord_enabled: bool = field(
+        default_factory=lambda: _parse_bool("SENTINEL_DISCORD_ENABLED", False)
+    )
+    discord_token: str = field(
+        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_DISCORD_BOT_TOKEN", ""))
+    )
+    allowed_discord_user_ids: list[int] = field(
+        default_factory=lambda: _parse_allowed_user_ids(os.getenv("SENTINEL_DISCORD_ALLOWED_USERS", ""))
+    )
+    discord_guild_id: int = field(
+        default_factory=lambda: _parse_positive_int("SENTINEL_DISCORD_GUILD_ID", 0, minimum=0, maximum=10**19)
+    )
+    discord_channel_id: int = field(
+        default_factory=lambda: _parse_positive_int("SENTINEL_DISCORD_CHANNEL_ID", 0, minimum=0, maximum=10**19)
+    )
+
     # System
     openclaw_container_name: str = "openclaw-openclaw-gateway-1"
     log_file: str = "/var/log/sentinel/sentinel.log"
@@ -189,4 +206,9 @@ class SentinelConfig:
             errors.append("SENTINEL_USD_TO_COP_RATE must be > 0")
         if self.cost_retention_days <= 0:
             errors.append("SENTINEL_COST_RETENTION_DAYS must be > 0")
+        if self.discord_enabled:
+            if not self.discord_token:
+                errors.append("SENTINEL_DISCORD_BOT_TOKEN is required when SENTINEL_DISCORD_ENABLED=1")
+            if not self.allowed_discord_user_ids:
+                errors.append("SENTINEL_DISCORD_ALLOWED_USERS is required when SENTINEL_DISCORD_ENABLED=1")
         return errors

@@ -1,9 +1,10 @@
-"""REST API routes — for OpenClaw bridge + programmatic access."""
+"""REST API routes — for OpenClaw skill + programmatic access."""
 import asyncio
+from datetime import datetime, timezone
 from fastapi import APIRouter, Query
 from app.database import get_conn
 from app.scoring.enrichment import explain_scores
-from app.config import cfg
+from app.config import cfg, dyn
 
 router = APIRouter(prefix="/api/v1")
 
@@ -160,3 +161,94 @@ async def trigger_sync():
     from app.ingestion.pipeline import run_discovery_sync
     asyncio.create_task(run_discovery_sync())
     return {"ok": True, "message": "Sync started. New jobs in ~1-2 min."}
+
+
+# --- Scheduler management (used by Sentinel) ---
+
+@router.get("/scheduler/status")
+async def scheduler_status():
+    from app.scheduler import get_scheduler_status_json
+    return get_scheduler_status_json()
+
+
+@router.post("/scheduler/pause")
+async def scheduler_pause():
+    from app.scheduler import pause_scheduler
+    return {"ok": True, "message": pause_scheduler()}
+
+
+@router.post("/scheduler/resume")
+async def scheduler_resume():
+    from app.scheduler import resume_scheduler
+    return {"ok": True, "message": resume_scheduler()}
+
+
+# --- Digest endpoint (consumed by OpenClaw skill) ---
+
+@router.get("/digest")
+async def get_digest(
+    type: str = Query("am", regex="^(am|pm)$"),
+    limit: int = Query(12, le=50),
+    min_score: int = Query(0, ge=0, le=100),
+):
+    """Return digest-ready job data for OpenClaw to format and deliver."""
+    effective_min = min_score if min_score > 0 else dyn('digest_min_composite')
+
+    async with get_conn() as conn:
+        # Top jobs by composite score
+        rows = await conn.fetch("""
+            SELECT j.id, j.title, j.url, j.description_snippet,
+                   j.score_composite, j.score_opportunity, j.score_junior, j.score_colombia,
+                   j.remote_policy, j.tech_stack, j.seniority_signal,
+                   j.yoe_min, j.yoe_max, j.salary_min, j.salary_max,
+                   j.contractor_ok, j.hidden_junior, j.confidence,
+                   j.apply_url, j.discovered_at, j.source,
+                   c.name as company_name, c.ats_platform
+            FROM jobs j JOIN companies c ON j.company_id = c.id
+            WHERE j.status = 'new'
+              AND j.discovered_at > now() - INTERVAL '21 days'
+              AND j.score_composite >= $1
+              AND c.auto_suppress = false
+            ORDER BY j.score_composite DESC
+            LIMIT $2
+        """, effective_min, limit)
+
+        # Pipeline stats
+        saved = await conn.fetchval(
+            "SELECT COUNT(*) FROM jobs WHERE status = 'saved'"
+        ) or 0
+        applied = await conn.fetchval(
+            "SELECT COUNT(*) FROM jobs WHERE status = 'applied'"
+        ) or 0
+        interviewing = await conn.fetchval(
+            "SELECT COUNT(*) FROM jobs WHERE status = 'interviewing'"
+        ) or 0
+        total_new = await conn.fetchval(
+            "SELECT COUNT(*) FROM jobs WHERE status = 'new' "
+            "AND discovered_at > now() - INTERVAL '7 days'"
+        ) or 0
+
+    jobs = []
+    hot_count = 0
+    for r in rows:
+        job = dict(r)
+        # Convert datetime to ISO string for JSON
+        if job.get("discovered_at"):
+            job["discovered_at"] = job["discovered_at"].isoformat()
+        # Count "hot" jobs (composite >= 70)
+        if job.get("score_composite", 0) >= 70:
+            hot_count += 1
+        jobs.append(job)
+
+    return {
+        "type": type,
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "jobs": jobs,
+        "stats": {
+            "total_new": total_new,
+            "hot_count": hot_count,
+            "saved": saved,
+            "applied": applied,
+            "interviewing": interviewing,
+        },
+    }

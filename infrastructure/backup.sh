@@ -28,6 +28,19 @@ find /opt/sentinel -maxdepth 1 -type f \
     \( -name '*.py' -o -name 'requirements.txt' -o -name 'sentinel.service' \) \
     -print >>"$TMP_FILE_LIST"
 
+find /root/openclaw -maxdepth 1 -type f \
+    \( -name 'Dockerfile' -o -name 'docker-compose.yml' -o -name 'openclaw-config.json' \) \
+    -print >>"$TMP_FILE_LIST"
+
+find /root/job-radar -maxdepth 1 -type f \
+    \( -name 'docker-compose.v3.yml' -o -name 'README.md' \) \
+    -print >>"$TMP_FILE_LIST"
+
+find /root/job-radar/v3 -type f \
+    ! -name '.env' \
+    ! -name '*.pyc' \
+    -print >>"$TMP_FILE_LIST"
+
 if [ ! -s "$TMP_FILE_LIST" ]; then
     echo "Backup aborted: no files matched allowlist." >&2
     exit 1

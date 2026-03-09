@@ -66,7 +66,7 @@ chmod +x infrastructure/deploy.sh
 ```
 
 This installs Docker, clones OpenClaw, sets up Sentinel's Python venv, and builds the Docker image.
-By default it pins OpenClaw to the ref configured in `OPENCLAW_REF` (default in this repo: `v2026.2.22`).
+By default it pins OpenClaw to the ref configured in `OPENCLAW_REF` (default in this repo: `v2026.3.7`).
 
 ## Step 5: Configure secrets
 

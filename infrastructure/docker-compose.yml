@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        OPENCLAW_REF: ${OPENCLAW_REF:-v2026.2.22}
+        OPENCLAW_REF: ${OPENCLAW_REF:-v2026.3.7}
     container_name: openclaw-openclaw-gateway-1
     restart: on-failure:5
     stop_grace_period: 30s
@@ -22,6 +22,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - BRAVE_API_KEY=${BRAVE_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
       - AIDB_SEARCH_COUNTRY=${AIDB_SEARCH_COUNTRY:-us}
       - AIDB_SEARCH_LANG=${AIDB_SEARCH_LANG:-en}
       - AIDB_BRAVE_COUNT=${AIDB_BRAVE_COUNT:-5}
@@ -100,17 +101,17 @@ services:
       resources:
         limits:
           cpus: "2.0"        # Reserve 1 vCPU for Sentinel + OS on CPX22 (3 vCPU total)
-          memory: 2560M      # 2.5GB for OpenClaw, leaves ~1.5GB for Sentinel + OS on 4GB total
+          memory: 1536M      # 1.5GB cap — gateway idles ~470MB, startup peak ~520MB
         reservations:
           cpus: "1.0"
-          memory: 1024M
+          memory: 512M
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://127.0.0.1:18789/"]
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:18789/health"]
       interval: 60s
       timeout: 5s
       retries: 3

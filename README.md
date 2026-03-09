@@ -162,13 +162,13 @@ Automated job discovery. Separate Docker containers, sends digests directly via 
 | Setting | Value |
 |---------|-------|
 | Connectors | Brave, HN "Who's Hiring", RemoteOK, WWR, Jobicy, Watchlist |
-| Digest schedule | AM 08:00 COT, PM 18:00 COT |
+| Digest delivery | On-demand via `/job_radar`; scheduled digests handled outside Job Radar APScheduler |
 | Channel | `-1003826801947` |
 | Dedup | Content-based hash |
 | Enrichment | Brave API (no LLM) |
-| Status | **All 6 scheduler jobs PAUSED** |
+| Status | **3 scheduler jobs ACTIVE** (`discovery_sync`, `watchlist_sync`, `cleanup`) |
 
-> **Note:** Job Radar scheduler is paused pending Discord migration. Resume via `POST http://localhost:8080/api/v1/scheduler/resume`.
+> **Note:** Job Radar APScheduler currently runs discovery, watchlist sync, and cleanup. Digests are not scheduled here; they are handled by OpenClaw flows and on-demand skill usage.
 
 Commands: `/job_radar`, `/job_search`, `/job_why`, `/job_trends`, `/job_skills`, `/job_hidden`, `/job_save`, `/job_dismiss`, `/job_health`
 

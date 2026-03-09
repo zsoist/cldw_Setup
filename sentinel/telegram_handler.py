@@ -603,8 +603,11 @@ class SentinelTelegramBot:
             oc_jobs = oc_cron.get("jobs", [])
             # Richer descriptions for known OpenClaw cron jobs
             _OC_DESCRIPTIONS = {
-                "news-brief-ai": "AI news digest → Telegram channel",
-                "news-brief-enb": "Expert networks digest → Telegram channel",
+                "news-brief-ai": "AI news digest → Discord #ai-brief (researcher)",
+                "news-brief-enb": "Expert networks digest → Discord #enb (researcher)",
+                "job-radar-am": "Morning job digest → Discord #job-radar (career)",
+                "job-radar-pm": "Evening job digest → Discord #job-radar (career)",
+                "competitor-intel-weekly": "Weekly competitor scan → Discord #enb (researcher)",
             }
             lines.append(f"\nOpenClaw Cron ({oc_cron.get('count', 0)} jobs)")
             for job in oc_jobs:
@@ -697,8 +700,11 @@ class SentinelTelegramBot:
     # Bot runner
     # ------------------------------------------------------------------
 
-    def run(self) -> None:
-        """Start the Telegram bot."""
+    def build_app(self) -> Application:
+        """Build and configure the Telegram Application (without starting it).
+
+        Used by main.py to run Telegram + Discord in the same event loop.
+        """
         async def _post_init(application: Application) -> None:
             """Register slash commands with Telegram after bot starts."""
             await application.bot.set_my_commands([
@@ -723,6 +729,11 @@ class SentinelTelegramBot:
         app.add_handler(CommandHandler("tasks", self.tasks_command))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
+        return app
+
+    def run(self) -> None:
+        """Start the Telegram bot (blocking, standalone mode)."""
+        app = self.build_app()
         logger.info("Sentinel Telegram bot starting...")
         app.run_polling(allowed_updates=Update.ALL_TYPES)
 

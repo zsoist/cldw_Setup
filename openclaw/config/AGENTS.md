@@ -41,6 +41,7 @@ All sub-agents run on **openai-codex/gpt-5.3-codex** (subscription-covered, gate
 - Generic "morning briefing" / "daily summary" stays with Chief of Staff (unchanged).
 
 ## Routing rules
+- News commands do not require sub-agent spawning for `/ai_daily_brief*` slash commands.
 - `/brief`, `/ai_daily_brief*`, and `/expert_network_brief*` execute directly in-lane via news-brief/SKILL.md — never spawn sub-agents.
 - `/job_*` routes to job-radar skill (backend data only, no Brave).
 - Generic "daily summary" / "morning briefing" → Chief of Staff (NOT News Intelligence).

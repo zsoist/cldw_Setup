@@ -1,9 +1,8 @@
-"""APScheduler setup — no OpenClaw cron dependency."""
+"""APScheduler setup — data ops only (digests handled by OpenClaw cron)."""
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.ingestion.pipeline import run_discovery_sync, run_watchlist_sync, cleanup_expired
-from app.telegram.digest import send_am_digest, send_pm_digest, send_weekly_report
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,7 @@ def setup_scheduler() -> AsyncIOScheduler:
     global _scheduler
     scheduler = AsyncIOScheduler()
 
-    # Discovery sync — 2x daily (was 4x; job boards refresh 1-2x/day max)
+    # Discovery sync — 2x daily (job boards refresh 1-2x/day max)
     scheduler.add_job(
         run_discovery_sync,
         CronTrigger(hour='5,17', timezone='UTC'),
@@ -24,27 +23,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=300,
     )
 
-    # AM Digest — 08:00 COT = 13:00 UTC
-    scheduler.add_job(
-        send_am_digest,
-        CronTrigger(hour=13, minute=0, timezone='UTC'),
-        id='digest_am',
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=300,
-    )
-
-    # PM Digest — 18:00 COT = 23:00 UTC
-    scheduler.add_job(
-        send_pm_digest,
-        CronTrigger(hour=23, minute=0, timezone='UTC'),
-        id='digest_pm',
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=300,
-    )
-
-    # Watchlist sync — 1x daily (was 2x; companies don't post every 12h)
+    # Watchlist sync — 1x daily
     scheduler.add_job(
         run_watchlist_sync,
         CronTrigger(hour='7', timezone='UTC'),
@@ -59,14 +38,6 @@ def setup_scheduler() -> AsyncIOScheduler:
         cleanup_expired,
         CronTrigger(hour=4, timezone='UTC'),
         id='cleanup',
-        max_instances=1,
-    )
-
-    # Weekly report — Saturday 18:00 COT = Saturday 23:00 UTC
-    scheduler.add_job(
-        send_weekly_report,
-        CronTrigger(day_of_week='sat', hour=23, timezone='UTC'),
-        id='weekly_report',
         max_instances=1,
     )
 
@@ -108,3 +79,25 @@ def get_scheduler_status() -> str:
         state = "⏸ paused" if job.next_run_time is None else f"▶️ next: {job.next_run_time.strftime('%H:%M UTC')}"
         lines.append(f"  {job.id}: {state}")
     return "\n".join(lines)
+
+
+def get_scheduler_status_json() -> dict:
+    """Get structured scheduler status for API consumers."""
+    if not _scheduler:
+        return {"running": False, "jobs": []}
+    jobs = []
+    for job in _scheduler.get_jobs():
+        paused = job.next_run_time is None
+        trigger = job.trigger
+        schedule = str(trigger) if trigger else "?"
+        # Extract CronTrigger fields if possible
+        if isinstance(trigger, CronTrigger):
+            fields = {f.name: str(f) for f in trigger.fields}
+            schedule = f"{fields.get('minute', '*')} {fields.get('hour', '*')} {fields.get('day', '*')} {fields.get('month', '*')} {fields.get('day_of_week', '*')}"
+        jobs.append({
+            "id": job.id,
+            "paused": paused,
+            "next_run": job.next_run_time.strftime('%H:%M UTC') if job.next_run_time else None,
+            "schedule": schedule,
+        })
+    return {"running": True, "jobs": jobs}

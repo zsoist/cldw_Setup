@@ -1,4 +1,4 @@
-# Job Radar V3 — Standalone Agent
+# Job Radar V3 — Data Engine (delivery via OpenClaw)
 # Usage: docker compose -f /root/job-radar/docker-compose.v3.yml up -d
 #
 # VPS resource budget (CPX22 — 3 vCPU / 4 GB RAM):
@@ -12,7 +12,7 @@ services:
   job-radar-db:
     image: postgres:16-alpine
     container_name: job-radar-db
-    restart: unless-stopped
+    restart: on-failure:5
     environment:
       POSTGRES_DB: jobradar
       POSTGRES_USER: jobradar
@@ -55,22 +55,19 @@ services:
       context: ./v3
       dockerfile: Dockerfile
     container_name: job-radar-agent
-    restart: unless-stopped
+    restart: on-failure:5
     depends_on:
       job-radar-db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://jobradar:${JOB_RADAR_DB_PASSWORD:-jobradar_prod_pw_2026}@job-radar-db:5432/jobradar
-      TELEGRAM_BOT_TOKEN: ${JR_TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHANNEL_ID: "${TELEGRAM_CHANNEL_ID:--1003826801947}"
-      TELEGRAM_OWNER_CHAT_ID: "${TELEGRAM_ADMIN_USER_ID:-6182588021}"
       BRAVE_API_KEY: ${BRAVE_API_KEY:-}
       BRAVE_RESULTS_PER_QUERY: "10"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       ENRICHMENT_MODEL: gemini-2.5-flash
       JOB_MAX_AGE_DAYS: "21"
       JOB_STALE_WARNING_DAYS: "14"
-      DIGEST_MIN_COMPOSITE: "45"
+      DIGEST_MIN_COMPOSITE: "38"
       DIGEST_MAX_JOBS: "12"
       DEDUP_FUZZY_THRESHOLD: "0.75"
       DEDUP_WINDOW_DAYS: "60"

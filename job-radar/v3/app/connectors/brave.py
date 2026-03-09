@@ -6,12 +6,12 @@ from app.config import cfg
 logger = logging.getLogger(__name__)
 
 BRAVE_QUERIES = [
-    'remote AI engineer site:greenhouse.io OR site:lever.co OR site:ashbyhq.com',
-    'remote "machine learning" engineer site:greenhouse.io OR site:ashbyhq.com OR site:wellfound.com',
-    'remote ML engineer OR "AI engineer" entry OR junior site:lever.co OR site:workable.com',
-    'remote python pytorch LLM engineer site:greenhouse.io OR site:lever.co',
-    'remote NLP OR "computer vision" OR "deep learning" engineer site:ashbyhq.com OR site:greenhouse.io',
-    'remote AI engineer LATAM OR "Latin America" OR "Americas timezone" site:wellfound.com OR site:lever.co OR site:ashbyhq.com',
+    'remote AI engineer LATAM OR "Latin America" OR "Americas timezone"',
+    'remote "machine learning" engineer worldwide OR "fully remote" OR "any timezone"',
+    'remote ML OR AI engineer Colombia OR "South America" OR Deel OR EOR',
+    'remote python pytorch LLM engineer "remote-first" OR "distributed team"',
+    'remote data scientist OR "data engineer" LATAM OR Americas OR worldwide',
+    'remote NLP OR "computer vision" OR MLOps engineer "open to contractors" OR B2B OR freelance',
 ]
 
 

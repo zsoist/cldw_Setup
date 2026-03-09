@@ -1,7 +1,7 @@
 {
   "meta": {
-    "lastTouchedVersion": "2026.2.26",
-    "lastTouchedAt": "2026-03-01T20:58:06.435Z"
+    "lastTouchedVersion": "2026.3.2",
+    "lastTouchedAt": "2026-03-02T17:09:00.000Z"
   },
   "auth": {
     "profiles": {
@@ -65,6 +65,25 @@
     }
   },
   "agents": {
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "workspace": "/home/node/.openclaw/agents/main/workspace"
+      },
+      {
+        "id": "researcher",
+        "workspace": "/home/node/.openclaw/agents/researcher/workspace"
+      },
+      {
+        "id": "career",
+        "workspace": "/home/node/.openclaw/agents/career/workspace"
+      },
+      {
+        "id": "dev",
+        "workspace": "/home/node/.openclaw/agents/dev/workspace"
+      }
+    ],
     "defaults": {
       "model": {
         "primary": "openai-codex/gpt-5.3-codex",
@@ -80,7 +99,11 @@
       },
       "models": {
         "openai-codex/gpt-5.3-codex": {
-          "alias": "codex"
+          "alias": "codex",
+          "params": {
+            "transport": "auto",
+            "openaiWsWarmup": true
+          }
         },
         "openai/gpt-4o-mini": {},
         "openai/gpt-4o": {
@@ -91,7 +114,7 @@
         },
         "google/gemini-2.5-flash": {}
       },
-      "workspace": "/home/node/.openclaw/workspace",
+      "workspace": "/home/node/.openclaw/agents/main/workspace",
       "contextTokens": 65536,
       "contextPruning": {
         "mode": "cache-ttl",
@@ -100,13 +123,19 @@
         "minPrunableToolChars": 500
       },
       "compaction": {
-        "mode": "safeguard"
+        "mode": "safeguard",
+        "memoryFlush": {
+          "enabled": true
+        }
       },
       "thinkingDefault": "off",
       "verboseDefault": "off",
       "timeoutSeconds": 300,
       "heartbeat": {
         "every": "180m",
+        "target": "last",
+        "directPolicy": "allow",
+        "lightContext": true,
         "activeHours": {
           "start": "07:00",
           "end": "23:00",
@@ -121,9 +150,74 @@
         "archiveAfterMinutes": 30,
         "model": "openai-codex/gpt-5.3-codex",
         "runTimeoutSeconds": 120
+      },
+      "memorySearch": {
+        "provider": "gemini",
+        "model": "gemini-embedding-001",
+        "cache": {
+          "enabled": true,
+          "maxEntries": 50000
+        },
+        "query": {
+          "hybrid": {
+            "enabled": true,
+            "vectorWeight": 0.7,
+            "textWeight": 0.3,
+            "mmr": {
+              "enabled": true,
+              "lambda": 0.7
+            },
+            "temporalDecay": {
+              "enabled": true,
+              "halfLifeDays": 30
+            }
+          }
+        }
       }
     }
   },
+  "bindings": [
+    {
+      "agentId": "researcher",
+      "match": {
+        "channel": "discord",
+        "peer": {
+          "kind": "channel",
+          "id": "1477876277753942127"
+        }
+      }
+    },
+    {
+      "agentId": "researcher",
+      "match": {
+        "channel": "discord",
+        "peer": {
+          "kind": "channel",
+          "id": "1478238259636207636"
+        }
+      }
+    },
+    {
+      "agentId": "career",
+      "match": {
+        "channel": "discord",
+        "peer": {
+          "kind": "channel",
+          "id": "1477876302240288890"
+        }
+      }
+    },
+    {
+      "agentId": "dev",
+      "match": {
+        "channel": "discord",
+        "peer": {
+          "kind": "channel",
+          "id": "1477876351502647437"
+        }
+      }
+    }
+  ],
   "tools": {
     "deny": [
       "browser",
@@ -141,18 +235,110 @@
     },
     "media": {
       "concurrency": 2
+    },
+    "loopDetection": {
+      "enabled": true,
+      "warningThreshold": 10,
+      "criticalThreshold": 20,
+      "globalCircuitBreakerThreshold": 30,
+      "historySize": 30,
+      "detectors": {
+        "genericRepeat": true,
+        "knownPollNoProgress": true,
+        "pingPong": true
+      }
     }
   },
   "commands": {
-    "native": "auto",
-    "nativeSkills": "auto",
+    "native": true,
+    "nativeSkills": true,
     "restart": true,
     "ownerDisplay": "raw"
   },
   "session": {
-    "dmScope": "per-channel-peer"
+    "dmScope": "per-channel-peer",
+    "maintenance": {
+      "mode": "enforce",
+      "pruneAfter": "30d",
+      "maxEntries": 500,
+      "rotateBytes": "10mb",
+      "resetArchiveRetention": "14d"
+    },
+    "reset": {
+      "mode": "daily",
+      "atHour": 4
+    }
+  },
+  "acp": {
+    "enabled": true,
+    "dispatch": {
+      "enabled": true
+    },
+    "backend": "acpx",
+    "defaultAgent": "codex",
+    "allowedAgents": [
+      "codex"
+    ],
+    "maxConcurrentSessions": 4,
+    "stream": {
+      "coalesceIdleMs": 300,
+      "maxChunkChars": 1200
+    },
+    "runtime": {
+      "ttlMinutes": 120
+    }
   },
   "channels": {
+    "discord": {
+      "enabled": true,
+      "allowBots": false,
+      "dmPolicy": "allowlist",
+      "allowFrom": [
+        "544353625875677185"
+      ],
+      "groupPolicy": "allowlist",
+      "guilds": {
+        "1477826670760296548": {
+          "requireMention": false
+        }
+      },
+      "dm": {
+        "groupEnabled": false
+      },
+      "threadBindings": {
+        "spawnAcpSessions": true,
+        "idleHours": 48,
+        "maxAgeHours": 168
+      },
+      "commands": {
+        "native": true,
+        "nativeSkills": true
+      },
+      "historyLimit": 50,
+      "dmHistoryLimit": 100,
+      "textChunkLimit": 1900,
+      "execApprovals": {
+        "enabled": false
+      },
+      "streaming": "off",
+      "accounts": {
+        "default": {
+          "eventQueue": {
+            "listenerTimeout": 120000
+          }
+        }
+      },
+      "ui": {
+        "components": {
+          "accentColor": "#5865F2"
+        }
+      },
+      "actions": {
+        "reactions": true,
+        "messages": true,
+        "threads": true
+      }
+    },
     "telegram": {
       "enabled": true,
       "commands": {
@@ -160,7 +346,6 @@
         "nativeSkills": true
       },
       "dmPolicy": "allowlist",
-      "botToken": "YOUR_BOT_TOKEN",
       "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
       "groups": {
         "*": {
@@ -174,21 +359,13 @@
         }
       },
       "allowFrom": [
-        "YOUR_TELEGRAM_USER_ID"
+        "6182588021"
       ],
       "groupPolicy": "allowlist",
       "streaming": "off",
       "accounts": {
         "default": {
-          "enabled": true,
-          "dmPolicy": "allowlist",
-          "botToken": "YOUR_BOT_TOKEN",
-          "tokenFile": "/home/node/.openclaw/secrets/telegram-default.token",
-          "allowFrom": [
-            "YOUR_TELEGRAM_USER_ID"
-          ],
-          "groupPolicy": "allowlist",
-          "streaming": "off"
+          "enabled": true
         }
       }
     }
@@ -197,9 +374,7 @@
     "port": 18789,
     "mode": "local",
     "bind": "auto",
-    "controlUi": {
-      "dangerouslyAllowHostHeaderOriginFallback": true
-    },
+    "controlUi": {},
     "auth": {
       "mode": "token",
       "token": "YOUR_GATEWAY_AUTH_TOKEN"
@@ -209,9 +384,33 @@
       "resetOnExit": false
     }
   },
+  "cron": {
+    "enabled": true,
+    "maxConcurrentRuns": 1,
+    "sessionRetention": "24h"
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "session-memory": {
+          "enabled": true
+        },
+        "command-logger": {
+          "enabled": true
+        }
+      }
+    }
+  },
   "plugins": {
     "entries": {
       "telegram": {
+        "enabled": true
+      },
+      "discord": {
+        "enabled": true
+      },
+      "acpx": {
         "enabled": true
       }
     }

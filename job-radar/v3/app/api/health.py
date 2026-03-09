@@ -42,6 +42,5 @@ async def health_full():
         "last_sync": str(last_sync) if last_sync else None,
         "last_digest": str(last_digest) if last_digest else None,
         "brave_api": "configured" if cfg.BRAVE_API_KEY else "missing",
-        "telegram": "configured" if cfg.TELEGRAM_BOT_TOKEN else "missing",
         "gemini": "configured" if cfg.GEMINI_API_KEY else "missing",
     }
