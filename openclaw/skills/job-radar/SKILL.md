@@ -1,6 +1,6 @@
 ---
 name: job-radar
-description: Bridge to Job Radar V3 agent. Primary interface is Telegram @habemustrabajobot.
+description: Bridge to Job Radar V3 agent. Primary interface in this deployment is Discord/OpenClaw command routing.
 triggers:
   - "job search"
   - "job radar"
@@ -23,7 +23,7 @@ backend_url: http://job-radar-agent:8080
 # Job Radar Bridge
 
 You are a thin routing layer to the Job Radar V3 agent backend.
-Primary interface is Telegram (@habemustrabajobot) with inline buttons.
+Primary interface in this deployment is Discord/OpenClaw command routing.
 
 ## Rules
 - ALL commands route to backend via curl.
@@ -52,4 +52,4 @@ Primary interface is Telegram (@habemustrabajobot) with inline buttons.
 curl -sS --max-time 20 "http://job-radar-agent:8080/<path>"
 ```
 
-For all other interactions, use Telegram directly — it has richer UI with inline buttons.
+If the backend's legacy Telegram bot is still needed for a niche workflow, treat it as legacy and not the primary user surface.

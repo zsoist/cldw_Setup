@@ -1,8 +1,8 @@
 # Troubleshooting Guide
 
-> Last updated: 2026-03-02 (full audit + bug fixes). For codebase navigation, see `ARCHITECTURE.md`.
+> Last updated: 2026-03-09 (Discord-first + Sentinel Codex runtime). For codebase navigation, see `ARCHITECTURE.md`.
 
-> **Model note:** OpenClaw uses `openai-codex/gpt-5.3-codex` (subscription-covered, OAuth) as default. Flash references below are historical or Sentinel-specific. Sentinel uses `google/gemini-2.5-flash`.
+> **Model note:** OpenClaw uses `openai-codex/gpt-5.3-codex` (subscription-covered, OAuth) as default, including heartbeat. Sentinel uses `openai/gpt-5-codex` via the OpenAI Responses API. Flash references below are historical or optional rollback paths.
 
 ---
 
@@ -846,9 +846,9 @@ docker compose logs --since=120s openclaw-gateway | grep -Ei 'gemini|google|mode
 ```
 
 Expected behavior:
-- With `GEMINI_API_KEY` set and valid, routine chat should use `google/gemini-2.5-flash`.
-- If Gemini is unavailable, Sentinel retries once then returns an error. Auto-fallback to Anthropic is disabled (Haiku is never used).
-- For manual Anthropic override: set `SENTINEL_PROVIDER=anthropic` in sentinel.env (uses Sonnet 4.6).
+- `GEMINI_API_KEY` is retained for optional manual fallback paths, not the primary runtime.
+- OpenClaw keeps `openai-codex/gpt-5.3-codex` as primary and `google/gemini-2.5-flash` as fallback.
+- Sentinel primary runtime is `openai/gpt-5-codex`; for manual rollback, set `SENTINEL_PROVIDER=google` and `SENTINEL_MODEL=gemini-2.5-flash`.
 
 Claude-only mode (intentional temporary rollback):
 ```bash
@@ -860,8 +860,8 @@ docker compose up -d --force-recreate
 ```
 
 ### High token usage
-1. Check provider usage dashboards (Gemini primary; Anthropic manual-only — auto-fallback disabled) for daily breakdown
-2. Verify AGENTS.md has Gemini Flash as default (not Gemini Pro/Sonnet)
+1. Check provider usage dashboards (Codex primary for OpenClaw heartbeat/chat; Sentinel on OpenAI Codex API) for daily breakdown
+2. Verify AGENTS.md keeps Codex as default and heartbeat stays on the lightweight heartbeat policy
 3. Check if heartbeat is running during silent hours (it shouldn't)
 4. Review conversation logs for unnecessary Gemini Pro/Sonnet/Opus escalations
 5. Ensure compaction mode is "safeguard" in openclaw.json
@@ -1147,11 +1147,11 @@ journalctl -u sentinel --since "1 hour ago" | grep -i error
 grep SENTINEL_TELEGRAM_TOKEN /root/openclaw/.env 2>/dev/null || echo "Check environment variables"
 ```
 
-### Sentinel says Gemini returned empty response
-This is usually a transient Gemini SDK/provider response edge case.
+### Sentinel says OpenAI returned empty response
+This is usually a transient Responses API/provider edge case.
 
 ```bash
-# 1) Confirm Sentinel is on Gemini primary
+# 1) Confirm Sentinel is on the expected primary runtime
 grep '^SENTINEL_PROVIDER=' /root/openclaw/.env
 grep '^SENTINEL_MODEL=' /root/openclaw/.env
 

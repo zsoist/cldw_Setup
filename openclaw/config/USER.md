@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.21-main-hardening -->
+<!-- config-version: 2026.03.09-discord-primary -->
 
 # User Profile
 
@@ -33,5 +33,5 @@
 - Timezone: America/Bogota (UTC-5)
 - Risk tolerance: moderate — prefer safe defaults, but allow bounded initiative
 - Cost sensitivity: high — optimize for token efficiency, warn if task >$0.50
-- Notification style: Telegram for summaries/alerts, not for long reports
+- Notification style: Discord for routine interaction and summaries; Telegram reserved for Sentinel ops only
 - Silent hours: 23:00-07:00 COT (no proactive messages)

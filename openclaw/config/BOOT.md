@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.21-main-hardening -->
+<!-- config-version: 2026.03.09-discord-primary -->
 
 # Boot — Startup Behavior
 
@@ -10,7 +10,7 @@ This is NOT first-run behavior (see BOOTSTRAP.md for that).
 2. Verify model routing config is readable (AGENTS.md parsed)
 3. Verify cron jobs are loaded (CRON.md parsed)
 4. Verify heartbeat config is active (HEARTBEAT.md parsed)
-5. Confirm Telegram channel connection is live
+5. Confirm Discord channel connection is live
 6. Check workspace directories exist (personal/, business/, outputs/, logs/)
 
 ## Startup Safety
@@ -21,8 +21,8 @@ This is NOT first-run behavior (see BOOTSTRAP.md for that).
 
 ## On Failure
 - If any check fails: log to logs/change-log.md with timestamp
-- If gateway HTTP fails: notify via Telegram if channel is available
-- If model config unreadable: fall back to Flash defaults, log warning
+- If gateway HTTP fails: notify via Sentinel/Discord if a safe channel is available
+- If model config unreadable: fall back to configured Codex routing, log warning
 - Do NOT attempt auto-repair of config files
 
 ## Status Report

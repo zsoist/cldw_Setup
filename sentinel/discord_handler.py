@@ -105,6 +105,18 @@ class SentinelDiscordBot:
         zero_stats["status"] = "cached"
         self.agent._store_last_request_stats(user_id, zero_stats)
 
+    def _runtime_provider_model(self) -> tuple[str, str]:
+        """Return the configured runtime provider/model in user-facing form."""
+        provider = str(getattr(self.config, "provider", "openai") or "openai").strip().lower()
+        if provider in {"codex", "openai-codex"}:
+            provider = "openai"
+        model = str(getattr(self.config, "model", "gpt-5-codex") or "gpt-5-codex").strip()
+        if provider == "openai" and ("codex" in model.lower() or model.startswith("openai-codex/")):
+            model = "gpt-5-codex"
+        if provider == "google" and model in {"flash", "gemini-flash"}:
+            model = "gemini-2.5-flash"
+        return provider, model
+
     # ------------------------------------------------------------------
     # Safe chunked reply
     # ------------------------------------------------------------------
@@ -537,10 +549,16 @@ class SentinelDiscordBot:
                     err = self._append_usage_footer(message.author.id, err_text)
                     await self._reply_chunked(message, err)
 
-    @staticmethod
-    def _check_static_response(text: str) -> str | None:
+    def _check_static_response(self, text: str) -> str | None:
         """Return static response for known greetings/queries, or None."""
         lower = text.lower().strip()
+        provider, model = self._runtime_provider_model()
+        provider_labels = {
+            "openai": "OpenAI",
+            "google": "Google Gemini",
+            "anthropic": "Anthropic",
+        }
+        provider_label = provider_labels.get(provider, provider.title())
         statics = {
             "hi": "Sentinel online.",
             "hello": "Sentinel online.",
@@ -567,8 +585,11 @@ class SentinelDiscordBot:
                 "\u2022 Cron job management\n"
                 "\u2022 OpenClaw health monitoring"
             ),
-            "model": "Sentinel runs on Gemini 2.5 Flash ($0.30/$2.50 per 1M tokens).",
-            "codex": "OpenClaw uses GPT-5.3 Codex (subscription-covered, $0/token). Sentinel uses Gemini Flash.",
+            "model": f"Sentinel runs on {model} via {provider_label}.",
+            "codex": (
+                f"OpenClaw uses GPT-5.3 Codex (subscription-covered). "
+                f"Sentinel uses {model} via {provider_label}."
+            ),
             "capabilities": (
                 "**Sentinel Capabilities**\n"
                 "\u2022 System monitoring (CPU, RAM, disk)\n"

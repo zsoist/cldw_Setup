@@ -1,6 +1,6 @@
 # OpenClaw + Sentinel + Job Radar
 
-Production AI system on a Hetzner CPX22 VPS. Codex-first model stack, targeting **$9-11/month total** (VPS + API).
+Production AI system on a Hetzner CPX22 VPS. Codex-first model stack with Discord-first OpenClaw, Sentinel on the OpenAI Responses API, and variable API spend driven mainly by Sentinel usage.
 
 ## Architecture
 
@@ -9,13 +9,13 @@ Production AI system on a Hetzner CPX22 VPS. Codex-first model stack, targeting 
                         |              Hetzner CPX22 VPS                            |
                         |         Ubuntu 24.04 LTS | 3 vCPU | 4GB RAM              |
                         |                                                           |
-  Telegram ----------->|  +-------------------------+  +-----------------------+   |
-  (OpenClaw Bot)       |  |    Docker Container      |  |   systemd service     |   |
+  Discord -----------> |  +-------------------------+  +-----------------------+   |
+  (OpenClaw Channels)  |  |    Docker Container      |  |   systemd service     |   |
                         |  |                          |  |                       |   |
                         |  |    OpenClaw Gateway      |  |   Sentinel Bot        |   |
                         |  |    Port 18789 (lo)       |  |   Python + SDK        |   |
                         |  |                          |  |                       |   |
-                        |  |  +------+  +----------+  |  |   Flash (Gemini)      |   |
+                        |  |  +------+  +----------+  |  |   Codex (OpenAI API)  |   |
                         |  |  | main |  |   work   |  |  |   12 tool functions   |   |
   Telegram ----------->|  |  | agent|  |  agent   |  |  |   Strict whitelist    |   |
   (Sentinel Bot)       |  |  |      |  | sandbox  |  |  +-----------------------+   |
@@ -36,8 +36,8 @@ Production AI system on a Hetzner CPX22 VPS. Codex-first model stack, targeting 
 
 | Component | Role | Runtime | Model |
 |-----------|------|---------|-------|
-| **OpenClaw** | User-facing AI: news briefs, research, job search, scheduling | Docker container | GPT-5.3 Codex (subscription-covered) |
-| **Sentinel** | Infrastructure sysadmin: Docker, monitoring, security, backups, costs, cron mgmt | systemd service | Gemini 2.5 Flash |
+| **OpenClaw** | Discord-first user-facing AI: research, job search, scheduling, human-triggered outbound work | Docker container | GPT-5.3 Codex (subscription-covered) |
+| **Sentinel** | Infrastructure sysadmin across Discord + Telegram: Docker, monitoring, security, backups, costs, cron mgmt | systemd service | gpt-5-codex (OpenAI API) |
 | **Job Radar** | Automated job discovery + digests | Docker containers (API + PostgreSQL) | None (Brave API only) |
 
 ### Model Routing (Codex-first)
@@ -54,7 +54,7 @@ Auto-fallback to Anthropic: DISABLED. Haiku: NEVER used. API-key models (gpt-4o-
 
 ## Sentinel
 
-Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. Google/Gemini 2.5 Flash, max_tokens 1500, 12 tools.
+Infrastructure sysadmin bot. systemd service at `/opt/sentinel/`. Discord-primary for operator control, Telegram retained for Sentinel-only access and alerts. Runs `gpt-5-codex` via the OpenAI Responses API, max_tokens 1500, 12 tools.
 
 ### Tools
 
@@ -92,8 +92,8 @@ Plus static responses for: `hi`, `thanks`, `ok`, `help`, `ping`, `what can you d
 
 | Setting | Value |
 |---------|-------|
-| Provider | google / gemini-2.5-flash |
-| Fallback | anthropic / claude-haiku-4-5 (only on Google failure) |
+| Provider | openai / gpt-5-codex |
+| Fallback | none (single-provider runtime) |
 | max_tokens | 1500 |
 | max_tool_iterations | 4 |
 | conversation_ttl | 900s |
@@ -105,7 +105,7 @@ Plus static responses for: `hi`, `thanks`, `ok`, `help`, `ping`, `what can you d
 
 ## News Brief v4
 
-Unified news intelligence system. 1 skill replaces the 9 V3 skills. Topic-flexible, natural language or commands, Telegram-native.
+Unified news intelligence system. 1 skill replaces the 9 V3 skills. Topic-flexible, natural language or commands, invoked from approved OpenClaw Discord channels/threads in this deployment.
 
 ### How to Use
 
@@ -138,7 +138,7 @@ brief me on crypto last year         -> any topic, any timeframe
 | AI Top 5 | `10 12 * * *` | 07:10 | Codex | 120s | **DISABLED** |
 | ENB Top 5 | `0 12 * * *` | 07:00 | Codex | 120s | **DISABLED** |
 
-Delivery: Telegram channel `-1003826801947`. Session: isolated.
+Delivery: human-triggered from approved Discord channels/threads. Disabled cron jobs are pre-targeted at the main OpenClaw Discord channel.
 
 > **Note:** Cron jobs are currently disabled pending Discord migration. Can be re-enabled by setting `enabled: true` in `jobs.json` and reloading config.
 
@@ -150,7 +150,7 @@ Delivery: Telegram channel `-1003826801947`. Session: isolated.
 | E02 | Zero results from Brave |
 | E03 | All results outside date window |
 | E04 | State file write failed (non-critical) |
-| E05 | Telegram delivery failed |
+| E05 | Channel delivery failed |
 | E06 | Tool call limit reached |
 
 ---
@@ -202,13 +202,13 @@ Commands: `/job_radar`, `/job_search`, `/job_why`, `/job_trends`, `/job_skills`,
 │
 ├── sentinel/                              # Sysadmin Bot source
 │   ├── sentinel.py                        # Agentic loop + tool chaining
-│   ├── telegram_handler.py                # Telegram interface + auth
+│   ├── telegram_handler.py                # Telegram interface + auth (Sentinel-only surface)
 │   ├── config.py                          # Config validation
 │   ├── cost_tracker.py                    # API cost accounting
 │   ├── tools.py                           # 12 tools + security
 │   ├── sentinel.service
 │   ├── requirements.txt
-│   └── tests/                             # 104 tests (mocked, zero API cost)
+│   └── tests/                             # 70 tests (mocked, zero API cost)
 │
 ├── openclaw/                              # OpenClaw Gateway config
 │   ├── openclaw-config.json               # Config template (secrets placeholder)
@@ -242,10 +242,10 @@ Commands: `/job_radar`, `/job_search`, `/job_why`, `/job_trends`, `/job_skills`,
 ## Security
 
 - **Network:** UFW deny-all except SSH, gateway on loopback only, key-only SSH
-- **Application:** Sentinel whitelist/blocklist, Telegram user allowlist, Docker isolation (uid=999)
+- **Application:** Sentinel whitelist/blocklist, Discord allowlists, Docker isolation (uid=999)
 - **Agent isolation:** main/work agents separated, work agent sandboxed
 - **Secrets:** `.env` files in `.gitignore`, never committed. No real keys in repo.
-- **Telegram:** 2 bots (OpenClaw Bot + Sentinel Bot), delivery channel `-1003826801947`
+- **Channels:** OpenClaw is Discord-first. Telegram is reserved for the separate Sentinel bot.
 
 ---
 
@@ -255,11 +255,11 @@ Commands: `/job_radar`, `/job_search`, `/job_why`, `/job_trends`, `/job_skills`,
 |-----------|---------|
 | Hetzner CPX22 | ~$8 |
 | Codex (subscription-covered) | $0 |
-| Sentinel LLM (Flash) | ~$1-3 |
+| Sentinel LLM (OpenAI API) | Variable by usage |
 | Brave API | Free tier |
-| **Total** | **$9-11** |
+| **Total** | **VPS + variable Sentinel API usage** |
 
-Down from $14-23/month with the Flash-only stack.
+OpenClaw remains subscription-covered. Sentinel is the primary usage-billed surface.
 
 ---
 
@@ -293,7 +293,7 @@ restart the openclaw gateway -> Container restart
 pause all cron jobs on job radar -> Scheduler pause
 ```
 
-### Telegram Smoke Tests — OpenClaw
+### Discord Smoke Tests — OpenClaw
 ```
 /brief status              -> system health
 /brief help                -> usage guide

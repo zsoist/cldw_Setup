@@ -1,7 +1,7 @@
 {
   "meta": {
-    "lastTouchedVersion": "2026.3.2",
-    "lastTouchedAt": "2026-03-02T17:09:00.000Z"
+    "lastTouchedVersion": "2026.3.7",
+    "lastTouchedAt": "2026-03-09T18:30:00.000Z"
   },
   "auth": {
     "profiles": {
@@ -142,7 +142,7 @@
           "timezone": "America/Bogota"
         },
         "model": "openai-codex/gpt-5.3-codex",
-        "ackMaxChars": 100
+        "ackMaxChars": 80
       },
       "maxConcurrent": 2,
       "subagents": {
@@ -340,7 +340,7 @@
       }
     },
     "telegram": {
-      "enabled": true,
+      "enabled": false,
       "commands": {
         "native": true,
         "nativeSkills": true
@@ -365,7 +365,7 @@
       "streaming": "off",
       "accounts": {
         "default": {
-          "enabled": true
+          "enabled": false
         }
       }
     }

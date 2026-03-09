@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.26-audit-fixes -->
+<!-- config-version: 2026.03.09-discord-primary -->
 
 # Memory
 
@@ -16,7 +16,7 @@
 - OpenClaw + Sentinel VPS infrastructure (Hetzner CPX22)
 
 ## Standard Operating Procedures
-- AI top stories brief at 07:10 COT (12:10 UTC, previous day scope) via Telegram
+- AI top stories brief is human-triggered from approved Discord channels; legacy cron delivery remains disabled
 - End-of-day summaries and weekly reviews are on-demand
 - GitHub backup daily at 03:00 COT (no secrets in repo)
 - Heartbeat every 180 minutes during active hours (07:00-23:00 COT)

@@ -77,7 +77,7 @@ All services healthy. OpenClaw is on `2026.3.7`. Codex migration is complete. Jo
 | `/root/.openclaw/workspace/AGENTS.md` | Agent registry + behavioral contract |
 | `/root/.openclaw/workspace/TOOLS.md` | Tool policy + efficiency rules |
 | `/root/.openclaw/workspace/CRON.md` | Cron docs |
-| `/opt/sentinel/*.py` | Sentinel source (Flash, separate service) |
+| `/opt/sentinel/*.py` | Sentinel source (Codex via OpenAI API, separate service) |
 | `/etc/sentinel/sentinel.env` | Sentinel env vars (max_tokens=1500) |
 | `/root/openclaw/docker-compose.yml` | Docker config |
 | `/var/log/sentinel/` | Logs + cost tracking (api-usage.jsonl, api-cost-summary.json, vps-cost-cache.json) |

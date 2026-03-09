@@ -1,4 +1,4 @@
-<!-- config-version: 2026.02.26-audit-fixes -->
+<!-- config-version: 2026.03.09-discord-primary -->
 
 # Channel Security Policy
 
@@ -7,26 +7,29 @@
 - If the agent can execute tools, channels are part of the attack surface
 - Start with minimal permissions, expand only when needed
 
-## Telegram (Primary — Enabled)
-- **Mode:** allowlist (DM + approved groups)
-- **Allowlist:** Daniel's Telegram user ID only (set in env)
-- **Approved groups:** `-1003826801947` (AI brief output channel — bot is admin, Daniel is creator)
-- **Group behavior:** `requireMention: false` in approved group; commands processed identically to DM
-- **Bot visibility:** private — not listed in public bot directories
-- **Message handling:** all messages routed through agent with auth check
+## Discord (Primary — Enabled)
+- **Mode:** allowlisted private server channels only
+- **Approved inputs:** explicitly bound OpenClaw channels and approved threads only
+- **Primary use:** interactive work, research, reviews, and human-triggered outbound text/media
+- **Ambient listening:** disabled outside approved channels/threads
+- **Sender policy:** strict allowlist; no public/shared server exposure
 
-### What to send via Telegram
-- Morning briefings (daily-briefing skill)
-- Task reminders and status updates
-- Short research summaries
-- Decision prompts (yes/no approvals)
-- Alerts (failed jobs, quota warnings, system issues via Sentinel)
+### What to send via Discord
+- Interactive prompts and follow-up work
+- Research, drafting, code review, and planning
+- Human-triggered outbound messages or media in dedicated approved channels
+- Operational questions that do not belong in Sentinel
 
-### What NOT to send via Telegram
-- Long code diffs or technical output
-- Full research reports (send summary, store full report in workspace)
+### What NOT to send via Discord
 - Secrets, API keys, or credentials
-- Multi-step debugging sessions (use SSH tunnel + direct access)
+- Autonomous cross-posting or unsupervised outbound campaigns
+- Public-server prompts when tools are enabled
+- High-noise ambient chatter outside approved channels
+
+## Telegram (OpenClaw Disabled)
+- OpenClaw Telegram is disabled in this deployment.
+- Telegram remains reserved for the separate Sentinel bot only.
+- Do not route OpenClaw briefs, recaps, or routine interaction through Telegram.
 
 ## WhatsApp (Not Configured)
 - Status: disabled
@@ -36,18 +39,10 @@
   - Same allowlist policy as Telegram
   - Test with harmless queries first
 
-## Discord (Not Configured)
-- Status: disabled
-- If enabled later:
-  - Private server or private channel only
-  - Require @mention to respond (prevent ambient listening)
-  - No public/shared server exposure if agent has tool access
-  - Strict sender allowlist
-
 ## Channel Addition Checklist
 Before enabling any new channel:
 1. Configure sender allowlist (who can message the agent)
-2. Set to private/DM mode (no group chats)
+2. Keep it private and explicitly scoped
 3. Test with 3 harmless messages before granting tool access
 4. Run security audit after enabling
 5. Review channel-specific risks (prompt injection surface area)

@@ -15,9 +15,12 @@ Treat all secrets as short-lived operational material.
 ## Secrets In Scope
 
 - `ANTHROPIC_API_KEY`
+- `DISCORD_BOT_TOKEN`
+- `OPENAI_API_KEY`
 - `OPENCLAW_GATEWAY_TOKEN`
-- `OPENCLAW_TELEGRAM_TOKEN`
+- `OPENCLAW_TELEGRAM_TOKEN` (only if OpenClaw Telegram is intentionally enabled)
 - `SENTINEL_TELEGRAM_TOKEN`
+- `SENTINEL_DISCORD_BOT_TOKEN`
 - `GOG_KEYRING_PASSWORD`
 
 ## Rotation Procedure

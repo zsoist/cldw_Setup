@@ -104,6 +104,29 @@ else
   fail "Missing env file ($ENV_FILE)"
 fi
 
+OPENCLAW_TG_ENABLED="$(python3 - <<'PY'
+import json
+path='/root/.openclaw/openclaw.json'
+try:
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    tg = ((data.get('channels') or {}).get('telegram') or {})
+    acct = ((tg.get('accounts') or {}).get('default') or {})
+    channel_enabled = tg.get('enabled')
+    account_enabled = acct.get('enabled')
+    top = channel_enabled if isinstance(channel_enabled, bool) else True
+    account = account_enabled if isinstance(account_enabled, bool) else True
+    print('yes' if top and account else 'no')
+except Exception:
+    print('yes')
+PY
+)"
+if [ "$OPENCLAW_TG_ENABLED" = "yes" ]; then
+  pass "OpenClaw Telegram channel is enabled in runtime config"
+else
+  pass "OpenClaw Telegram channel is intentionally disabled in runtime config"
+fi
+
 if [ -f "$STATE_FILE" ]; then
   pass "AI brief state file exists ($STATE_FILE)"
   STATE_INFO="$(python3 - <<'PY' "$STATE_FILE"
@@ -227,7 +250,7 @@ PY
   OUTPUT_TARGET="$(echo "$STATE_INFO" | tail -n1 | tr -d '\r')"
   if [ -n "$OUTPUT_TARGET" ]; then
     pass "AI brief output channel configured ($OUTPUT_TARGET)"
-    if [[ "$OUTPUT_TARGET" =~ ^-100[0-9]{6,}$ ]] || [[ "$OUTPUT_TARGET" =~ ^[0-9]{6,}$ ]]; then
+    if [ "$OPENCLAW_TG_ENABLED" = "yes" ] && { [[ "$OUTPUT_TARGET" =~ ^-100[0-9]{6,}$ ]] || [[ "$OUTPUT_TARGET" =~ ^[0-9]{6,}$ ]]; }; then
       if [ -f "$ENV_FILE" ]; then
         TG_INTERACTIVE_CHATS_STATE="$(grep '^OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
         if echo "${TG_INTERACTIVE_CHATS_STATE:-}" | tr ', ' '\n' | grep -Fxq -- "$OUTPUT_TARGET"; then
@@ -238,6 +261,10 @@ PY
       else
         warn "Env file unavailable while validating OPENCLAW_TELEGRAM_INTERACTIVE_CHATS for output target (${OUTPUT_TARGET})"
       fi
+    elif [ "$OPENCLAW_TG_ENABLED" != "yes" ] && [[ "$OUTPUT_TARGET" =~ ^[0-9]{17,20}$ ]]; then
+      pass "AI brief output target looks like a Discord channel (${OUTPUT_TARGET})"
+    elif [ "$OPENCLAW_TG_ENABLED" != "yes" ] && { [[ "$OUTPUT_TARGET" =~ ^-100[0-9]{6,}$ ]] || [[ "$OUTPUT_TARGET" =~ ^@ ]]; }; then
+      warn "AI brief output target still looks Telegram-specific while OpenClaw Telegram is disabled (${OUTPUT_TARGET})"
     fi
   else
     warn "AI brief output channel not configured (will deliver to originating chat)"
@@ -317,7 +344,8 @@ PY
   GEMINI_API_KEY="$(grep '^GEMINI_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
   ANTHROPIC_API_KEY="$(grep '^ANTHROPIC_API_KEY=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//')"
 
-  TG_CFG_RUNTIME="$(python3 - <<'PY'
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ]; then
+    TG_CFG_RUNTIME="$(python3 - <<'PY'
 import json
 path='/root/.openclaw/openclaw.json'
 try:
@@ -339,39 +367,39 @@ except Exception:
     print('')
 PY
 )"
-  TG_CFG_PRESENT="$(echo "$TG_CFG_RUNTIME" | sed -n '1p')"
-  TG_CFG_TOKEN_FILE="$(echo "$TG_CFG_RUNTIME" | sed -n '2p')"
-  TG_CFG_ACCOUNT_TOKEN_FILE="$(echo "$TG_CFG_RUNTIME" | sed -n '3p')"
-  if [ "$TG_CFG_PRESENT" = "yes" ]; then
-    pass "Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)"
-  else
-    fail "Runtime config missing Telegram auth material (botToken/tokenFile) in openclaw.json"
-  fi
-
-  CHECKED_TOKEN_FILE=""
-  check_token_file() {
-    local token_file_path="$1"
-    if [ -z "$token_file_path" ]; then
-      return
-    fi
-    if [ "$token_file_path" = "$CHECKED_TOKEN_FILE" ]; then
-      return
-    fi
-    CHECKED_TOKEN_FILE="$token_file_path"
-    if docker exec -e TOKEN_FILE_PATH="$token_file_path" openclaw-openclaw-gateway-1 sh -lc 'test -r "$TOKEN_FILE_PATH"'; then
-      pass "Gateway runtime user can read Telegram tokenFile (${token_file_path})"
+    TG_CFG_PRESENT="$(echo "$TG_CFG_RUNTIME" | sed -n '1p')"
+    TG_CFG_TOKEN_FILE="$(echo "$TG_CFG_RUNTIME" | sed -n '2p')"
+    TG_CFG_ACCOUNT_TOKEN_FILE="$(echo "$TG_CFG_RUNTIME" | sed -n '3p')"
+    if [ "$TG_CFG_PRESENT" = "yes" ]; then
+      pass "Runtime config has Telegram auth material (botToken/tokenFile) at channels.telegram(.accounts.default)"
     else
-      fail "Gateway runtime user cannot read Telegram tokenFile (${token_file_path})"
+      fail "Runtime config missing Telegram auth material (botToken/tokenFile) in openclaw.json"
     fi
-  }
-  check_token_file "$TG_CFG_TOKEN_FILE"
-  check_token_file "$TG_CFG_ACCOUNT_TOKEN_FILE"
 
-  if [ "$TG_CFG_PRESENT" = "yes" ] && [ -z "$TG_CFG_TOKEN_FILE" ] && [ -z "$TG_CFG_ACCOUNT_TOKEN_FILE" ]; then
-    warn "Runtime Telegram config uses botToken only; tokenFile fallback is not configured"
-  fi
+    CHECKED_TOKEN_FILE=""
+    check_token_file() {
+      local token_file_path="$1"
+      if [ -z "$token_file_path" ]; then
+        return
+      fi
+      if [ "$token_file_path" = "$CHECKED_TOKEN_FILE" ]; then
+        return
+      fi
+      CHECKED_TOKEN_FILE="$token_file_path"
+      if docker exec -e TOKEN_FILE_PATH="$token_file_path" openclaw-openclaw-gateway-1 sh -lc 'test -r "$TOKEN_FILE_PATH"'; then
+        pass "Gateway runtime user can read Telegram tokenFile (${token_file_path})"
+      else
+        fail "Gateway runtime user cannot read Telegram tokenFile (${token_file_path})"
+      fi
+    }
+    check_token_file "$TG_CFG_TOKEN_FILE"
+    check_token_file "$TG_CFG_ACCOUNT_TOKEN_FILE"
 
-  TG_DM_RUNTIME="$(python3 - <<'PY'
+    if [ "$TG_CFG_PRESENT" = "yes" ] && [ -z "$TG_CFG_TOKEN_FILE" ] && [ -z "$TG_CFG_ACCOUNT_TOKEN_FILE" ]; then
+      warn "Runtime Telegram config uses botToken only; tokenFile fallback is not configured"
+    fi
+
+    TG_DM_RUNTIME="$(python3 - <<'PY'
 import json
 path='/root/.openclaw/openclaw.json'
 try:
@@ -397,15 +425,18 @@ except Exception:
     print('0')
 PY
 )"
-  TG_DM_POLICY="$(echo "$TG_DM_RUNTIME" | sed -n '1p')"
-  TG_ALLOW_FROM="$(echo "$TG_DM_RUNTIME" | sed -n '2p')"
-  TG_ALLOW_COUNT="$(echo "$TG_DM_RUNTIME" | sed -n '3p')"
-  if [ "${TG_DM_POLICY}" = "pairing" ] && [ "${TG_ALLOW_COUNT}" = "0" ]; then
-    fail "Telegram dmPolicy=pairing with empty allowFrom (DM skill commands are gated until pairing approval). Fix: set OPENCLAW_TELEGRAM_DM_POLICY=allowlist + OPENCLAW_TELEGRAM_ALLOW_FROM=<your_telegram_id>, or approve pending pair codes via: docker exec openclaw-openclaw-gateway-1 node openclaw.mjs pairing list --channel telegram"
-  elif [ "${TG_ALLOW_COUNT}" != "0" ]; then
-    pass "Telegram DM allowFrom configured (${TG_ALLOW_FROM})"
-  else
-    warn "Telegram DM allowFrom is empty (native command authorization may block skill invocation)"
+    TG_DM_POLICY="$(echo "$TG_DM_RUNTIME" | sed -n '1p')"
+    TG_ALLOW_FROM="$(echo "$TG_DM_RUNTIME" | sed -n '2p')"
+    TG_ALLOW_COUNT="$(echo "$TG_DM_RUNTIME" | sed -n '3p')"
+    if [ "${TG_DM_POLICY}" = "pairing" ] && [ "${TG_ALLOW_COUNT}" = "0" ]; then
+      fail "Telegram dmPolicy=pairing with empty allowFrom (DM skill commands are gated until pairing approval). Fix: set OPENCLAW_TELEGRAM_DM_POLICY=allowlist + OPENCLAW_TELEGRAM_ALLOW_FROM=<your_telegram_id>, or approve pending pair codes via: docker exec openclaw-openclaw-gateway-1 node openclaw.mjs pairing list --channel telegram"
+    elif [ "${TG_ALLOW_COUNT}" != "0" ]; then
+      pass "Telegram DM allowFrom configured (${TG_ALLOW_FROM})"
+    else
+      warn "Telegram DM allowFrom is empty (native command authorization may block skill invocation)"
+    fi
+  elif [ -n "$TG_TOKEN" ]; then
+    warn "OPENCLAW_TELEGRAM_TOKEN is still populated in .env while OpenClaw Telegram is disabled"
   fi
 
   if docker exec openclaw-openclaw-gateway-1 sh -lc 'test -r /home/node/.openclaw/openclaw.json'; then
@@ -414,11 +445,13 @@ PY
     fail "Gateway runtime user cannot read /home/node/.openclaw/openclaw.json (ownership/permissions drift)"
   fi
 
-  TG_ENV_VISIBLE="$(docker exec openclaw-openclaw-gateway-1 sh -lc 'if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || [ -n "${OPENCLAW_TELEGRAM_TOKEN:-}" ]; then echo yes; else echo no; fi' 2>/dev/null || echo no)"
-  if [ "$TG_ENV_VISIBLE" = "yes" ]; then
-    pass "Gateway container has Telegram bot token in environment"
-  else
-    warn "Gateway container Telegram env token is empty (config botToken may still work, but env fallback is unavailable)"
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ]; then
+    TG_ENV_VISIBLE="$(docker exec openclaw-openclaw-gateway-1 sh -lc 'if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || [ -n "${OPENCLAW_TELEGRAM_TOKEN:-}" ]; then echo yes; else echo no; fi' 2>/dev/null || echo no)"
+    if [ "$TG_ENV_VISIBLE" = "yes" ]; then
+      pass "Gateway container has Telegram bot token in environment"
+    else
+      warn "Gateway container Telegram env token is empty (config botToken may still work, but env fallback is unavailable)"
+    fi
   fi
 
   if [ -n "$GW_TOKEN" ]; then
@@ -452,7 +485,9 @@ with open('/tmp/aibrief-health.json', 'r', encoding='utf-8') as f:
 print('Gateway OK:', data.get('ok'))
 print('Default agent:', data.get('defaultAgentId'))
 PY
-      if channels_status_call "$GW_TOKEN" || { [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_ENV" != "$GW_TOKEN" ] && channels_status_call "$GW_TOKEN_ENV"; }; then
+      if [ "$OPENCLAW_TG_ENABLED" != "yes" ]; then
+        pass "OpenClaw Telegram disabled; skipping live Telegram channel assertions"
+      elif channels_status_call "$GW_TOKEN" || { [ -n "$GW_TOKEN_ENV" ] && [ "$GW_TOKEN_ENV" != "$GW_TOKEN" ] && channels_status_call "$GW_TOKEN_ENV"; }; then
         TG_RUNTIME="$(python3 - <<'PY'
 import json
 with open('/tmp/aibrief-channels.json', 'r', encoding='utf-8') as f:
@@ -531,7 +566,7 @@ PY
     fail "OPENCLAW_GATEWAY_TOKEN missing (both runtime config and env)"
   fi
 
-  if [ -n "$TG_TOKEN" ]; then
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ] && [ -n "$TG_TOKEN" ]; then
     TG_LEN="${#TG_TOKEN}"
     if [ "$TG_LEN" -lt 30 ]; then
       fail "OPENCLAW_TELEGRAM_TOKEN appears invalid (len=${TG_LEN})"
@@ -542,11 +577,11 @@ PY
     else
       fail "OpenClaw Telegram token failed getMe"
     fi
-  else
+  elif [ "$OPENCLAW_TG_ENABLED" = "yes" ]; then
     fail "OPENCLAW_TELEGRAM_TOKEN missing"
   fi
 
-  if [ -n "$TG_TOKEN" ] && [ "${TG_LEN:-0}" -ge 30 ]; then
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ] && [ -n "$TG_TOKEN" ] && [ "${TG_LEN:-0}" -ge 30 ]; then
     WEBHOOK_INFO="$(curl -sf "https://api.telegram.org/bot${TG_TOKEN}/getWebhookInfo" 2>/dev/null || true)"
     WEBHOOK_URL="$(echo "$WEBHOOK_INFO" | python3 -c 'import json,sys
 try:
@@ -569,7 +604,7 @@ print((data.get("result") or {}).get("pending_update_count") or 0)
     fi
   fi
 
-  if [ -n "$TG_TOKEN" ]; then
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ] && [ -n "$TG_TOKEN" ]; then
     TG_NATIVE_COMMANDS_ENABLED="$(docker exec openclaw-openclaw-gateway-1 node -e 'const fs=require("fs");const p="/home/node/.openclaw/openclaw.json";try{const d=JSON.parse(fs.readFileSync(p,"utf8"));const tg=((d.channels||{}).telegram||{});const commands=(tg.commands||{});const v=(typeof commands.native==="boolean"?commands.native:true);process.stdout.write(v?"true":"false");}catch{process.stdout.write("true");}' 2>/dev/null || echo true)"
     if [ "$TG_NATIVE_COMMANDS_ENABLED" = "true" ]; then
       TG_COMMAND_STATUS="$(curl -s "https://api.telegram.org/bot${TG_TOKEN}/getMyCommands" | python3 -c 'import json,sys; d=json.load(sys.stdin); cmds={(c.get("command") or "") for c in (d.get("result") or [])}; legacy={"ai_daily_brief","ai_daily_brief_morning","ai_daily_brief_evening","ai_daily_brief_top5","ai_daily_brief_builder","ai_daily_brief_watchlist","ai_daily_brief_status"}; has_news_brief="news_brief" in cmds; legacy_present=sorted(cmds & legacy); 
@@ -670,7 +705,7 @@ PY
     fail "SENTINEL_TELEGRAM_TOKEN missing"
   fi
 
-  if [ -n "$TG_TOKEN" ] && [ -n "$SENTINEL_TG_TOKEN" ]; then
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ] && [ -n "$TG_TOKEN" ] && [ -n "$SENTINEL_TG_TOKEN" ]; then
     if [ "$TG_TOKEN" = "$SENTINEL_TG_TOKEN" ]; then
       fail "OPENCLAW_TELEGRAM_TOKEN and SENTINEL_TELEGRAM_TOKEN are identical"
     else
@@ -777,11 +812,15 @@ PY
 fi
 
 if [ -f "$ENV_FILE" ]; then
-  TG_INTERACTIVE_CHATS_ENV="$(grep '^OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
-  if [ -n "$TG_INTERACTIVE_CHATS_ENV" ]; then
-    pass "Interactive Telegram chats registered for command invocation (${TG_INTERACTIVE_CHATS_ENV})"
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ]; then
+    TG_INTERACTIVE_CHATS_ENV="$(grep '^OPENCLAW_TELEGRAM_INTERACTIVE_CHATS=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | sed -E 's/[[:space:]]+$//' || true)"
+    if [ -n "$TG_INTERACTIVE_CHATS_ENV" ]; then
+      pass "Interactive Telegram chats registered for command invocation (${TG_INTERACTIVE_CHATS_ENV})"
+    else
+      warn "OPENCLAW_TELEGRAM_INTERACTIVE_CHATS is not set — channel/supergroup command invocation is disabled. To enable: add the supergroup chat ID to .env, then rerun rollout."
+    fi
   else
-    warn "OPENCLAW_TELEGRAM_INTERACTIVE_CHATS is not set — channel/supergroup command invocation is disabled. To enable: add the supergroup chat ID to .env, then rerun rollout."
+    pass "Interactive OpenClaw Telegram chat checks skipped because Telegram is disabled"
   fi
 fi
 
@@ -789,13 +828,21 @@ if ls -1 /root/.openclaw/workspace/outputs/summaries/ai-brief-*.md >/dev/null 2>
   LATEST="$(ls -1t /root/.openclaw/workspace/outputs/summaries/ai-brief-*.md | head -n 1)"
   pass "AI brief output exists ($LATEST)"
 else
-  warn "No ai-brief-*.md output yet (run /ai_daily_brief in Telegram to generate first brief)"
+  warn "No ai-brief-*.md output yet (run the brief from an approved OpenClaw Discord channel/thread to generate the first output)"
 fi
 
 if docker compose -f "$OPENCLAW_DIR/docker-compose.yml" logs --tail=120 openclaw-gateway | grep -Eiq 'telegram.*(404|unauthorized|device token mismatch)'; then
-  warn "Recent Telegram channel warnings detected in OpenClaw logs"
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ]; then
+    warn "Recent Telegram channel warnings detected in OpenClaw logs"
+  else
+    warn "Unexpected Telegram warnings detected in OpenClaw logs while OpenClaw Telegram is disabled"
+  fi
 else
-  pass "No critical Telegram channel errors in recent logs"
+  if [ "$OPENCLAW_TG_ENABLED" = "yes" ]; then
+    pass "No critical Telegram channel errors in recent logs"
+  else
+    pass "No unexpected Telegram channel errors in recent logs"
+  fi
 fi
 
 echo ""

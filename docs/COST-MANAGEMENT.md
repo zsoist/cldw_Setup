@@ -1,6 +1,6 @@
 # Cost Management Guide
 
-> Last updated: 2026-03-02
+> Last updated: 2026-03-09
 
 ## Monthly budget breakdown
 
@@ -8,20 +8,21 @@
 |---|---|
 | Hetzner CPX22 | ~$8/mo (3 vCPU, 4GB RAM, 80GB NVMe) |
 | OpenClaw (Codex) | $0 (subscription-covered) |
-| Sentinel (Flash) | ~$1-3 |
+| Sentinel (Codex API) | Variable, depends on interactive usage |
 | Brave API | Free tier |
-| **Total** | **~$9-11/month** |
+| **Total** | **VPS + variable Sentinel API usage** |
 
-Down from $14-23/month with Flash-only architecture.
+OpenClaw remains subscription-covered. Sentinel is now the main variable API-cost surface.
 
 ## Model cost profile
 
 | Model | Cost | Role |
 |-------|------|------|
 | OpenAI Codex (gpt-5.3-codex) | Subscription-covered | OpenClaw default (all tasks) |
-| Gemini 2.5 Flash | $0.30/$2.50 per 1M tokens | Sentinel default, OpenClaw fallback |
+| Gemini 2.5 Flash | $0.30/$2.50 per 1M tokens | OpenClaw fallback, optional Sentinel rollback |
 | Gemini 2.5 Pro | $1.25/$10.00 per 1M tokens | Manual research escalation only |
-| Claude Haiku 4.5 | $1.00/$5.00 per 1M tokens | Sentinel fallback only (on Google failure) |
+| OpenAI Codex (`gpt-5-codex`) | API-billed | Sentinel default |
+| Claude Haiku 4.5 | $1.00/$5.00 per 1M tokens | Legacy/rollback only |
 | gpt-4o-mini, gpt-4o | API-key pricing | Configured but NOT used |
 
 ## Cost optimization strategies
@@ -32,12 +33,13 @@ Down from $14-23/month with Flash-only architecture.
 - Only Sentinel and Brave API have marginal costs
 
 ### 2. Sentinel cost control
-- Provider: Gemini 2.5 Flash (cheapest viable model)
+- Provider: OpenAI Codex (`gpt-5-codex`)
 - max_tokens: 1500 (prevents verbose responses)
 - Zero-cost commands: /status, /openclaw, /security, /backup, /cost bypass LLM entirely
 - 10s Telegram long-poll timeout — zero cost at idle
 - conversation_ttl: 900s (clears stale history)
 - VPS-wide cost tracking: persistent cache at /var/log/sentinel/vps-cost-cache.json
+- Keep Discord usage in the dedicated Sentinel channel to avoid accidental chatter
 
 ### 3. Anti-spiral safeguards
 - contextTokens: 65536 (hard cap prevents runaway sessions)
@@ -77,7 +79,8 @@ docker stats --no-stream
 
 | Provider | Billing | Budget |
 |----------|---------|--------|
-| OpenAI Codex | Subscription (fixed monthly) | Covered by subscription |
+| OpenAI Codex (OpenClaw) | Subscription-backed OAuth | Covered by subscription |
+| OpenAI Codex (Sentinel) | API key / usage billed | Variable |
 | Google AI Studio | Pay-per-token | Set alert at $5/month |
 | Anthropic | Not actively used | Auto-fallback disabled |
 | Brave | Free tier | Gateway-enforced caps |
@@ -85,7 +88,7 @@ docker stats --no-stream
 ## What NOT to do
 
 - Do not enable auto-fallback to Anthropic (incompatible history format, cost explosion)
-- Do not switch Sentinel from Flash to a more expensive model
+- Do not switch Sentinel away from `gpt-5-codex` without a clear reason and a budget check
 - Do not increase maxConcurrent above 2 (resource contention on 4GB RAM)
 - Do not remove anti-spiral safeguards (contextTokens cap, session budget, tools.deny)
 - Do not set Docker restart policy to `unless-stopped` (caused 54 restarts in 50 min)

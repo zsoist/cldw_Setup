@@ -20,9 +20,14 @@ try:
 except ImportError:  # pragma: no cover - dependency may be unavailable in local test envs
     Anthropic = None
 
+try:
+    from openai import OpenAI
+except ImportError:  # pragma: no cover - dependency may be unavailable in local test envs
+    OpenAI = None
+
 from config import SentinelConfig
 from cost_tracker import APICostTracker
-from tools import GOOGLE_TOOLS, TOOLS, execute_tool, set_cost_tracker
+from tools import GOOGLE_TOOLS, OPENAI_TOOLS, TOOLS, execute_tool, set_cost_tracker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,11 +37,22 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("sentinel")
 
-SYSTEM_PROMPT = """\
+def _prompt_runtime_line(config: SentinelConfig) -> str:
+    provider = config.provider
+    model = (config.model or "").strip() or "gpt-5-codex"
+    if provider == "openai":
+        return f"You run on OpenAI Codex via Responses API: {model}."
+    if provider == "anthropic":
+        return f"You run on Anthropic: {model}."
+    return f"You run on Google Gemini: {model}."
+
+
+def _build_system_prompt(config: SentinelConfig) -> str:
+    return f"""\
 <role>
 Sentinel — sysadmin of Hetzner CPX22 VPS (Ubuntu 24.04).
-You manage infrastructure. OpenClaw (Docker, Codex model) handles AI tasks.
-You run on Gemini Flash — cheapest viable model ($0.30/$2.50 per 1M tokens).
+You manage infrastructure. OpenClaw handles user-facing AI work.
+{_prompt_runtime_line(config)}
 </role>
 
 <rules>
@@ -44,7 +60,7 @@ You run on Gemini Flash — cheapest viable model ($0.30/$2.50 per 1M tokens).
 - Execute restarts immediately when requested. Only confirm data deletion.
 - Maximum 8 bullet points per response. No prose paragraphs.
 - Never list your capabilities unless user explicitly asks "what can you do".
-- If gateway is down, report it and offer to restart — don't just report status.
+- If gateway is down, report it and offer to restart.
 - Use ONLY provided tools. Never suggest manual SSH commands.
 - Never expose secrets, tokens, or API keys.
 - If a tool fails, retry once before reporting failure.
@@ -52,14 +68,13 @@ You run on Gemini Flash — cheapest viable model ($0.30/$2.50 per 1M tokens).
 
 <environment>
 - Containers: openclaw-openclaw-gateway-1, job-radar-agent, job-radar-db
-- Channels: Telegram (Sentinel + cron delivery), Discord (OpenClaw ACP threads)
-- OpenClaw: Codex model (subscription), Flash fallback. Hooks: session-memory, command-logger
-- Cron: AI brief 07:10 COT, ENB brief 07:00 COT (isolated, announce to Telegram)
-- Heartbeat: 180m interval, 07:00-23:00 COT, target=last
-- Anti-spiral: loopDetection (warn@10/critical@20/breaker@30), on-failure:5, SOUL.md budgets
-- Session: daily reset 04:00, enforce maintenance, Gemini embeddings memory search
+- Discord is the primary operator surface. OpenClaw is Discord-first.
+- Telegram remains enabled for Sentinel only. OpenClaw Telegram is disabled in this deployment.
+- OpenClaw primary model: GPT-5.3 Codex. Heartbeat also runs on Codex with light context only.
+- Outbound messages/media should be human-triggered from approved Discord channels, not autonomously cross-posted.
+- Heartbeat policy: runtime health only, short acknowledgements, no recaps when nothing is actionable.
 - Firewall: UFW (SSH only), fail2ban
-- Cost: exact JSONL (Sentinel), estimated Docker logs (OpenClaw/JR). Codex=$0.
+- Cost tracking: exact JSONL for Sentinel, estimated Docker rollups for OpenClaw and Job Radar.
 </environment>
 
 <output_format>
@@ -75,13 +90,15 @@ class SentinelAgent:
     def __init__(self, config: SentinelConfig):
         self.config = config
         self.provider = config.provider
+        self.system_prompt = _build_system_prompt(config)
 
         self.client: Any
         self.anthropic_client: Any | None = None
         self.google_module: Any | None = None
         self.google_client: Any | None = None
+        self.openai_client: Any | None = None
 
-        if Anthropic is not None and config.anthropic_api_key:
+        if self.provider == "anthropic" and Anthropic is not None and config.anthropic_api_key:
             self.anthropic_client = Anthropic(api_key=config.anthropic_api_key)
         elif self.provider == "anthropic":
             if Anthropic is None:
@@ -91,20 +108,31 @@ class SentinelAgent:
                 )
             raise RuntimeError("SENTINEL_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
 
-        if config.google_api_key:
+        if self.provider == "google" and config.google_api_key:
             try:
                 self.google_module, self.google_client = self._init_google_client()
             except Exception:
                 if self.provider == "google":
                     raise
-                logger.exception("Google fallback initialization failed; continuing without fallback")
         elif self.provider == "google":
             raise RuntimeError("SENTINEL_PROVIDER=google requires GEMINI_API_KEY")
+
+        if self.provider == "openai" and config.openai_api_key:
+            if OpenAI is None:
+                raise RuntimeError(
+                    "SENTINEL_PROVIDER=openai requires the openai package. "
+                    "Install dependencies from sentinel/requirements.txt"
+                )
+            self.openai_client = OpenAI(api_key=config.openai_api_key)
+        elif self.provider == "openai":
+            raise RuntimeError("SENTINEL_PROVIDER=openai requires OPENAI_API_KEY")
 
         if self.provider == "anthropic":
             self.client = self.anthropic_client
         elif self.provider == "google":
             self.client = self.google_client
+        elif self.provider == "openai":
+            self.client = self.openai_client
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 
@@ -112,6 +140,7 @@ class SentinelAgent:
             raise RuntimeError(f"Configured provider '{self.provider}' could not be initialized")
 
         self.conversations: dict[int, list[dict[str, Any]]] = {}
+        self._openai_previous_response_ids: dict[int, str] = {}
         self._last_activity: dict[int, float] = {}
         self._request_windows: dict[int, deque[float]] = {}
         self._last_request_stats: dict[int, dict[str, Any]] = {}
@@ -182,12 +211,35 @@ class SentinelAgent:
             return "claude-sonnet-4-6"
         return model or "claude-sonnet-4-6"
 
+    @staticmethod
+    def _normalize_openai_model_name(raw_model: str) -> str:
+        """Normalize Codex aliases to a valid OpenAI Responses model id."""
+        model = (raw_model or "").strip()
+        alias_map = {
+            "codex": "gpt-5-codex",
+            "gpt-5-codex": "gpt-5-codex",
+            "openai/gpt-5-codex": "gpt-5-codex",
+            "openai/gpt-5": "gpt-5-codex",
+            "openai-codex/gpt-5.3-codex": "gpt-5-codex",
+            "openai-codex/gpt-5.3-codex-spark": "gpt-5-codex",
+        }
+        if model in alias_map:
+            return alias_map[model]
+        if model.startswith("openai/"):
+            stripped = model.split("/", 1)[1]
+            return alias_map.get(model, stripped)
+        if model.startswith("openai-codex/") or "codex" in model.lower():
+            return "gpt-5-codex"
+        return model or "gpt-5-codex"
+
     def _resolve_model_for_provider(self, provider: str) -> str:
         """Select a model id valid for the target provider."""
         if provider == "google":
             return self._normalize_google_model_name(self.config.model)
         if provider == "anthropic":
             return self._normalize_anthropic_model_name(self.config.model)
+        if provider == "openai":
+            return self._normalize_openai_model_name(self.config.model)
         return self.config.model
 
     def _init_google_client(self) -> tuple[Any, Any]:
@@ -204,7 +256,7 @@ class SentinelAgent:
         model_name = self._normalize_google_model_name(self.config.model)
         model = genai.GenerativeModel(
             model_name=model_name,
-            system_instruction=SYSTEM_PROMPT,
+            system_instruction=self.system_prompt,
         )
         return genai, model
 
@@ -365,11 +417,21 @@ class SentinelAgent:
                 "codex sdk",
             )
         ):
+            provider_labels = {
+                "openai": "OpenAI Responses API",
+                "google": "Google Gemini API",
+                "anthropic": "Anthropic Messages API",
+            }
+            provider_label = provider_labels.get(provider, provider)
+            openclaw_note = "OpenClaw uses GPT-5.3 Codex via OpenAI Codex OAuth."
+            if provider == "openai":
+                sentinel_note = f"Sentinel uses {model} via {provider_label}."
+            else:
+                sentinel_note = f"Sentinel uses {model} via {provider_label}."
             return (
-                f"Sentinel uses {model} — cheapest viable model "
-                f"($0.30/$2.50 per 1M tokens). "
-                f"OpenClaw uses Codex (subscription-covered, $0). "
-                f"Different tools, different models."
+                f"{sentinel_note} "
+                f"{openclaw_note} "
+                f"Sentinel API usage is billed separately from OpenClaw's subscription-backed Codex path."
             )
         # Capability queries (keyword-based)
         if any(
@@ -423,6 +485,7 @@ class SentinelAgent:
         ]
         for uid in stale_ids:
             self.conversations.pop(uid, None)
+            self._openai_previous_response_ids.pop(uid, None)
             self._last_activity.pop(uid, None)
             self._request_windows.pop(uid, None)
             self._last_request_stats.pop(uid, None)
@@ -447,6 +510,32 @@ class SentinelAgent:
             history = self.conversations.setdefault(user_id, [])
             self._last_activity[user_id] = now
             return history
+
+    def _prepare_openai_session(self, user_id: int) -> str | None:
+        """Return the previous OpenAI response id for this user, honoring TTL resets."""
+        now = time.monotonic()
+        with self._state_lock:
+            self._cleanup_stale_users(now)
+
+            last_seen = self._last_activity.get(user_id)
+            if last_seen is not None and (now - last_seen) > self.config.conversation_ttl_seconds:
+                self._openai_previous_response_ids.pop(user_id, None)
+                self._append_audit_event(
+                    user_id,
+                    "conversation_reset",
+                    {"reason": "ttl_expired", "ttl_seconds": self.config.conversation_ttl_seconds},
+                )
+
+            previous_response_id = self._openai_previous_response_ids.get(user_id)
+            self._last_activity[user_id] = now
+            return previous_response_id
+
+    def _persist_openai_session(self, user_id: int, response_id: str) -> None:
+        """Persist the last OpenAI response id for multi-turn continuity."""
+        if not response_id:
+            return
+        with self._state_lock:
+            self._openai_previous_response_ids[user_id] = response_id
 
     @staticmethod
     def _serialize_tool_result(result: Any) -> tuple[str, bool]:
@@ -711,13 +800,27 @@ class SentinelAgent:
                 output_tokens = max(0, total_tokens - input_tokens)
         return max(input_tokens, 0), max(output_tokens, 0)
 
+    def _extract_openai_usage(self, response: Any) -> tuple[int, int]:
+        """Extract token counts from an OpenAI Responses API response."""
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return 0, 0
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        return max(input_tokens, 0), max(output_tokens, 0)
+
+    @staticmethod
+    def _get_openai_response_id(response: Any) -> str:
+        response_id = getattr(response, "id", "") or ""
+        return str(response_id).strip()
+
     def _call_anthropic(self, history: list[dict[str, Any]], model_name: str) -> Any:
         if self.anthropic_client is None:
             raise RuntimeError("Anthropic client is not initialized")
         return self.anthropic_client.messages.create(
             model=model_name,
             max_tokens=self.config.max_tokens,
-            system=SYSTEM_PROMPT,
+            system=self.system_prompt,
             tools=TOOLS,
             messages=history,
             timeout=60.0,
@@ -738,6 +841,28 @@ class SentinelAgent:
             },
             request_options={"timeout": 60},
         )
+
+    def _call_openai(
+        self,
+        input_payload: str | list[dict[str, Any]],
+        model_name: str,
+        previous_response_id: str | None = None,
+        client: Any | None = None,
+    ) -> Any:
+        active_client = client or self.openai_client
+        if active_client is None:
+            raise RuntimeError("OpenAI client is not initialized")
+        request: dict[str, Any] = {
+            "model": model_name,
+            "input": input_payload,
+            "instructions": self.system_prompt,
+            "tools": OPENAI_TOOLS,
+            "max_output_tokens": self.config.max_tokens,
+            "timeout": 60,
+        }
+        if previous_response_id:
+            request["previous_response_id"] = previous_response_id
+        return active_client.responses.create(**request)
 
     def _extract_google_response(
         self,
@@ -792,6 +917,39 @@ class SentinelAgent:
 
         assistant_turn = {"role": role or "model", "parts": assistant_parts}
         return "".join(text_chunks).strip(), tool_calls, assistant_turn
+
+    def _extract_openai_response(self, response: Any) -> tuple[str, list[dict[str, Any]]]:
+        """Extract text and function-calls from an OpenAI Responses API response."""
+        text_response = str(getattr(response, "output_text", "") or "").strip()
+        tool_calls: list[dict[str, Any]] = []
+        for item in getattr(response, "output", []) or []:
+            item_type = getattr(item, "type", None)
+            if item_type == "function_call":
+                name = getattr(item, "name", None)
+                call_id = getattr(item, "call_id", None)
+                arguments_raw = getattr(item, "arguments", None)
+                args: dict[str, Any]
+                if isinstance(arguments_raw, str):
+                    try:
+                        loaded = json.loads(arguments_raw)
+                        args = loaded if isinstance(loaded, dict) else {}
+                    except json.JSONDecodeError:
+                        args = {}
+                else:
+                    args = self._coerce_mapping(arguments_raw)
+                if name and call_id:
+                    tool_calls.append({"name": name, "input": args, "call_id": call_id})
+                continue
+            if item_type == "message" and not text_response:
+                parts = getattr(item, "content", None) or []
+                texts: list[str] = []
+                for part in parts:
+                    part_text = getattr(part, "text", None)
+                    if isinstance(part_text, str) and part_text.strip():
+                        texts.append(part_text.strip())
+                if texts:
+                    text_response = "\n".join(texts).strip()
+        return text_response, tool_calls
 
     def _run_anthropic_loop(
         self,
@@ -1004,6 +1162,113 @@ class SentinelAgent:
         )
         return "Reached maximum tool iterations. Something may be stuck. Please try again."
 
+    def _run_openai_loop(
+        self,
+        user_id: int,
+        user_message: str,
+        previous_response_id: str | None = None,
+        client: Any | None = None,
+        persist_history: bool = True,
+        model_name: str | None = None,
+        request_stats: dict[str, Any] | None = None,
+    ) -> str:
+        """Run an OpenAI Responses API tool-use loop until a final text response is produced."""
+        latest_tool_result = ""
+        openai_model = model_name or self._resolve_model_for_provider("openai")
+        next_input: str | list[dict[str, Any]] = user_message
+        prior_response_id = previous_response_id
+
+        for _ in range(self.config.max_tool_iterations):
+            try:
+                response = self._call_openai(
+                    next_input,
+                    model_name=openai_model,
+                    previous_response_id=prior_response_id,
+                    client=client,
+                )
+            except Exception as exc:
+                self._record_api_usage(
+                    provider="openai",
+                    model=openai_model,
+                    status="error",
+                    user_id=user_id,
+                    error=exc,
+                    request_stats=request_stats,
+                )
+                raise
+
+            input_tokens, output_tokens = self._extract_openai_usage(response)
+            self._record_api_usage(
+                provider="openai",
+                model=openai_model,
+                status="success",
+                user_id=user_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                request_stats=request_stats,
+            )
+
+            text_response, tool_calls = self._extract_openai_response(response)
+            response_id = self._get_openai_response_id(response) or prior_response_id or ""
+
+            if tool_calls:
+                next_outputs: list[dict[str, Any]] = []
+                for call in tool_calls:
+                    tool_name = call["name"]
+                    tool_input = call.get("input", {})
+                    logger.info("Executing tool: %s(%s)", tool_name, json.dumps(tool_input)[:200])
+                    self._mark_brave_usage(tool_name, tool_input, request_stats)
+                    result = execute_tool(tool_name, tool_input)
+                    serialized, truncated = self._serialize_tool_result(result)
+                    latest_tool_result = serialized
+                    self._append_audit_event(
+                        user_id,
+                        "tool_execution",
+                        {
+                            "tool_name": tool_name,
+                            "tool_input": tool_input,
+                            "result_truncated": truncated,
+                            "result_chars": len(serialized),
+                        },
+                    )
+                    next_outputs.append(
+                        {
+                            "type": "function_call_output",
+                            "call_id": call["call_id"],
+                            "output": serialized,
+                        }
+                    )
+
+                prior_response_id = response_id
+                next_input = next_outputs
+                continue
+
+            if text_response:
+                final_text = text_response
+            elif latest_tool_result:
+                final_text = (
+                    "Tool execution completed; model returned no narrative summary. "
+                    f"Latest tool result: {latest_tool_result[:600]}"
+                )
+            else:
+                final_text = "OpenAI returned an empty response. Please retry your request."
+
+            if persist_history and response_id:
+                self._persist_openai_session(user_id, response_id)
+            self._append_audit_event(
+                user_id,
+                "assistant_response",
+                {"chars": len(final_text), "preview": final_text[:200]},
+            )
+            return final_text
+
+        self._append_audit_event(
+            user_id,
+            "max_iterations_reached",
+            {"limit": self.config.max_tool_iterations},
+        )
+        return "Reached maximum tool iterations. Something may be stuck. Please try again."
+
     @staticmethod
     def _is_history_corruption_error(exc: Exception) -> bool:
         """Detect Gemini 400 errors caused by malformed conversation history.
@@ -1056,6 +1321,28 @@ class SentinelAgent:
         use_existing_history: bool,
         request_stats: dict[str, Any] | None = None,
     ) -> str:
+        if provider == "openai":
+            previous_response_id = self._prepare_openai_session(user_id) if use_existing_history else None
+            self._append_audit_event(
+                user_id,
+                "user_message",
+                {
+                    "provider": provider,
+                    "chars": len(user_message),
+                    "preview": user_message[:200],
+                },
+            )
+            model_name = self._resolve_model_for_provider("openai")
+            return self._run_openai_loop(
+                user_id,
+                user_message,
+                previous_response_id=previous_response_id,
+                client=self.openai_client,
+                persist_history=persist_history,
+                model_name=model_name,
+                request_stats=request_stats,
+            )
+
         base_history = self._prepare_history(user_id) if use_existing_history else []
         history = list(base_history)
 

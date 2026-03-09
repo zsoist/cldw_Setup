@@ -6,10 +6,12 @@ Step-by-step guide for deploying OpenClaw + Sentinel on a Hetzner CPX22 VPS.
 
 - Hetzner Cloud account
 - SSH key pair generated (`ssh-keygen -t ed25519`)
+- OpenAI API key for Sentinel (`gpt-5-codex`)
 - Anthropic API key from console.anthropic.com
 - Gemini API key from Google AI Studio / Google Cloud
 - Brave Search API key from https://api.search.brave.com
-- Two Telegram bots created via @BotFather
+- One Telegram bot created via @BotFather for Sentinel
+- One Discord bot token for OpenClaw, plus one Discord bot token for Sentinel
 - Your Telegram user ID (get from @userinfobot)
 
 ## Step 1: Provision the VPS
@@ -76,13 +78,19 @@ nano /root/openclaw/.env
 
 Fill in all placeholder values:
 - `OPENCLAW_GATEWAY_TOKEN` — strong random secret from your preferred secret manager/process
+- `DISCORD_BOT_TOKEN` — OpenClaw Discord bot token
 - `GOG_KEYRING_PASSWORD` — strong random secret from your preferred secret manager/process
+- `OPENAI_API_KEY` — for Sentinel `gpt-5-codex`
 - `ANTHROPIC_API_KEY` — from console.anthropic.com
 - `GEMINI_API_KEY` — from Google AI Studio / Google Cloud (Gemini default routing)
-- `OPENCLAW_TELEGRAM_TOKEN` — from @BotFather (assistant bot)
 - `SENTINEL_TELEGRAM_TOKEN` — from @BotFather (sysadmin bot)
 - `SENTINEL_ALLOWED_USERS` — your Telegram user ID
+- `SENTINEL_DISCORD_ENABLED=1`
+- `SENTINEL_DISCORD_BOT_TOKEN` — Sentinel Discord bot token
+- `SENTINEL_DISCORD_ALLOWED_USERS` — Discord user IDs allowed to operate Sentinel
+- `SENTINEL_DISCORD_GUILD_ID` / `SENTINEL_DISCORD_CHANNEL_ID` — dedicated Sentinel Discord scope
 - `BRAVE_API_KEY` — required for full `ai_daily_brief` web grounding
+- `OPENCLAW_TELEGRAM_ENABLED=0` — keep OpenClaw Telegram disabled unless you intentionally re-enable it
 - `OPENCLAW_REF` — pinned OpenClaw git commit/tag (keep default unless intentionally upgrading)
 
 Important: assign plain values only in `.env` (no trailing inline comments after values).
@@ -102,7 +110,8 @@ Validate and sync Sentinel environment:
 ```
 
 Important:
-- `OPENCLAW_TELEGRAM_TOKEN` and `BRAVE_API_KEY` in `/root/openclaw/.env` are propagated into the OpenClaw container environment.
+- `DISCORD_BOT_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `BRAVE_API_KEY` in `/root/openclaw/.env` are propagated into the active runtimes.
+- `OPENCLAW_TELEGRAM_TOKEN` should stay blank unless you intentionally re-enable OpenClaw Telegram.
 - `sync-openclaw-config.sh` must preserve runtime ownership of `/root/.openclaw/openclaw.json` (the rollout script enforces this).
 
 Optional provider sanity check (recommended):
@@ -143,10 +152,11 @@ journalctl -u sentinel -n 80 --no-pager
 /root/openclaw-project/infrastructure/aibrief-smoke-test.sh
 ```
 
-Before Telegram command testing, confirm smoke test includes:
+Before Discord command testing, confirm smoke test includes:
 - `Gateway runtime user can read /home/node/.openclaw/openclaw.json`
-- `Telegram ingest runtime is running`
-- `Gateway Telegram token source is ...` (not `none`)
+- `OpenClaw gateway healthy`
+- `channels.status` reports Discord `running=true`
+- `OpenClaw Telegram channel is intentionally disabled in runtime config`
 - `Gateway container has BRAVE_API_KEY in environment` (unless intentionally running fallback mode)
 
 Note: OpenClaw is a WebSocket gateway, so root HTTP probes can return `000`/`404` depending on route handling.  
@@ -181,12 +191,12 @@ ssh root@YOUR_VPS_IP 'docker exec openclaw-openclaw-gateway-1 node /home/node/op
 
 Then validate bots:
 ```bash
-# Telegram: send /start to your OpenClaw bot
-# Telegram: send /status to your Sentinel bot
-# Telegram: send /ai_daily_brief status and /ai_daily_brief top5 to validate AI brief routing
+# Discord: send a prompt in an approved OpenClaw channel/thread
+# Discord: run /status in the dedicated Sentinel channel
+# Telegram: send /status to the Sentinel bot
 ```
 
-Optional: route AI brief output to a dedicated Telegram channel (for example `@dandailybriefAI`):
+Optional: route AI brief output only if you intentionally re-enable OpenClaw Telegram delivery:
 ```bash
 cd /root/openclaw-project
 ./infrastructure/set-aibrief-output-channel.sh @dandailybriefAI
@@ -195,10 +205,11 @@ Then re-run:
 ```bash
 ./infrastructure/aibrief-smoke-test.sh
 ```
-and validate in Telegram that `/ai_daily_brief top5` posts the full brief to the channel while DM shows ACK/status.
+and validate in Telegram that `/ai_daily_brief top5` posts the full brief to the configured Telegram target while DM shows ACK/status.
 
 Important:
-- DM invocation is always supported.
+- Discord invocation is the default surface.
+- Telegram DM/channel invocation is optional and supported only when `OPENCLAW_TELEGRAM_ENABLED=1`.
 - Channel/supergroup invocation is supported only for IDs present in `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS`.
 - `set-aibrief-output-channel.sh` auto-adds numeric output channels to `OPENCLAW_TELEGRAM_INTERACTIVE_CHATS` for interactive command use.
 - If commands are sent as channel/anonymous identity, enable:
@@ -207,7 +218,7 @@ Important:
 
 ## Step 8: Post-deployment
 
-1. Set provider spending limits (Gemini primary budget; Anthropic is manual-only, no auto-fallback)
+1. Set provider spending limits (OpenAI API budget for Sentinel; Gemini fallback budget for OpenClaw)
 2. Set up backup cron:
    ```bash
    crontab -e

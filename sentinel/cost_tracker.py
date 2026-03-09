@@ -96,12 +96,16 @@ _MODEL_PRICING: dict[str, _Pricing] = {
     "anthropic/claude-opus-4-6": _Pricing(input_per_million=5.00, output_per_million=25.00),
     # Codex: subscription-covered via OAuth, $0 per-token cost.
     "openai-codex/gpt-5.3-codex": _Pricing(input_per_million=0.0, output_per_million=0.0),
+    # Sentinel uses the public OpenAI API for Codex. Keep pricing separate from subscription-backed OpenClaw.
+    # This remains 0 until a verified public pricing source is wired into the tracker.
+    "openai/gpt-5-codex": _Pricing(input_per_million=0.0, output_per_million=0.0),
 }
 
 # Provider defaults match the *primary* model used by each provider.
 _PROVIDER_DEFAULT_PRICING: dict[str, _Pricing] = {
     "google": _Pricing(input_per_million=0.30, output_per_million=2.50),
     "anthropic": _Pricing(input_per_million=3.00, output_per_million=15.00),
+    "openai": _Pricing(input_per_million=0.0, output_per_million=0.0),
     "openai-codex": _Pricing(input_per_million=0.0, output_per_million=0.0),
 }
 
@@ -116,9 +120,9 @@ def _normalize_model(provider: str, model: str) -> str:
         return f"{provider}/unknown"
     if "/" in normalized:
         left, right = normalized.split("/", 1)
-        if left in {"google", "anthropic", "openai-codex"}:
+        if left in {"google", "anthropic", "openai", "openai-codex"}:
             normalized = f"{left}/{right}"
-    elif provider in {"google", "anthropic", "openai-codex"}:
+    elif provider in {"google", "anthropic", "openai", "openai-codex"}:
         normalized = f"{provider}/{normalized}"
 
     # Alias normalization.
@@ -130,6 +134,9 @@ def _normalize_model(provider: str, model: str) -> str:
         "anthropic/claude-haiku": "anthropic/claude-haiku-4-5",
         "anthropic/claude-sonnet": "anthropic/claude-sonnet-4-6",
         "anthropic/claude-opus": "anthropic/claude-opus-4-6",
+        "openai/codex": "openai/gpt-5-codex",
+        "openai/gpt-5": "openai/gpt-5-codex",
+        "openai/gpt-5.3-codex": "openai/gpt-5-codex",
         "openai-codex/codex": "openai-codex/gpt-5.3-codex",
         "openai-codex/gpt-5.3": "openai-codex/gpt-5.3-codex",
     }
@@ -143,6 +150,8 @@ def _resolve_pricing(provider: str, model: str) -> _Pricing:
         return _MODEL_PRICING[model_norm]
 
     # Heuristic fallbacks for close variants.
+    if provider_norm == "openai" and ("gpt-5-codex" in model_norm or model_norm.endswith("/gpt-5")):
+        return _MODEL_PRICING["openai/gpt-5-codex"]
     if "gemini-2.5-flash" in model_norm:
         return _MODEL_PRICING["google/gemini-2.5-flash"]
     if "gemini-2.5-pro" in model_norm:

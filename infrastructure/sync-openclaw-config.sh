@@ -38,6 +38,7 @@ extract_key() {
 
 OPENCLAW_GATEWAY_TOKEN="$(extract_key OPENCLAW_GATEWAY_TOKEN || true)"
 OPENCLAW_TELEGRAM_TOKEN="$(extract_key OPENCLAW_TELEGRAM_TOKEN || extract_key TELEGRAM_BOT_TOKEN || true)"
+OPENCLAW_TELEGRAM_ENABLED_RAW="$(extract_key OPENCLAW_TELEGRAM_ENABLED || true)"
 OPENCLAW_TELEGRAM_ALLOW_FROM="$(
     extract_key OPENCLAW_TELEGRAM_ALLOW_FROM ||
         extract_key OPENCLAW_ALLOWED_USERS ||
@@ -54,8 +55,25 @@ OPENCLAW_GATEWAY_PORT="$(extract_key OPENCLAW_GATEWAY_PORT || true)"
 OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS="$(extract_key OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS || true)"
 OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK="$(extract_key OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK || true)"
 
-if [ -z "$OPENCLAW_GATEWAY_TOKEN" ] || [ -z "$OPENCLAW_TELEGRAM_TOKEN" ]; then
-    echo "Missing required OpenClaw values in $SOURCE_ENV (OPENCLAW_GATEWAY_TOKEN / OPENCLAW_TELEGRAM_TOKEN)." >&2
+case "${OPENCLAW_TELEGRAM_ENABLED_RAW,,}" in
+    1|true|yes|y|on)
+        OPENCLAW_TELEGRAM_ENABLED="1"
+        ;;
+    0|false|no|n|off|"")
+        OPENCLAW_TELEGRAM_ENABLED="0"
+        ;;
+    *)
+        echo "Invalid OPENCLAW_TELEGRAM_ENABLED: ${OPENCLAW_TELEGRAM_ENABLED_RAW}" >&2
+        exit 1
+        ;;
+esac
+
+if [ -z "$OPENCLAW_GATEWAY_TOKEN" ]; then
+    echo "Missing required OpenClaw value in $SOURCE_ENV (OPENCLAW_GATEWAY_TOKEN)." >&2
+    exit 1
+fi
+if [ "$OPENCLAW_TELEGRAM_ENABLED" = "1" ] && [ -z "$OPENCLAW_TELEGRAM_TOKEN" ]; then
+    echo "OPENCLAW_TELEGRAM_ENABLED=1 requires OPENCLAW_TELEGRAM_TOKEN in $SOURCE_ENV." >&2
     exit 1
 fi
 
@@ -72,9 +90,11 @@ fi
 
 mkdir -p /root/.openclaw
 mkdir -p /root/.openclaw/secrets
-printf '%s' "$OPENCLAW_TELEGRAM_TOKEN" > "$TELEGRAM_TOKEN_FILE_HOST"
-chmod 600 "$TELEGRAM_TOKEN_FILE_HOST"
-export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
+if [ "$OPENCLAW_TELEGRAM_ENABLED" = "1" ]; then
+    printf '%s' "$OPENCLAW_TELEGRAM_TOKEN" > "$TELEGRAM_TOKEN_FILE_HOST"
+    chmod 600 "$TELEGRAM_TOKEN_FILE_HOST"
+fi
+export OPENCLAW_GATEWAY_TOKEN OPENCLAW_TELEGRAM_TOKEN OPENCLAW_TELEGRAM_ENABLED OPENCLAW_GATEWAY_BIND OPENCLAW_GATEWAY_PORT
 export OPENCLAW_TELEGRAM_ALLOW_FROM OPENCLAW_TELEGRAM_INTERACTIVE_CHATS OPENCLAW_TELEGRAM_DM_POLICY
 export OPENCLAW_TELEGRAM_NATIVE_COMMANDS OPENCLAW_TELEGRAM_NATIVE_SKILLS OPENCLAW_TELEGRAM_INTERACTIVE_ALLOW_ANY_SENDER
 export OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS OPENCLAW_CONTROL_UI_HOST_HEADER_FALLBACK
@@ -128,6 +148,7 @@ data["gateway"]["auth"]["token"] = os.environ["OPENCLAW_GATEWAY_TOKEN"]
 control_ui = data["gateway"].get("controlUi")
 if not isinstance(control_ui, dict):
     control_ui = {}
+telegram_enabled = parse_bool(os.environ.get("OPENCLAW_TELEGRAM_ENABLED"), False)
 
 allowed_origins_raw = (os.environ.get("OPENCLAW_CONTROL_UI_ALLOWED_ORIGINS") or "").strip()
 if allowed_origins_raw:
@@ -156,16 +177,22 @@ elif "allowedOrigins" not in control_ui:
 data["gateway"]["controlUi"] = control_ui
 
 data.setdefault("channels", {}).setdefault("telegram", {})
-data["channels"]["telegram"]["enabled"] = True
-data["channels"]["telegram"]["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
-data["channels"]["telegram"]["tokenFile"] = os.environ["OPENCLAW_TELEGRAM_TOKEN_FILE"]
+data["channels"]["telegram"]["enabled"] = telegram_enabled
 accounts = data["channels"]["telegram"].setdefault("accounts", {})
 default_account = accounts.get("default")
 if not isinstance(default_account, dict):
     default_account = {}
-default_account["enabled"] = True
-default_account["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
-default_account["tokenFile"] = os.environ["OPENCLAW_TELEGRAM_TOKEN_FILE"]
+default_account["enabled"] = telegram_enabled
+if telegram_enabled:
+    data["channels"]["telegram"]["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
+    data["channels"]["telegram"]["tokenFile"] = os.environ["OPENCLAW_TELEGRAM_TOKEN_FILE"]
+    default_account["botToken"] = os.environ["OPENCLAW_TELEGRAM_TOKEN"]
+    default_account["tokenFile"] = os.environ["OPENCLAW_TELEGRAM_TOKEN_FILE"]
+else:
+    data["channels"]["telegram"].pop("botToken", None)
+    data["channels"]["telegram"].pop("tokenFile", None)
+    default_account.pop("botToken", None)
+    default_account.pop("tokenFile", None)
 
 allow_from_raw = (os.environ.get("OPENCLAW_TELEGRAM_ALLOW_FROM") or "").strip()
 allow_from = []
@@ -254,7 +281,10 @@ PY
 cp "$RUNTIME_JSON" "$RUNTIME_COPY_JSON"
 cp "$RUNTIME_JSON" "$IMAGE_COPY_JSON"
 
-chmod 600 "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON" "$TELEGRAM_TOKEN_FILE_HOST"
+chmod 600 "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON"
+if [ -f "$TELEGRAM_TOKEN_FILE_HOST" ]; then
+    chmod 600 "$TELEGRAM_TOKEN_FILE_HOST"
+fi
 
 resolve_owner() {
     local owner=""
@@ -281,7 +311,10 @@ resolve_owner() {
     fi
 
     if [ -n "$owner" ]; then
-        chown "$owner" "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON" "$TELEGRAM_TOKEN_FILE_HOST"
+        chown "$owner" "$RUNTIME_JSON" "$RUNTIME_COPY_JSON" "$IMAGE_COPY_JSON"
+        if [ -f "$TELEGRAM_TOKEN_FILE_HOST" ]; then
+            chown "$owner" "$TELEGRAM_TOKEN_FILE_HOST"
+        fi
     fi
 }
 

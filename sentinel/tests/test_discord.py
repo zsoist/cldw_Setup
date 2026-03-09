@@ -29,6 +29,8 @@ def _make_config(**overrides) -> MagicMock:
     cfg.discord_token = overrides.get("discord_token", "fake-discord-token")
     cfg.discord_guild_id = overrides.get("discord_guild_id", 0)
     cfg.discord_channel_id = overrides.get("discord_channel_id", 0)
+    cfg.provider = overrides.get("provider", "openai")
+    cfg.model = overrides.get("model", "gpt-5-codex")
     return cfg
 
 
@@ -151,8 +153,8 @@ class TestCheckStaticResponse:
         ("thanks", "No problem."),
         ("ok", "Acknowledged."),
         ("ping", "Pong."),
-        ("model", "Sentinel runs on Gemini 2.5 Flash ($0.30/$2.50 per 1M tokens)."),
-        ("codex", "OpenClaw uses GPT-5.3 Codex (subscription-covered, $0/token). Sentinel uses Gemini Flash."),
+        ("model", "Sentinel runs on gpt-5-codex via OpenAI."),
+        ("codex", "OpenClaw uses GPT-5.3 Codex (subscription-covered). Sentinel uses gpt-5-codex via OpenAI."),
     ])
     def test_known_keywords(self, bot, text, expected):
         assert bot._check_static_response(text) == expected

@@ -9,10 +9,10 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 
 | Tier | Model | Role | Cost |
 |------|-------|------|------|
-| Default | OpenAI Codex (`openai-codex/gpt-5.3-codex`) | ALL tasks: chat, Q&A, heartbeat, news briefs, job radar, research, academic, sub-agents | Subscription-covered |
+| Default | OpenAI Codex (`openai-codex/gpt-5.3-codex`) | Chat, Q&A, heartbeat, news briefs, job radar, research, academic, sub-agents | Subscription-covered |
 | Fallback | Gemini 2.5 Flash (`google/gemini-2.5-flash`) | Codex unavailable only | ~$0.15/M input |
 | Manual | Gemini 2.5 Pro (`google/gemini-2.5-pro`) | Manual research escalation only | ~$1.25/M input |
-| Sentinel | Gemini 2.5 Flash | Sentinel bot (separate service, NOT on Codex) | ~$0.15/M input |
+| Sentinel | OpenAI Codex (`gpt-5-codex`) | Sentinel bot (separate service, Discord + Telegram operator surface) | API-billed |
 | Retrieval | Brave LLM Context + web search | Source retrieval and grounding | Free tier |
 
 > **API-key models (gpt-4o-mini, gpt-4o):** Configured but NOT used as defaults.
@@ -30,6 +30,7 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 **Use:** Codex (subscription-covered)
 - Health checks, status notifications, news brief generation
 - 180m heartbeat interval, active hours 07:00-23:00 COT
+- Heartbeat is light-context only, max 2 tool calls, <=80 char acknowledgement
 - Cron jobs: Codex, 120s timeout, isolated sessions
 
 ### 2. Routine Assistant Work
@@ -49,7 +50,7 @@ Referenced from `openclaw/config/AGENTS.md` and `openclaw/config/TOOLS.md`.
 - Downgrade immediately after completion
 
 ### 5. Sentinel (separate service)
-**Use:** Gemini Flash (unchanged)
+**Use:** OpenAI Codex (`gpt-5-codex`)
 - 10 tool functions + check_api_spirals
 - max_tokens: 1500, max_tool_iterations: 4
 - Zero-cost commands bypass LLM entirely
@@ -70,7 +71,7 @@ Applied via SOUL.md and SKILL.md prompt directives:
 | Component | Monthly Cost |
 |-----------|-------------|
 | OpenClaw (Codex) | $0 (subscription-covered) |
-| Sentinel (Flash) | ~$1-3 |
+| Sentinel (Codex API) | variable, depends on interactive usage |
 | Brave API | Free tier |
 | VPS (Hetzner CPX22) | ~$8 |
 | **Total** | **~$9-11** |

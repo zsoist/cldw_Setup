@@ -15,5 +15,5 @@
 ## Reminders / Preferences
 - Preferred reminder times: 07:00, 14:00, 20:00 COT
 - Do not disturb: 23:00-07:00 (silent hours)
-- Channel for reminders: Telegram DM (AI briefs can also deliver in approved channel/supergroup)
+- Channel for reminders: approved Discord channels/threads; Telegram reserved for Sentinel ops only
 - Format: bullet points, not paragraphs

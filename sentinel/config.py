@@ -22,6 +22,17 @@ def _parse_allowed_user_ids(raw: str) -> list[int]:
     return ids
 
 
+def _normalize_provider(raw: str) -> str:
+    """Normalize provider aliases to the canonical internal id."""
+    value = _clean_env_value(raw).lower()
+    alias_map = {
+        "gemini": "google",
+        "codex": "openai",
+        "openai-codex": "openai",
+    }
+    return alias_map.get(value, value or "openai")
+
+
 def _parse_positive_int(env_name: str, default: int, minimum: int = 1, maximum: int = 10_000) -> int:
     """Parse integer env var with bounds and fallback to default."""
     raw = _clean_env_value(os.getenv(env_name, ""))
@@ -110,7 +121,7 @@ class SentinelConfig:
 
     # LLM Provider
     provider: str = field(
-        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_PROVIDER", "google")).lower() or "google"
+        default_factory=lambda: _normalize_provider(os.getenv("SENTINEL_PROVIDER", "openai"))
     )
     anthropic_api_key: str = field(
         default_factory=lambda: _clean_env_value(os.getenv("ANTHROPIC_API_KEY", ""))
@@ -118,26 +129,29 @@ class SentinelConfig:
     google_api_key: str = field(
         default_factory=lambda: _clean_env_value(os.getenv("GEMINI_API_KEY", ""))
     )
+    openai_api_key: str = field(
+        default_factory=lambda: _clean_env_value(os.getenv("OPENAI_API_KEY", ""))
+    )
     model: str = field(
-        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_MODEL", "gemini-2.5-flash"))
+        default_factory=lambda: _clean_env_value(os.getenv("SENTINEL_MODEL", "gpt-5-codex"))
     )
     max_tokens: int = field(
-        default_factory=lambda: _parse_positive_int("SENTINEL_MAX_TOKENS", 768, minimum=128, maximum=4096)
+        default_factory=lambda: _parse_positive_int("SENTINEL_MAX_TOKENS", 1500, minimum=128, maximum=4096)
     )
     usd_to_cop_rate: float = field(
         default_factory=lambda: _parse_positive_float("SENTINEL_USD_TO_COP_RATE", 4000.0, minimum=1000.0, maximum=10000.0)
     )
     rate_limit_max_requests: int = field(
-        default_factory=lambda: _parse_positive_int("SENTINEL_RATE_LIMIT_MAX_REQUESTS", 8, minimum=1, maximum=100)
+        default_factory=lambda: _parse_positive_int("SENTINEL_RATE_LIMIT_MAX_REQUESTS", 15, minimum=1, maximum=100)
     )
     rate_limit_window_seconds: int = field(
         default_factory=lambda: _parse_positive_int("SENTINEL_RATE_LIMIT_WINDOW_SECONDS", 300, minimum=10, maximum=3600)
     )
     conversation_ttl_seconds: int = field(
-        default_factory=lambda: _parse_positive_int("SENTINEL_CONVERSATION_TTL_SECONDS", 1800, minimum=60, maximum=86_400)
+        default_factory=lambda: _parse_positive_int("SENTINEL_CONVERSATION_TTL_SECONDS", 900, minimum=60, maximum=86_400)
     )
     max_tool_iterations: int = field(
-        default_factory=lambda: _parse_positive_int("SENTINEL_MAX_TOOL_ITERATIONS", 5, minimum=1, maximum=20)
+        default_factory=lambda: _parse_positive_int("SENTINEL_MAX_TOOL_ITERATIONS", 4, minimum=1, maximum=20)
     )
     cost_tracking_enabled: bool = field(
         default_factory=lambda: _parse_bool("SENTINEL_COST_TRACKING_ENABLED", True)
@@ -186,12 +200,14 @@ class SentinelConfig:
             errors.append("SENTINEL_TELEGRAM_TOKEN is not set")
         if not self.allowed_user_ids:
             errors.append("SENTINEL_ALLOWED_USERS is not set (comma-separated Telegram user IDs)")
-        if self.provider not in {"anthropic", "google"}:
-            errors.append("SENTINEL_PROVIDER must be 'anthropic' or 'google'")
+        if self.provider not in {"anthropic", "google", "openai"}:
+            errors.append("SENTINEL_PROVIDER must be 'anthropic', 'google', or 'openai'")
         if self.provider == "anthropic" and not self.anthropic_api_key:
             errors.append("ANTHROPIC_API_KEY is not set for SENTINEL_PROVIDER=anthropic")
         if self.provider == "google" and not self.google_api_key:
             errors.append("GEMINI_API_KEY is not set for SENTINEL_PROVIDER=google")
+        if self.provider == "openai" and not self.openai_api_key:
+            errors.append("OPENAI_API_KEY is not set for SENTINEL_PROVIDER=openai")
         if self.rate_limit_max_requests <= 0:
             errors.append("SENTINEL_RATE_LIMIT_MAX_REQUESTS must be > 0")
         if self.rate_limit_window_seconds <= 0:

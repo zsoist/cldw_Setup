@@ -233,6 +233,22 @@ def _build_google_tools() -> list:
 GOOGLE_TOOLS = _build_google_tools()
 
 
+def _build_openai_tools() -> list[dict[str, Any]]:
+    """Convert shared tool defs to OpenAI Responses API function tools."""
+    return [
+        {
+            "type": "function",
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": tool["input_schema"],
+        }
+        for tool in TOOLS
+    ]
+
+
+OPENAI_TOOLS = _build_openai_tools()
+
+
 # --- COMMAND WHITELIST ---
 
 BLOCKED_PATTERNS = [

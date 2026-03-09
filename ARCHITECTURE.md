@@ -29,13 +29,13 @@
 | File | Purpose | Key Values |
 |------|---------|------------|
 | main.py | Service entrypoint used by systemd | `/opt/sentinel/venv/bin/python main.py` |
-| sentinel.py | Main bot: agentic loop, provider abstraction, token tracking | Google provider currently uses `google-generativeai`; venv also carries `google-genai` |
+| sentinel.py | Main bot: agentic loop, provider abstraction, token tracking | Active runtime uses OpenAI Responses (`gpt-5-codex`); Google path remains available for manual rollback |
 | telegram_handler.py | Telegram interface + auth flow | Polling bot runtime |
-| discord_handler.py | Discord bot interface | Slash commands synced to live guild |
+| discord_handler.py | Discord bot interface | Slash commands synced to live guild; restricted to dedicated Sentinel channel |
 | tools.py | Sysadmin tool definitions + policy enforcement | Includes health, backup, cost, cron, and security helpers |
-| config.py | Dataclass config with env var parsing | `SENTINEL_PROVIDER=google`, rate limiting, log paths |
+| config.py | Dataclass config with env var parsing | `SENTINEL_PROVIDER=openai`, rate limiting, log paths |
 | cost_tracker.py | Crash-safe JSONL cost logging + atomic JSON summary | `/var/log/sentinel/api-usage.jsonl` + summary files |
-| requirements.txt | Python deps for live service code | anthropic, google-generativeai, google-genai, python-telegram-bot, discord.py, docker |
+| requirements.txt | Python deps for live service code | openai, anthropic, google-generativeai, google-genai, python-telegram-bot, discord.py, docker |
 
 ### sentinel/tests/ -- Repo-side test residue
 
@@ -51,7 +51,7 @@
 | AGENTS.md | /root/.openclaw/workspace/AGENTS.md | Sub-agent registry + model routing, behavioral contract |
 | TOOLS.md | /root/.openclaw/workspace/TOOLS.md | Tool preference order, efficiency, budget, safety |
 | USER.md | /root/.openclaw/workspace/USER.md | Daniel's profile + preferences |
-| HEARTBEAT.md | /root/.openclaw/workspace/HEARTBEAT.md | 180m interval, 07:00-23:00 COT, Codex model |
+| HEARTBEAT.md | /root/.openclaw/workspace/HEARTBEAT.md | 180m interval, 07:00-23:00 COT, Codex model, light-context / low-token heartbeat policy |
 | MEMORY.md | /root/.openclaw/workspace/MEMORY.md | Persistent memory system with daily logs |
 | IDENTITY.md | /root/.openclaw/workspace/IDENTITY.md | Persona tone + style |
 | CHANNELS.md | /root/.openclaw/workspace/CHANNELS.md | Channel security |
@@ -149,7 +149,7 @@
 | contextPruning TTL | 3m | agents.defaults.contextPruning.ttl |
 | Compaction | safeguard | agents.defaults.compaction.mode |
 | thinkingDefault | off | agents.defaults.thinkingDefault |
-| Heartbeat interval | every 180m, Codex | agents.defaults.heartbeat |
+| Heartbeat interval | every 180m, Codex, `ackMaxChars=80` | agents.defaults.heartbeat |
 | Active hours | 07:00-23:00 COT | agents.defaults.heartbeat.activeHours |
 | Session timeout | 300s | agents.defaults.timeoutSeconds |
 | maxConcurrent | 2 | agents.defaults.maxConcurrent |
@@ -168,8 +168,8 @@
 
 | Config | Value |
 |--------|-------|
-| Provider | google / gemini-2.5-flash |
-| Fallback | anthropic / claude-haiku-4-5 |
+| Provider | openai / gpt-5-codex |
+| Fallback | none (single-provider runtime) |
 | max_tokens | 1500 |
 | max_tool_iterations | 4 |
 | conversation_ttl | 900s |
